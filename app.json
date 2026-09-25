@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Dometra",
+    "slug": "dometra",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "dometra",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.dometra"
+    },
+    "android": {
+      "package": "com.example.dometra"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Dometra to photograph utility meters."
+        }
+      ],
+      "expo-localization",
+      "expo-notifications"
+    ]
+  }
+}
