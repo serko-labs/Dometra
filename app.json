@@ -20,8 +20,17 @@
           "cameraPermission": "Allow Dometra to photograph utility meters."
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
       "expo-localization",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-build-properties"
     ]
   }
 }
