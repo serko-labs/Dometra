@@ -1,4 +1,7 @@
-import React from 'react';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
 
 import {
   Alert,
@@ -9,6 +12,7 @@ import {
 } from 'react-native';
 
 import {
+  useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
 
@@ -34,9 +38,56 @@ import {
 } from '../context/AppContext';
 
 import {
+  loadPropertyOccupancy,
+  PropertyOccupancySummary,
+} from '../services/propertyOccupancyRepository';
+
+import {
   colors,
   spacing,
 } from '../theme';
+
+function badgeText(
+  occupancy:
+    PropertyOccupancySummary | undefined,
+) {
+  if (
+    occupancy?.state ===
+    'OCCUPIED'
+  ) {
+    return 'Occupied';
+  }
+
+  if (
+    occupancy?.state ===
+    'PENDING'
+  ) {
+    return 'Invitation pending';
+  }
+
+  return 'Available';
+}
+
+function badgeTone(
+  occupancy:
+    PropertyOccupancySummary | undefined,
+) {
+  if (
+    occupancy?.state ===
+    'OCCUPIED'
+  ) {
+    return 'success' as const;
+  }
+
+  if (
+    occupancy?.state ===
+    'PENDING'
+  ) {
+    return 'warning' as const;
+  }
+
+  return 'neutral' as const;
+}
 
 export function PropertiesScreen() {
   const {
@@ -53,6 +104,66 @@ export function PropertiesScreen() {
   } =
     useApp();
 
+  const [
+    occupancy,
+    setOccupancy,
+  ] =
+    useState<
+      Record<
+        string,
+        PropertyOccupancySummary
+      >
+    >({});
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        let active =
+          true;
+
+        const load =
+          async () => {
+            try {
+              const data =
+                await loadPropertyOccupancy(
+                  state.properties.map(
+                    (
+                      property,
+                    ) =>
+                      property.id,
+                  ),
+                );
+
+              if (
+                active
+              ) {
+                setOccupancy(
+                  data,
+                );
+              }
+            } catch (
+              error
+            ) {
+              console.error(
+                '[Dometra] Unable to load property occupancy:',
+                error,
+              );
+            }
+          };
+
+        void load();
+
+        return () => {
+          active =
+            false;
+        };
+      },
+      [
+        state.properties,
+      ],
+    ),
+  );
+
   const confirmRemove =
     (
       propertyId:
@@ -63,8 +174,7 @@ export function PropertiesScreen() {
     ) => {
       Alert.alert(
         'Remove apartment?',
-        `Are you sure you want to remove "${propertyName}"?\n\nMeters, invoices, payments and reminders linked to this apartment will also be removed.`,
-
+        `Are you sure you want to remove "${propertyName}"?`,
         [
           {
             text:
@@ -83,7 +193,7 @@ export function PropertiesScreen() {
 
             onPress:
               () => {
-                removeProperty(
+                void removeProperty(
                   propertyId,
                 );
               },
@@ -117,142 +227,182 @@ export function PropertiesScreen() {
       {state.properties.map(
         (
           property,
-        ) => (
-          <SwipeActions
-            key={
+        ) => {
+          const currentOccupancy =
+            occupancy[
               property.id
-            }
-            onEdit={() =>
-              navigation.navigate(
-                'AddProperty',
-                {
-                  propertyId:
-                    property.id,
-                },
-              )
-            }
-            onRemove={() =>
-              confirmRemove(
-                property.id,
-                property.name,
-              )
-            }
-          >
-            <Pressable
-              onPress={() =>
+            ];
+
+          const rentAmount =
+            currentOccupancy
+              ?.rentAmount ??
+            property.rentAmount;
+
+          const rentCurrency =
+            currentOccupancy
+              ?.rentCurrency ??
+            property.rentCurrency;
+
+          return (
+            <SwipeActions
+              key={
+                property.id
+              }
+              onEdit={() =>
                 navigation.navigate(
-                  'PropertyDetails',
+                  'AddProperty',
                   {
                     propertyId:
                       property.id,
                   },
                 )
               }
+              onRemove={() =>
+                confirmRemove(
+                  property.id,
+                  property.name,
+                )
+              }
             >
-              <Card>
-                <View
-                  style={
-                    styles.row
-                  }
-                >
+              <Pressable
+                onPress={() =>
+                  navigation.navigate(
+                    'PropertyDetails',
+                    {
+                      propertyId:
+                        property.id,
+                    },
+                  )
+                }
+              >
+                <Card>
                   <View
                     style={
-                      styles.icon
+                      styles.row
                     }
                   >
-                    <Text
+                    <View
                       style={
-                        styles.iconText
+                        styles.icon
                       }
                     >
-                      ⌂
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.flex
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.title
-                      }
-                    >
-                      {
-                        property.name
-                      }
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.address
-                      }
-                    >
-                      {
-                        property.address
-                      }
-                      {', '}
-                      {
-                        property.city
-                      }
-                    </Text>
+                      <Text
+                        style={
+                          styles.iconText
+                        }
+                      >
+                        ⌂
+                      </Text>
+                    </View>
 
                     <View
                       style={
-                        styles.meta
+                        styles.flex
                       }
                     >
-                      <Badge
-                        text={
-                          property.tenantName
-                            ? t(
-                                'occupied',
-                              )
-                            : t(
-                                'vacant',
-                              )
+                      <Text
+                        style={
+                          styles.title
                         }
-                        tone={
-                          property.tenantName
-                            ? 'success'
-                            : 'neutral'
+                      >
+                        {
+                          property.name
                         }
-                      />
+                      </Text>
 
-                      {property.areaM2 >
-                      0 ? (
+                      <Text
+                        style={
+                          styles.address
+                        }
+                      >
+                        {
+                          property.address
+                        },{' '}
+                        {
+                          property.city
+                        }
+                      </Text>
+
+                      <View
+                        style={
+                          styles.meta
+                        }
+                      >
+                        <Badge
+                          text={
+                            badgeText(
+                              currentOccupancy,
+                            )
+                          }
+                          tone={
+                            badgeTone(
+                              currentOccupancy,
+                            )
+                          }
+                        />
+
+                        {property.areaM2 >
+                        0 ? (
+                          <Text
+                            style={
+                              styles.area
+                            }
+                          >
+                            {
+                              property.areaM2
+                            }{' '}
+                            m²
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {currentOccupancy
+                        ?.state ===
+                        'OCCUPIED' &&
+                      currentOccupancy
+                        .tenantName ? (
                         <Text
                           style={
-                            styles.area
+                            styles.tenant
                           }
                         >
                           {
-                            property.areaM2
-                          }{' '}
-                          m²
+                            currentOccupancy.tenantName
+                          }
+                        </Text>
+                      ) : null}
+
+                      {currentOccupancy
+                        ?.state ===
+                      'PENDING' ? (
+                        <Text
+                          style={
+                            styles.pending
+                          }
+                        >
+                          Waiting for tenant to accept
                         </Text>
                       ) : null}
                     </View>
-                  </View>
 
-                  {property.rentAmount >
-                  0 ? (
-                    <Money
-                      amount={
-                        property.rentAmount
-                      }
-                      currency={
-                        property.rentCurrency
-                      }
-                      strong
-                    />
-                  ) : null}
-                </View>
-              </Card>
-            </Pressable>
-          </SwipeActions>
-        ),
+                    {rentAmount >
+                    0 ? (
+                      <Money
+                        amount={
+                          rentAmount
+                        }
+                        currency={
+                          rentCurrency
+                        }
+                        strong
+                      />
+                    ) : null}
+                  </View>
+                </Card>
+              </Pressable>
+            </SwipeActions>
+          );
+        },
       )}
     </Screen>
   );
@@ -333,6 +483,9 @@ const styles =
       alignItems:
         'center',
 
+      flexWrap:
+        'wrap',
+
       gap:
         9,
 
@@ -346,5 +499,30 @@ const styles =
 
       fontSize:
         12,
+    },
+
+    tenant: {
+      color:
+        colors.text,
+
+      fontSize:
+        12,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        8,
+    },
+
+    pending: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginTop:
+        8,
     },
   });
