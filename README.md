@@ -335,3 +335,28 @@ npx expo start
 npx expo run:ios --device
 npx expo prebuild
 ```
+
+Dometra Wiki
+│
+├── Architecture
+│   ├── System Architecture
+│   ├── Supabase Data Model
+│   ├── Roles and Permissions
+│   └── Audit Logging
+│
+├── Authentication
+│   ├── Authentication Flow
+│   └── Session Management
+│
+├── Landlord
+│   ├── Property Management Flow
+│   ├── Meters and Services
+│   └── Meter Readings and Photos
+│
+├── Data
+│   ├── Data Saving Flow
+│   └── Storage Structure
+│
+└── Development
+    ├── Development Setup
+    └── Current Implementation Status
