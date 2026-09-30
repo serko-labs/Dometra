@@ -96,11 +96,11 @@ export function AddPropertyScreen() {
     setName,
   ] =
     useState(
-      property?.name ===
-        property?.address
-        ? ''
-        : property?.name ??
-            '',
+      property &&
+      property.name !==
+        property.address
+        ? property.name
+        : '',
     );
 
   const [
@@ -109,112 +109,145 @@ export function AddPropertyScreen() {
   ] =
     useState(
       property &&
-        property.areaM2 >
-          0
+      property.areaM2 >
+        0
         ? String(
             property.areaM2,
           )
         : '',
     );
 
-  const submit = () => {
-    const cleanCity =
-      city.trim();
+  const [
+    busy,
+    setBusy,
+  ] =
+    useState(false);
 
-    const cleanAddress =
-      address.trim();
+  const submit =
+    async () => {
+      const cleanCity =
+        city.trim();
 
-    const cleanName =
-      name.trim();
+      const cleanAddress =
+        address.trim();
 
-    if (!cleanCity) {
-      Alert.alert(
-        'Dometra',
-        'City is required.',
+      const cleanName =
+        name.trim();
+
+      if (
+        !cleanCity
+      ) {
+        Alert.alert(
+          'Dometra',
+          'City is required.',
+        );
+
+        return;
+      }
+
+      if (
+        !cleanAddress
+      ) {
+        Alert.alert(
+          'Dometra',
+          'Address is required.',
+        );
+
+        return;
+      }
+
+      const areaValue =
+        area.trim()
+          ? Number(
+              area.replace(
+                ',',
+                '.',
+              ),
+            )
+          : undefined;
+
+      if (
+        areaValue !==
+          undefined &&
+        (
+          !Number.isFinite(
+            areaValue,
+          ) ||
+          areaValue <= 0
+        )
+      ) {
+        Alert.alert(
+          'Dometra',
+          'Square must be greater than 0.',
+        );
+
+        return;
+      }
+
+      setBusy(
+        true,
       );
 
-      return;
-    }
+      try {
+        const input = {
+          city:
+            cleanCity,
 
-    if (!cleanAddress) {
-      Alert.alert(
-        'Dometra',
-        'Address is required.',
-      );
+          address:
+            cleanAddress,
 
-      return;
-    }
+          name:
+            cleanName ||
+            undefined,
 
-    const areaValue =
-      area.trim()
-        ? Number(
-            area.replace(
-              ',',
-              '.',
-            ),
-          )
-        : undefined;
+          areaM2:
+            areaValue,
+        };
 
-    if (
-      areaValue !==
-        undefined &&
-      (
-        !Number.isFinite(
-          areaValue,
-        ) ||
-        areaValue <= 0
-      )
-    ) {
-      Alert.alert(
-        'Dometra',
-        'Square must be greater than 0.',
-      );
+        if (
+          isEditing &&
+          property
+        ) {
+          await editProperty(
+            property.id,
+            input,
+          );
 
-      return;
-    }
+          navigation.goBack();
 
-    const input = {
-      city:
-        cleanCity,
+          return;
+        }
 
-      address:
-        cleanAddress,
+        const created =
+          await addProperty(
+            input,
+          );
 
-      name:
-        cleanName ||
-        undefined,
+        navigation.replace(
+          'PropertyDetails',
 
-      areaM2:
-        areaValue,
+          {
+            propertyId:
+              created.id,
+          },
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          'Unable to save apartment',
+
+          error instanceof
+          Error
+            ? error.message
+            : 'Unknown error.',
+        );
+      } finally {
+        setBusy(
+          false,
+        );
+      }
     };
-
-    if (
-      isEditing &&
-      property
-    ) {
-      editProperty(
-        property.id,
-        input,
-      );
-
-      navigation.goBack();
-
-      return;
-    }
-
-    const created =
-      addProperty(
-        input,
-      );
-
-    navigation.replace(
-      'PropertyDetails',
-      {
-        propertyId:
-          created.id,
-      },
-    );
-  };
 
   return (
     <Screen>
@@ -243,6 +276,9 @@ export function AddPropertyScreen() {
         }
         placeholder="Chernivtsi"
         autoCapitalize="words"
+        editable={
+          !busy
+        }
       />
 
       <Field
@@ -254,6 +290,9 @@ export function AddPropertyScreen() {
           setAddress
         }
         placeholder="Holovna St, 100, Apt 12"
+        editable={
+          !busy
+        }
       />
 
       <Field
@@ -265,6 +304,9 @@ export function AddPropertyScreen() {
           setName
         }
         placeholder="Central apartment"
+        editable={
+          !busy
+        }
       />
 
       <Field
@@ -277,6 +319,9 @@ export function AddPropertyScreen() {
         }
         placeholder="54.5"
         keyboardType="decimal-pad"
+        editable={
+          !busy
+        }
       />
 
       <Text
@@ -285,20 +330,25 @@ export function AddPropertyScreen() {
         }
       >
         Rent, tenant and payment
-        conditions can be
-        configured separately.
+        conditions can be configured
+        separately.
       </Text>
 
       <PrimaryButton
         title={
-          isEditing
-            ? 'Save'
-            : t(
-                'create',
-              )
+          busy
+            ? 'Saving...'
+            : isEditing
+              ? 'Save'
+              : t(
+                  'create',
+                )
         }
-        onPress={
-          submit
+        onPress={() =>
+          void submit()
+        }
+        disabled={
+          busy
         }
       />
     </Screen>

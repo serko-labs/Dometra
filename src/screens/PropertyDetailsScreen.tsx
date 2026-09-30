@@ -36,9 +36,116 @@ import {
 } from '../context/AppContext';
 
 import {
+  Meter,
+} from '../types';
+
+import {
   colors,
   spacing,
 } from '../theme';
+
+function formatDate(
+  iso:
+    string,
+) {
+  const date =
+    new Date(
+      iso,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return '';
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+
+    {
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      year:
+        'numeric',
+    },
+  );
+}
+
+function getLatestReading(
+  meter:
+    Meter,
+) {
+  const registers =
+    meter.registers.filter(
+      (
+        register,
+      ) =>
+        register.lastReadingAt &&
+        register.currentValue !==
+          undefined,
+    );
+
+  if (
+    registers.length ===
+    0
+  ) {
+    return null;
+  }
+
+  const latestTimestamp =
+    registers.reduce(
+      (
+        latest,
+        register,
+      ) => {
+        const timestamp =
+          new Date(
+            register.lastReadingAt!,
+          ).getTime();
+
+        return Math.max(
+          latest,
+          timestamp,
+        );
+      },
+      0,
+    );
+
+  const values =
+    registers
+      .map(
+        (
+          register,
+        ) => {
+          if (
+            meter.registers.length >
+            1
+          ) {
+            return `${register.code}: ${register.currentValue} ${register.unit}`;
+          }
+
+          return `${register.currentValue} ${register.unit}`;
+        },
+      )
+      .join(
+        ' • ',
+      );
+
+  return {
+    date:
+      new Date(
+        latestTimestamp,
+      ).toISOString(),
+
+    values,
+  };
+}
 
 export function PropertyDetailsScreen() {
   const {
@@ -108,7 +215,6 @@ export function PropertyDetailsScreen() {
       Alert.alert(
         'Remove meter / service?',
         `Are you sure you want to remove "${meterName}"?`,
-
         [
           {
             text:
@@ -287,6 +393,11 @@ export function PropertyDetailsScreen() {
             meter.billingMode ??
             'METERED';
 
+          const latestReading =
+            getLatestReading(
+              meter,
+            );
+
           return (
             <SwipeActions
               key={
@@ -335,29 +446,57 @@ export function PropertyDetailsScreen() {
                     {billingMode ===
                     'METERED' ? (
                       <>
-                        {meter.registers.map(
-                          (
-                            register,
-                          ) => (
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          {meter.registers
+                            .map(
+                              (
+                                register,
+                              ) =>
+                                `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
+                            )
+                            .join(
+                              ' • ',
+                            )}
+                        </Text>
+
+                        {latestReading ? (
+                          <View
+                            style={
+                              styles.lastReading
+                            }
+                          >
+                            <Badge
+                              text={`Last ${formatDate(
+                                latestReading.date,
+                              )}`}
+                              tone="success"
+                            />
+
                             <Text
-                              key={
-                                register.id
-                              }
                               style={
-                                styles.muted
+                                styles.lastReadingValue
                               }
                             >
-                              {register.code}
-                              {': '}
-                              {register.previousValue}{' '}
-                              {register.unit}
-                              {' • '}
-                              {register.tariff}{' '}
-                              {register.tariffCurrency}
-                              /
-                              {register.unit}
+                              {
+                                latestReading.values
+                              }
                             </Text>
-                          ),
+                          </View>
+                        ) : (
+                          <View
+                            style={
+                              styles.lastReading
+                            }
+                          >
+                            <Badge
+                              text="No readings yet"
+                              tone="neutral"
+                            />
+                          </View>
                         )}
                       </>
                     ) : null}
@@ -381,28 +520,63 @@ export function PropertyDetailsScreen() {
 
                     {billingMode ===
                     'VARIABLE' ? (
-                      <Text
-                        style={
-                          styles.muted
-                        }
-                      >
-                        Variable
+                      <>
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          Variable service
+                        </Text>
+
                         {meter.currentAmount !==
-                        undefined
-                          ? ` • ${meter.currentAmount} ${meter.billingCurrency ?? 'UAH'}`
-                          : ' • no value entered yet'}
-                      </Text>
+                        undefined ? (
+                          <View
+                            style={
+                              styles.lastReading
+                            }
+                          >
+                            {meter.lastAmountAt ? (
+                              <Badge
+                                text={`Last ${formatDate(
+                                  meter.lastAmountAt,
+                                )}`}
+                                tone="success"
+                              />
+                            ) : null}
+
+                            <Text
+                              style={
+                                styles.lastReadingValue
+                              }
+                            >
+                              {
+                                meter.currentAmount
+                              }{' '}
+                              {meter.billingCurrency ??
+                                'UAH'}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View
+                            style={
+                              styles.lastReading
+                            }
+                          >
+                            <Badge
+                              text="No value yet"
+                              tone="neutral"
+                            />
+                          </View>
+                        )}
+                      </>
                     ) : null}
                   </View>
 
                   {billingMode ===
                   'METERED' ? (
                     <SecondaryButton
-                      title={
-                        t(
-                          'readings',
-                        )
-                      }
+                      title="Reading"
                       onPress={() =>
                         navigation.navigate(
                           'MeterReading',
@@ -608,5 +782,33 @@ const styles =
 
       lineHeight:
         18,
+    },
+
+    lastReading: {
+      flexDirection:
+        'row',
+
+      flexWrap:
+        'wrap',
+
+      alignItems:
+        'center',
+
+      gap:
+        8,
+
+      marginTop:
+        10,
+    },
+
+    lastReadingValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        12,
+
+      fontWeight:
+        '700',
     },
   });

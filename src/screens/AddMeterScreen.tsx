@@ -89,6 +89,17 @@ const currencies:
   'EUR',
 ];
 
+function numberText(
+  value:
+    number |
+    undefined,
+) {
+  return value !==
+    undefined
+    ? String(value)
+    : '';
+}
+
 export function AddMeterScreen() {
   const {
     t,
@@ -119,7 +130,7 @@ export function AddMeterScreen() {
       | string
       | undefined;
 
-  const existingMeter =
+  const existing =
     meterId
       ? state.meters.find(
           (
@@ -132,30 +143,19 @@ export function AddMeterScreen() {
 
   const isEditing =
     Boolean(
-      existingMeter,
+      existing,
     );
 
-  const initialCategory:
-    Meter['category'] =
-    existingMeter?.category ===
-    'HEAT'
-      ? 'CUSTOM'
-      : existingMeter
-          ?.category ??
-        'ELECTRICITY';
-
-  const initialDualTariff =
-    existingMeter
-      ?.category ===
-      'ELECTRICITY' &&
+  const initialDual =
     Boolean(
-      existingMeter.registers.find(
-        (
-          register,
-        ) =>
-          register.code ===
-          'T1',
-      ),
+      existing
+        ?.registers.find(
+          (
+            register,
+          ) =>
+            register.code ===
+            'T1',
+        ),
     );
 
   const [
@@ -165,7 +165,8 @@ export function AddMeterScreen() {
     useState<
       Meter['category']
     >(
-      initialCategory,
+      existing?.category ??
+      'ELECTRICITY',
     );
 
   const [
@@ -173,7 +174,7 @@ export function AddMeterScreen() {
     setDualTariff,
   ] =
     useState(
-      initialDualTariff,
+      initialDual,
     );
 
   const [
@@ -181,17 +182,12 @@ export function AddMeterScreen() {
     setTariff,
   ] =
     useState(
-      !initialDualTariff
-        ? existingMeter
-            ?.registers[0]
-            ?.tariff !==
-          undefined
-          ? String(
-              existingMeter
-                .registers[0]
-                .tariff,
-            )
-          : ''
+      !initialDual
+        ? numberText(
+            existing
+              ?.registers[0]
+              ?.tariff,
+          )
         : '',
     );
 
@@ -200,28 +196,17 @@ export function AddMeterScreen() {
     setTariffT1,
   ] =
     useState(
-      existingMeter
-        ?.registers.find(
-          (
-            register,
-          ) =>
-            register.code ===
-            'T1',
-        )
-        ?.tariff !==
-      undefined
-        ? String(
-            existingMeter
-              .registers.find(
-                (
-                  register,
-                ) =>
-                  register.code ===
-                  'T1',
-              )!
-              .tariff,
+      numberText(
+        existing
+          ?.registers.find(
+            (
+              register,
+            ) =>
+              register.code ===
+              'T1',
           )
-        : '',
+          ?.tariff,
+      ),
     );
 
   const [
@@ -229,28 +214,17 @@ export function AddMeterScreen() {
     setTariffT2,
   ] =
     useState(
-      existingMeter
-        ?.registers.find(
-          (
-            register,
-          ) =>
-            register.code ===
-            'T2',
-        )
-        ?.tariff !==
-      undefined
-        ? String(
-            existingMeter
-              .registers.find(
-                (
-                  register,
-                ) =>
-                  register.code ===
-                  'T2',
-              )!
-              .tariff,
+      numberText(
+        existing
+          ?.registers.find(
+            (
+              register,
+            ) =>
+              register.code ===
+              'T2',
           )
-        : '',
+          ?.tariff,
+      ),
     );
 
   const [
@@ -258,10 +232,12 @@ export function AddMeterScreen() {
     setTariffCurrency,
   ] =
     useState<CurrencyCode>(
-      existingMeter
+      existing
         ?.registers[0]
         ?.tariffCurrency ??
-        'UAH',
+      existing
+        ?.billingCurrency ??
+      'UAH',
     );
 
   const [
@@ -269,10 +245,10 @@ export function AddMeterScreen() {
     setCustomName,
   ] =
     useState(
-      existingMeter
+      existing
         ?.category ===
         'CUSTOM'
-        ? existingMeter.name
+        ? existing.name
         : '',
     );
 
@@ -283,11 +259,10 @@ export function AddMeterScreen() {
     useState<
       MeterBillingMode
     >(
-      existingMeter
+      existing
         ?.category ===
         'CUSTOM'
-        ? existingMeter
-            .billingMode
+        ? existing.billingMode
         : 'FIXED',
     );
 
@@ -296,13 +271,10 @@ export function AddMeterScreen() {
     setFixedAmount,
   ] =
     useState(
-      existingMeter
-        ?.fixedAmount !==
-      undefined
-        ? String(
-            existingMeter.fixedAmount,
-          )
-        : '',
+      numberText(
+        existing
+          ?.fixedAmount,
+      ),
     );
 
   const [
@@ -310,10 +282,16 @@ export function AddMeterScreen() {
     setCustomCurrency,
   ] =
     useState<CurrencyCode>(
-      existingMeter
+      existing
         ?.billingCurrency ??
-        'UAH',
+      'UAH',
     );
+
+  const [
+    busy,
+    setBusy,
+  ] =
+    useState(false);
 
   const parseAmount =
     (
@@ -345,18 +323,18 @@ export function AddMeterScreen() {
 
   const selectCategory =
     (
-      nextCategory:
+      next:
         Meter['category'],
     ) => {
       if (
-        nextCategory ===
+        next ===
         category
       ) {
         return;
       }
 
       setCategory(
-        nextCategory,
+        next,
       );
 
       setDualTariff(
@@ -366,277 +344,260 @@ export function AddMeterScreen() {
       clearTariffs();
 
       if (
-        nextCategory !==
+        next !==
         'CUSTOM'
       ) {
         setCustomName('');
 
+        setFixedAmount('');
+
         setBillingMode(
           'FIXED',
         );
-
-        setFixedAmount('');
       }
     };
 
-  const validateTariffs =
-    () => {
+  const submit =
+    async () => {
       if (
-        category ===
-        'CUSTOM'
-      ) {
-        return true;
-      }
-
-      if (
-        category ===
-          'ELECTRICITY' &&
-        dualTariff
-      ) {
-        const t1 =
-          parseAmount(
-            tariffT1,
-          );
-
-        const t2 =
-          parseAmount(
-            tariffT2,
-          );
-
-        if (
-          !Number.isFinite(
-            t1,
-          ) ||
-          t1 < 0
-        ) {
-          Alert.alert(
-            'Dometra',
-            'Enter a valid T1 price per kWh.',
-          );
-
-          return false;
-        }
-
-        if (
-          !Number.isFinite(
-            t2,
-          ) ||
-          t2 < 0
-        ) {
-          Alert.alert(
-            'Dometra',
-            'Enter a valid T2 price per kWh.',
-          );
-
-          return false;
-        }
-
-        return true;
-      }
-
-      const price =
-        parseAmount(
-          tariff,
-        );
-
-      if (
-        !Number.isFinite(
-          price,
-        ) ||
-        price < 0
+        !propertyId
       ) {
         Alert.alert(
           'Dometra',
-          `Enter a valid price per ${
-            category ===
-            'ELECTRICITY'
-              ? 'kWh'
-              : 'm³'
-          }.`,
-        );
-
-        return false;
-      }
-
-      return true;
-    };
-
-  const submit = () => {
-    if (
-      !propertyId
-    ) {
-      Alert.alert(
-        'Dometra',
-        'Property is missing.',
-      );
-
-      return;
-    }
-
-    if (
-      category ===
-      'CUSTOM'
-    ) {
-      if (
-        !customName.trim()
-      ) {
-        Alert.alert(
-          'Dometra',
-          'Enter a name for the custom service.',
+          'Property is missing.',
         );
 
         return;
       }
 
-      let amount:
-        number | undefined;
+      setBusy(
+        true,
+      );
 
-      if (
-        billingMode ===
-        'FIXED'
-      ) {
-        amount =
-          parseAmount(
-            fixedAmount,
+      try {
+        if (
+          category ===
+          'CUSTOM'
+        ) {
+          if (
+            !customName.trim()
+          ) {
+            throw new Error(
+              'Enter a name for the custom service.',
+            );
+          }
+
+          let amount:
+            number | undefined;
+
+          if (
+            billingMode ===
+            'FIXED'
+          ) {
+            amount =
+              parseAmount(
+                fixedAmount,
+              );
+
+            if (
+              !Number.isFinite(
+                amount,
+              ) ||
+              amount < 0
+            ) {
+              throw new Error(
+                'Enter a valid fixed monthly amount.',
+              );
+            }
+          }
+
+          const input = {
+            propertyId,
+
+            category:
+              'CUSTOM' as const,
+
+            name:
+              customName.trim(),
+
+            billingMode,
+
+            fixedAmount:
+              amount,
+
+            billingCurrency:
+              customCurrency,
+          };
+
+          if (
+            existing
+          ) {
+            await editMeter(
+              existing.id,
+              input,
+            );
+
+            navigation.goBack();
+
+            return;
+          }
+
+          await addMeter(
+            input,
           );
 
-        if (
-          !Number.isFinite(
-            amount,
-          ) ||
-          amount < 0
-        ) {
-          Alert.alert(
-            'Dometra',
-            'Enter a valid fixed monthly amount.',
+          navigation.replace(
+            'PropertyDetails',
+
+            {
+              propertyId,
+            },
           );
 
           return;
         }
-      }
 
-      const input = {
-        propertyId,
+        const unit =
+          category ===
+          'ELECTRICITY'
+            ? 'kWh'
+            : 'm³';
 
-        category:
-          'CUSTOM' as const,
+        let normalTariff:
+          number | undefined;
 
-        name:
-          customName.trim(),
+        let t1:
+          number | undefined;
 
-        billingMode,
+        let t2:
+          number | undefined;
 
-        fixedAmount:
-          amount,
-
-        billingCurrency:
-          customCurrency,
-      };
-
-      if (
-        existingMeter
-      ) {
-        editMeter(
-          existingMeter.id,
-          input,
-        );
-
-        navigation.goBack();
-
-        return;
-      }
-
-      addMeter(
-        input,
-      );
-
-      navigation.replace(
-        'PropertyDetails',
-        {
-          propertyId,
-        },
-      );
-
-      return;
-    }
-
-    if (
-      !validateTariffs()
-    ) {
-      return;
-    }
-
-    const input = {
-      propertyId,
-
-      category,
-
-      dualTariff:
-        category ===
-          'ELECTRICITY' &&
-        dualTariff,
-
-      billingMode:
-        'METERED' as const,
-
-      tariff:
-        !(
+        if (
           category ===
             'ELECTRICITY' &&
           dualTariff
-        )
-          ? parseAmount(
-              tariff,
-            )
-          : undefined,
-
-      tariffT1:
-        category ===
-          'ELECTRICITY' &&
-        dualTariff
-          ? parseAmount(
+        ) {
+          t1 =
+            parseAmount(
               tariffT1,
-            )
-          : undefined,
+            );
 
-      tariffT2:
-        category ===
-          'ELECTRICITY' &&
-        dualTariff
-          ? parseAmount(
+          t2 =
+            parseAmount(
               tariffT2,
-            )
-          : undefined,
+            );
 
-      tariffCurrency,
+          if (
+            !Number.isFinite(
+              t1,
+            ) ||
+            t1 < 0
+          ) {
+            throw new Error(
+              'Enter a valid T1 price per kWh.',
+            );
+          }
+
+          if (
+            !Number.isFinite(
+              t2,
+            ) ||
+            t2 < 0
+          ) {
+            throw new Error(
+              'Enter a valid T2 price per kWh.',
+            );
+          }
+        } else {
+          normalTariff =
+            parseAmount(
+              tariff,
+            );
+
+          if (
+            !Number.isFinite(
+              normalTariff,
+            ) ||
+            normalTariff < 0
+          ) {
+            throw new Error(
+              `Enter a valid price per ${unit}.`,
+            );
+          }
+        }
+
+        const input = {
+          propertyId,
+
+          category,
+
+          dualTariff:
+            category ===
+              'ELECTRICITY' &&
+            dualTariff,
+
+          billingMode:
+            'METERED' as const,
+
+          tariff:
+            normalTariff,
+
+          tariffT1:
+            t1,
+
+          tariffT2:
+            t2,
+
+          tariffCurrency,
+        };
+
+        if (
+          existing
+        ) {
+          await editMeter(
+            existing.id,
+            input,
+          );
+
+          navigation.goBack();
+
+          return;
+        }
+
+        const created =
+          await addMeter(
+            input,
+          );
+
+        /*
+         * Meter exists in Supabase now.
+         * Continue directly to the first reading.
+         */
+        navigation.replace(
+          'MeterReading',
+
+          {
+            meterId:
+              created.id,
+          },
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          'Unable to save meter / service',
+
+          error instanceof
+          Error
+            ? error.message
+            : 'Unknown error.',
+        );
+      } finally {
+        setBusy(
+          false,
+        );
+      }
     };
-
-    if (
-      existingMeter
-    ) {
-      editMeter(
-        existingMeter.id,
-        input,
-      );
-
-      navigation.goBack();
-
-      return;
-    }
-
-    const meter =
-      addMeter(
-        input,
-      );
-
-    navigation.replace(
-      'MeterReading',
-      {
-        meterId:
-          meter.id,
-      },
-    );
-  };
 
   const priceUnit =
     category ===
@@ -681,6 +642,9 @@ export function AddMeterScreen() {
             <Pressable
               key={
                 item.value
+              }
+              disabled={
+                busy
               }
               onPress={() =>
                 selectCategory(
@@ -730,6 +694,9 @@ export function AddMeterScreen() {
             }
           >
             <Pressable
+              disabled={
+                busy
+              }
               onPress={() => {
                 if (
                   dualTariff
@@ -761,6 +728,9 @@ export function AddMeterScreen() {
             </Pressable>
 
             <Pressable
+              disabled={
+                busy
+              }
               onPress={() => {
                 if (
                   !dualTariff
@@ -811,6 +781,9 @@ export function AddMeterScreen() {
           }
           placeholder="0.00"
           keyboardType="decimal-pad"
+          editable={
+            !busy
+          }
         />
       ) : null}
 
@@ -828,6 +801,9 @@ export function AddMeterScreen() {
             }
             placeholder="0.00"
             keyboardType="decimal-pad"
+            editable={
+              !busy
+            }
           />
 
           <Field
@@ -840,6 +816,9 @@ export function AddMeterScreen() {
             }
             placeholder="0.00"
             keyboardType="decimal-pad"
+            editable={
+              !busy
+            }
           />
         </>
       ) : null}
@@ -867,6 +846,9 @@ export function AddMeterScreen() {
                 <Pressable
                   key={
                     item
+                  }
+                  disabled={
+                    busy
                   }
                   onPress={() =>
                     setTariffCurrency(
@@ -913,6 +895,9 @@ export function AddMeterScreen() {
               setCustomName
             }
             placeholder="Internet, Security, Central heating..."
+            editable={
+              !busy
+            }
           />
 
           <Text
@@ -929,6 +914,9 @@ export function AddMeterScreen() {
             }
           >
             <Pressable
+              disabled={
+                busy
+              }
               onPress={() =>
                 setBillingMode(
                   'FIXED',
@@ -956,6 +944,9 @@ export function AddMeterScreen() {
             </Pressable>
 
             <Pressable
+              disabled={
+                busy
+              }
               onPress={() =>
                 setBillingMode(
                   'VARIABLE',
@@ -995,6 +986,9 @@ export function AddMeterScreen() {
               }
               placeholder="350"
               keyboardType="decimal-pad"
+              editable={
+                !busy
+              }
             />
           ) : null}
 
@@ -1018,6 +1012,9 @@ export function AddMeterScreen() {
                 <Pressable
                   key={
                     item
+                  }
+                  disabled={
+                    busy
                   }
                   onPress={() =>
                     setCustomCurrency(
@@ -1049,30 +1046,24 @@ export function AddMeterScreen() {
               ),
             )}
           </View>
-
-          <Text
-            style={
-              styles.hint
-            }
-          >
-            {billingMode ===
-            'FIXED'
-              ? 'The same amount will be used every billing period.'
-              : 'A new amount will be entered for every billing period.'}
-          </Text>
         </>
       ) : null}
 
       <PrimaryButton
         title={
-          isEditing
-            ? 'Save'
-            : t(
-                'create',
-              )
+          busy
+            ? 'Saving...'
+            : isEditing
+              ? 'Save'
+              : t(
+                  'create',
+                )
         }
-        onPress={
-          submit
+        disabled={
+          busy
+        }
+        onPress={() =>
+          void submit()
         }
       />
     </Screen>
@@ -1142,16 +1133,5 @@ const styles =
     chipTextActive: {
       color:
         colors.primary,
-    },
-
-    hint: {
-      color:
-        colors.muted,
-
-      fontSize:
-        13,
-
-      lineHeight:
-        19,
     },
   });

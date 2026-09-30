@@ -1,5 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   Session,
 } from '@supabase/supabase-js';
@@ -32,24 +30,35 @@ import {
 } from '../lib/supabase';
 
 import {
+  archiveProperty,
+  archivePropertyService,
+  createProperty,
+  loadCoreData,
+  saveMeterReadings as saveMeterReadingsToSupabase,
+  savePropertyService,
+  saveVariableServiceValue,
+  updateProperty,
+  updateUserSettings,
+} from '../services/supabaseRepository';
+
+import {
   syncRemoteTranslations,
 } from '../services/remoteTranslations';
 
 import {
   AppMode,
   AppState,
-  CurrencyCode,
   Invoice,
   LanguageCode,
   Meter,
-  MeterBillingMode,
+  MeterInput,
+  MeterReadingInput,
   Payment,
   PaymentMethod,
   Property,
+  PropertyInput,
+  CurrencyCode,
 } from '../types';
-
-const STATE_KEY_PREFIX =
-  'dometra.user.state.v1';
 
 export type AuthStatus =
   | 'loading'
@@ -60,44 +69,6 @@ export type AuthStatus =
 
 export type RegisterResult =
   'CONFIRM_EMAIL';
-
-interface PropertyInput {
-  city: string;
-
-  address: string;
-
-  name?: string;
-
-  areaM2?: number;
-}
-
-interface MeterInput {
-  propertyId: string;
-
-  category:
-    Meter['category'];
-
-  name?: string;
-
-  dualTariff?: boolean;
-
-  billingMode:
-    MeterBillingMode;
-
-  tariff?: number;
-
-  tariffT1?: number;
-
-  tariffT2?: number;
-
-  tariffCurrency?:
-    CurrencyCode;
-
-  fixedAmount?: number;
-
-  billingCurrency?:
-    CurrencyCode;
-}
 
 interface AddPaymentInput {
   propertyId: string;
@@ -118,6 +89,9 @@ interface AppContextValue {
     AppState;
 
   hydrated:
+    boolean;
+
+  dataLoading:
     boolean;
 
   session:
@@ -145,51 +119,66 @@ interface AppContextValue {
   refreshAuth:
     () => Promise<void>;
 
-  setMode:
-    (mode: AppMode) => void;
+  refreshData:
+    () => Promise<void>;
+
+  setMode: (
+    mode:
+      AppMode,
+  ) => Promise<void>;
 
   addProperty: (
     input:
       PropertyInput,
-  ) => Property;
+  ) => Promise<Property>;
 
   editProperty: (
     propertyId: string,
     input:
       PropertyInput,
-  ) => Property;
+  ) => Promise<Property>;
 
   removeProperty: (
     propertyId: string,
-  ) => void;
+  ) => Promise<void>;
 
   addMeter: (
     input:
       MeterInput,
-  ) => Meter;
+  ) => Promise<Meter>;
 
   editMeter: (
     meterId: string,
     input:
       MeterInput,
-  ) => Meter;
+  ) => Promise<Meter>;
 
   removeMeter: (
     meterId: string,
-  ) => void;
+  ) => Promise<void>;
 
   saveReading: (
     meterId: string,
     registerId: string,
     currentValue: number,
     photoUri?: string,
-  ) => void;
+  ) => Promise<void>;
+
+  saveMeterReadings: (
+    meterId: string,
+    readings:
+      MeterReadingInput[],
+  ) => Promise<void>;
 
   saveVariableAmount: (
     meterId: string,
     amount: number,
-  ) => void;
+  ) => Promise<void>;
 
+  /*
+   * No local fallback.
+   * These will move to Supabase next.
+   */
   addPayment: (
     input:
       AddPaymentInput,
@@ -206,7 +195,7 @@ interface AppContextValue {
 
   setPushEnabled: (
     enabled: boolean,
-  ) => void;
+  ) => Promise<void>;
 }
 
 const AppContext =
@@ -221,22 +210,6 @@ function cloneInitialState():
       initialState,
     ),
   ) as AppState;
-}
-
-function stateStorageKey(
-  userId: string,
-) {
-  return `${STATE_KEY_PREFIX}.${userId}`;
-}
-
-function makeId(
-  prefix: string,
-) {
-  return `${prefix}-${Date.now().toString(
-    36,
-  )}-${Math.random()
-    .toString(36)
-    .slice(2, 7)}`;
 }
 
 function getAuthParams(
@@ -310,7 +283,9 @@ function getAuthParams(
 async function createSessionFromAuthUrl(
   url: string,
 ) {
-  if (!supabase) {
+  if (
+    !supabase
+  ) {
     throw new Error(
       'Supabase is not configured.',
     );
@@ -325,7 +300,9 @@ async function createSessionFromAuthUrl(
   }
 
   const params =
-    getAuthParams(url);
+    getAuthParams(
+      url,
+    );
 
   const error =
     params.get(
@@ -398,7 +375,9 @@ async function createSessionFromAuthUrl(
       'code',
     );
 
-  if (code) {
+  if (
+    code
+  ) {
     const {
       data,
       error:
@@ -418,239 +397,6 @@ async function createSessionFromAuthUrl(
   }
 
   return null;
-}
-
-function buildMeter(
-  input:
-    MeterInput,
-
-  existing?:
-    Meter,
-): Meter {
-  const tariffCurrency =
-    input.tariffCurrency ??
-    existing?.registers[0]
-      ?.tariffCurrency ??
-    'UAH';
-
-  const preserveRegister =
-    (
-      code:
-        string,
-    ) =>
-      existing?.registers.find(
-        (
-          register,
-        ) =>
-          register.code ===
-          code,
-      );
-
-  const createRegister =
-    (
-      code:
-        string,
-
-      name:
-        string,
-
-      unit:
-        string,
-
-      tariff:
-        number,
-    ): Meter['registers'][number] => {
-      const previous =
-        preserveRegister(
-          code,
-        );
-
-      return {
-        id:
-          previous?.id ??
-          makeId(
-            'reg',
-          ),
-
-        code,
-
-        name,
-
-        unit,
-
-        tariff,
-
-        tariffCurrency,
-
-        previousValue:
-          previous?.previousValue ??
-          0,
-
-        currentValue:
-          previous?.currentValue,
-
-        photoUri:
-          previous?.photoUri,
-      };
-    };
-
-  let name =
-    input.name?.trim() ??
-    '';
-
-  let unit = '';
-
-  let billingMode =
-    input.billingMode;
-
-  let registers:
-    Meter['registers'] =
-    [];
-
-  if (
-    input.category ===
-    'ELECTRICITY'
-  ) {
-    name =
-      'Electricity';
-
-    unit =
-      'kWh';
-
-    billingMode =
-      'METERED';
-
-    if (
-      input.dualTariff
-    ) {
-      registers = [
-        createRegister(
-          'T1',
-          'Day',
-          'kWh',
-          input.tariffT1 ??
-            0,
-        ),
-
-        createRegister(
-          'T2',
-          'Night',
-          'kWh',
-          input.tariffT2 ??
-            0,
-        ),
-      ];
-    } else {
-      registers = [
-        createRegister(
-          'TOTAL',
-          'Total',
-          'kWh',
-          input.tariff ??
-            0,
-        ),
-      ];
-    }
-  }
-
-  if (
-    input.category ===
-    'WATER'
-  ) {
-    name =
-      'Water';
-
-    unit =
-      'm³';
-
-    billingMode =
-      'METERED';
-
-    registers = [
-      createRegister(
-        'TOTAL',
-        'Total',
-        'm³',
-        input.tariff ??
-          0,
-      ),
-    ];
-  }
-
-  if (
-    input.category ===
-    'GAS'
-  ) {
-    name =
-      'Gas';
-
-    unit =
-      'm³';
-
-    billingMode =
-      'METERED';
-
-    registers = [
-      createRegister(
-        'TOTAL',
-        'Total',
-        'm³',
-        input.tariff ??
-          0,
-      ),
-    ];
-  }
-
-  if (
-    input.category ===
-    'CUSTOM'
-  ) {
-    name =
-      input.name?.trim() ||
-      'Custom';
-
-    unit = '';
-
-    registers = [];
-  }
-
-  return {
-    id:
-      existing?.id ??
-      makeId(
-        'meter',
-      ),
-
-    propertyId:
-      input.propertyId,
-
-    name,
-
-    category:
-      input.category,
-
-    billingMode,
-
-    unit,
-
-    registers,
-
-    fixedAmount:
-      billingMode ===
-      'FIXED'
-        ? input.fixedAmount
-        : undefined,
-
-    currentAmount:
-      billingMode ===
-      'VARIABLE'
-        ? existing?.currentAmount
-        : undefined,
-
-    billingCurrency:
-      input.billingCurrency ??
-      tariffCurrency,
-  };
 }
 
 export function AppProvider({
@@ -682,6 +428,12 @@ export function AppProvider({
     useState(false);
 
   const [
+    dataLoading,
+    setDataLoading,
+  ] =
+    useState(false);
+
+  const [
     authStatus,
     setAuthStatus,
   ] =
@@ -703,58 +455,54 @@ export function AppProvider({
         : 'Supabase configuration is missing.',
     );
 
-  const loadUserState =
+  const loadDataForUser =
     async (
       userId: string,
     ) => {
-      const stored =
-        await AsyncStorage.getItem(
-          stateStorageKey(
-            userId,
-          ),
-        );
-
-      if (!stored) {
-        const cleanState =
-          cloneInitialState();
-
-        setState(
-          cleanState,
-        );
-
-        await i18n.changeLanguage(
-          cleanState.settings
-            .language,
-        );
-
-        return;
-      }
+      setDataLoading(
+        true,
+      );
 
       try {
-        const parsed =
-          JSON.parse(
-            stored,
-          ) as AppState;
+        const core =
+          await loadCoreData(
+            userId,
+          );
 
-        setState(
-          parsed,
-        );
+        setState({
+          workspace:
+            core.workspace,
+
+          settings:
+            core.settings,
+
+          properties:
+            core.properties,
+
+          meters:
+            core.meters,
+
+          /*
+           * No local business fallback.
+           * These modules are migrated next.
+           */
+          invoices:
+            [],
+
+          payments:
+            [],
+
+          reminders:
+            [],
+        });
 
         await i18n.changeLanguage(
-          parsed.settings
+          core.settings
             .language,
         );
-      } catch {
-        const cleanState =
-          cloneInitialState();
-
-        setState(
-          cleanState,
-        );
-
-        await i18n.changeLanguage(
-          cleanState.settings
-            .language,
+      } finally {
+        setDataLoading(
+          false,
         );
       }
     };
@@ -768,22 +516,43 @@ export function AppProvider({
         nextSession,
       );
 
-      setAuthStatus(
-        'authenticated',
-      );
-
       setAuthError(
         null,
       );
 
-      await loadUserState(
-        nextSession.user.id,
+      /*
+       * Do not consider the app ready until
+       * its authoritative Supabase data has
+       * been loaded.
+       */
+      await loadDataForUser(
+        nextSession
+          .user.id,
+      );
+
+      setAuthStatus(
+        'authenticated',
+      );
+    };
+
+  const refreshData =
+    async () => {
+      if (
+        !session
+      ) {
+        return;
+      }
+
+      await loadDataForUser(
+        session.user.id,
       );
     };
 
   const refreshAuth =
     async () => {
-      if (!supabase) {
+      if (
+        !supabase
+      ) {
         setSession(
           null,
         );
@@ -814,7 +583,9 @@ export function AppProvider({
         } =
           await supabase.auth.getSession();
 
-        if (error) {
+        if (
+          error
+        ) {
           throw error;
         }
 
@@ -842,8 +613,17 @@ export function AppProvider({
       } catch (
         error
       ) {
+        console.error(
+          '[Dometra] Session restore failed:',
+          error,
+        );
+
         setSession(
           null,
+        );
+
+        setState(
+          cloneInitialState(),
         );
 
         setAuthStatus(
@@ -899,18 +679,12 @@ export function AppProvider({
           }
 
           if (
+            event ===
+              'TOKEN_REFRESHED' &&
             nextSession
           ) {
             setSession(
               nextSession,
-            );
-
-            setAuthStatus(
-              'authenticated',
-            );
-
-            setAuthError(
-              null,
             );
           }
         },
@@ -942,7 +716,7 @@ export function AppProvider({
                 error
               ) {
                 console.error(
-                  'Authentication callback failed:',
+                  '[Dometra] Authentication callback failed:',
                   error,
                 );
 
@@ -951,6 +725,10 @@ export function AppProvider({
                 ) {
                   setSession(
                     null,
+                  );
+
+                  setState(
+                    cloneInitialState(),
                   );
 
                   setAuthStatus(
@@ -972,7 +750,9 @@ export function AppProvider({
 
     const initialize =
       async () => {
-        if (!supabase) {
+        if (
+          !supabase
+        ) {
           setAuthStatus(
             'configuration-error',
           );
@@ -1029,11 +809,20 @@ export function AppProvider({
         } catch (
           error
         ) {
+          console.error(
+            '[Dometra] Initialization failed:',
+            error,
+          );
+
           if (
             mounted
           ) {
             setSession(
               null,
+            );
+
+            setState(
+              cloneInitialState(),
             );
 
             setAuthStatus(
@@ -1066,35 +855,573 @@ export function AppProvider({
     };
   }, []);
 
-  useEffect(() => {
-    if (
-      !hydrated ||
-      !session
-    ) {
-      return;
-    }
+  const requireUser =
+    () => {
+      if (
+        !session
+      ) {
+        throw new Error(
+          'Authentication is required.',
+        );
+      }
 
-    void AsyncStorage.setItem(
-      stateStorageKey(
-        session.user.id,
-      ),
+      return session.user;
+    };
 
-      JSON.stringify(
-        state,
-      ),
-    );
-  }, [
-    state,
-    hydrated,
-    session,
-  ]);
+  const requireWorkspace =
+    () => {
+      if (
+        !state.workspace
+      ) {
+        throw new Error(
+          'Workspace is not loaded.',
+        );
+      }
+
+      return state.workspace;
+    };
+
+  const setMode =
+    async (
+      mode:
+        AppMode,
+    ) => {
+      const user =
+        requireUser();
+
+      await updateUserSettings(
+        user.id,
+        {
+          activeMode:
+            mode,
+        },
+      );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          settings: {
+            ...current.settings,
+
+            activeMode:
+              mode,
+          },
+        }),
+      );
+    };
+
+  const addProperty =
+    async (
+      input:
+        PropertyInput,
+    ) => {
+      const user =
+        requireUser();
+
+      const workspace =
+        requireWorkspace();
+
+      const property =
+        await createProperty(
+          workspace.id,
+
+          user.id,
+
+          input,
+        );
+
+      /*
+       * Server returned this row, so updating
+       * in-memory UI state is safe.
+       * Supabase remains the source of truth.
+       */
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          properties: [
+            property,
+            ...current.properties,
+          ],
+        }),
+      );
+
+      return property;
+    };
+
+  const editProperty =
+    async (
+      propertyId:
+        string,
+
+      input:
+        PropertyInput,
+    ) => {
+      const property =
+        await updateProperty(
+          propertyId,
+          input,
+        );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          properties:
+            current.properties.map(
+              (
+                item,
+              ) =>
+                item.id ===
+                propertyId
+                  ? property
+                  : item,
+            ),
+        }),
+      );
+
+      return property;
+    };
+
+  const removeProperty =
+    async (
+      propertyId:
+        string,
+    ) => {
+      await archiveProperty(
+        propertyId,
+      );
+
+      /*
+       * Reload because archived property's
+       * services should disappear together.
+       */
+      await refreshData();
+    };
+
+  const addMeter =
+    async (
+      input:
+        MeterInput,
+    ) => {
+      const serviceId =
+        await savePropertyService(
+          input,
+        );
+
+      await refreshData();
+
+      const created =
+        state.meters.find(
+          (
+            meter,
+          ) =>
+            meter.serviceId ===
+            serviceId,
+        );
+
+      /*
+       * state above may still be from previous
+       * render, so load authoritative data once
+       * more for the returned object.
+       */
+      const user =
+        requireUser();
+
+      const core =
+        await loadCoreData(
+          user.id,
+        );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          workspace:
+            core.workspace,
+
+          settings:
+            core.settings,
+
+          properties:
+            core.properties,
+
+          meters:
+            core.meters,
+        }),
+      );
+
+      const result =
+        core.meters.find(
+          (
+            meter,
+          ) =>
+            meter.serviceId ===
+            serviceId,
+        );
+
+      if (
+        !result
+      ) {
+        if (
+          created
+        ) {
+          return created;
+        }
+
+        throw new Error(
+          'Created meter/service could not be loaded.',
+        );
+      }
+
+      return result;
+    };
+
+  const editMeter =
+    async (
+      meterId:
+        string,
+
+      input:
+        MeterInput,
+    ) => {
+      const existing =
+        state.meters.find(
+          (
+            meter,
+          ) =>
+            meter.id ===
+            meterId,
+        );
+
+      if (
+        !existing
+      ) {
+        throw new Error(
+          'Meter/service not found.',
+        );
+      }
+
+      const serviceId =
+        await savePropertyService(
+          input,
+
+          existing.serviceId,
+        );
+
+      const user =
+        requireUser();
+
+      const core =
+        await loadCoreData(
+          user.id,
+        );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          workspace:
+            core.workspace,
+
+          settings:
+            core.settings,
+
+          properties:
+            core.properties,
+
+          meters:
+            core.meters,
+        }),
+      );
+
+      const result =
+        core.meters.find(
+          (
+            meter,
+          ) =>
+            meter.serviceId ===
+            serviceId,
+        );
+
+      if (
+        !result
+      ) {
+        throw new Error(
+          'Updated meter/service could not be loaded.',
+        );
+      }
+
+      return result;
+    };
+
+  const removeMeter =
+    async (
+      meterId:
+        string,
+    ) => {
+      const meter =
+        state.meters.find(
+          (
+            item,
+          ) =>
+            item.id ===
+            meterId,
+        );
+
+      if (
+        !meter
+      ) {
+        throw new Error(
+          'Meter/service not found.',
+        );
+      }
+
+      await archivePropertyService(
+        meter.serviceId,
+      );
+
+      await refreshData();
+    };
+
+  const saveMeterReadings =
+    async (
+      meterId:
+        string,
+
+      readings:
+        MeterReadingInput[],
+    ) => {
+      const workspace =
+        requireWorkspace();
+
+      const meter =
+        state.meters.find(
+          (
+            item,
+          ) =>
+            item.id ===
+            meterId,
+        );
+
+      if (
+        !meter
+      ) {
+        throw new Error(
+          'Meter not found.',
+        );
+      }
+
+      if (
+        meter.billingMode !==
+        'METERED'
+      ) {
+        throw new Error(
+          'This service does not use meter readings.',
+        );
+      }
+
+      await saveMeterReadingsToSupabase(
+        workspace.id,
+
+        meter,
+
+        readings,
+      );
+
+      await refreshData();
+    };
+
+  const saveReading =
+    async (
+      meterId:
+        string,
+
+      registerId:
+        string,
+
+      currentValue:
+        number,
+
+      photoUri?:
+        string,
+    ) => {
+      await saveMeterReadings(
+        meterId,
+
+        [
+          {
+            registerId,
+
+            currentValue,
+
+            photoUri,
+          },
+        ],
+      );
+    };
+
+  const saveVariableAmount =
+    async (
+      meterId:
+        string,
+
+      amount:
+        number,
+    ) => {
+      const meter =
+        state.meters.find(
+          (
+            item,
+          ) =>
+            item.id ===
+            meterId,
+        );
+
+      if (
+        !meter
+      ) {
+        throw new Error(
+          'Service not found.',
+        );
+      }
+
+      if (
+        meter.billingMode !==
+        'VARIABLE'
+      ) {
+        throw new Error(
+          'This is not a variable service.',
+        );
+      }
+
+      await saveVariableServiceValue(
+        meter.serviceId,
+
+        amount,
+      );
+
+      await refreshData();
+    };
+
+  const changeLanguage =
+    async (
+      language:
+        LanguageCode,
+    ) => {
+      const user =
+        requireUser();
+
+      await syncRemoteTranslations(
+        language,
+      );
+
+      await updateUserSettings(
+        user.id,
+
+        {
+          language,
+        },
+      );
+
+      await i18n.changeLanguage(
+        language,
+      );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          settings: {
+            ...current.settings,
+
+            language,
+          },
+        }),
+      );
+    };
+
+  const setPushEnabled =
+    async (
+      enabled:
+        boolean,
+    ) => {
+      const user =
+        requireUser();
+
+      await updateUserSettings(
+        user.id,
+
+        {
+          pushEnabled:
+            enabled,
+        },
+      );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          settings: {
+            ...current.settings,
+
+            pushEnabled:
+              enabled,
+          },
+        }),
+      );
+    };
+
+  /*
+   * IMPORTANT:
+   * no local temporary persistence.
+   *
+   * These are intentionally blocked until
+   * their Supabase schema is connected.
+   */
+  const addPayment =
+    (
+      _input:
+        AddPaymentInput,
+    ): Payment => {
+      throw new Error(
+        'Payments are not connected to Supabase yet.',
+      );
+    };
+
+  const generateInvoice =
+    (
+      _propertyId:
+        string,
+    ): Invoice => {
+      throw new Error(
+        'Invoices are not connected to Supabase yet.',
+      );
+    };
 
   const login =
     async (
       email: string,
       password: string,
     ) => {
-      if (!supabase) {
+      if (
+        !supabase
+      ) {
         throw new Error(
           'Supabase is not configured.',
         );
@@ -1115,7 +1442,9 @@ export function AppProvider({
           },
         );
 
-      if (error) {
+      if (
+        error
+      ) {
         throw error;
       }
 
@@ -1137,7 +1466,9 @@ export function AppProvider({
       email: string,
       password: string,
     ): Promise<RegisterResult> => {
-      if (!supabase) {
+      if (
+        !supabase
+      ) {
         throw new Error(
           'Supabase is not configured.',
         );
@@ -1163,7 +1494,9 @@ export function AppProvider({
           },
         );
 
-      if (error) {
+      if (
+        error
+      ) {
         throw error;
       }
 
@@ -1190,7 +1523,9 @@ export function AppProvider({
         } =
           await supabase.auth.signOut();
 
-        if (error) {
+        if (
+          error
+        ) {
           throw error;
         }
       }
@@ -1212,798 +1547,6 @@ export function AppProvider({
       );
     };
 
-  const setMode =
-    (
-      mode:
-        AppMode,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          settings: {
-            ...current.settings,
-
-            activeMode:
-              mode,
-          },
-        }),
-      );
-    };
-
-  const addProperty =
-    (
-      input:
-        PropertyInput,
-    ) => {
-      const cleanAddress =
-        input.address.trim();
-
-      const property:
-        Property = {
-        id:
-          makeId(
-            'prop',
-          ),
-
-        name:
-          input.name?.trim() ||
-          cleanAddress,
-
-        address:
-          cleanAddress,
-
-        city:
-          input.city.trim(),
-
-        areaM2:
-          input.areaM2 ??
-          0,
-
-        status:
-          'ACTIVE',
-
-        rentAmount:
-          0,
-
-        rentCurrency:
-          'UAH',
-
-        utilitiesCurrency:
-          'UAH',
-
-        paymentDueDay:
-          5,
-      };
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          properties: [
-            property,
-            ...current.properties,
-          ],
-        }),
-      );
-
-      return property;
-    };
-
-  const editProperty =
-    (
-      propertyId:
-        string,
-
-      input:
-        PropertyInput,
-    ) => {
-      const existing =
-        state.properties.find(
-          (
-            property,
-          ) =>
-            property.id ===
-            propertyId,
-        );
-
-      if (!existing) {
-        throw new Error(
-          'Property not found.',
-        );
-      }
-
-      const updated:
-        Property = {
-        ...existing,
-
-        name:
-          input.name?.trim() ||
-          input.address.trim(),
-
-        city:
-          input.city.trim(),
-
-        address:
-          input.address.trim(),
-
-        areaM2:
-          input.areaM2 ??
-          0,
-      };
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          properties:
-            current.properties.map(
-              (
-                property,
-              ) =>
-                property.id ===
-                propertyId
-                  ? {
-                      ...property,
-
-                      name:
-                        updated.name,
-
-                      city:
-                        updated.city,
-
-                      address:
-                        updated.address,
-
-                      areaM2:
-                        updated.areaM2,
-                    }
-                  : property,
-            ),
-        }),
-      );
-
-      return updated;
-    };
-
-  const removeProperty =
-    (
-      propertyId:
-        string,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          properties:
-            current.properties.filter(
-              (
-                property,
-              ) =>
-                property.id !==
-                propertyId,
-            ),
-
-          meters:
-            current.meters.filter(
-              (
-                meter,
-              ) =>
-                meter.propertyId !==
-                propertyId,
-            ),
-
-          invoices:
-            current.invoices.filter(
-              (
-                invoice,
-              ) =>
-                invoice.propertyId !==
-                propertyId,
-            ),
-
-          payments:
-            current.payments.filter(
-              (
-                payment,
-              ) =>
-                payment.propertyId !==
-                propertyId,
-            ),
-
-          reminders:
-            current.reminders.filter(
-              (
-                reminder,
-              ) =>
-                reminder.propertyId !==
-                propertyId,
-            ),
-        }),
-      );
-    };
-
-  const addMeter =
-    (
-      input:
-        MeterInput,
-    ) => {
-      const meter =
-        buildMeter(
-          input,
-        );
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          meters: [
-            meter,
-            ...current.meters,
-          ],
-        }),
-      );
-
-      return meter;
-    };
-
-  const editMeter =
-    (
-      meterId:
-        string,
-
-      input:
-        MeterInput,
-    ) => {
-      const existing =
-        state.meters.find(
-          (
-            meter,
-          ) =>
-            meter.id ===
-            meterId,
-        );
-
-      if (!existing) {
-        throw new Error(
-          'Meter not found.',
-        );
-      }
-
-      const updated =
-        buildMeter(
-          input,
-          existing,
-        );
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          meters:
-            current.meters.map(
-              (
-                meter,
-              ) =>
-                meter.id ===
-                meterId
-                  ? updated
-                  : meter,
-            ),
-        }),
-      );
-
-      return updated;
-    };
-
-  const removeMeter =
-    (
-      meterId:
-        string,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          meters:
-            current.meters.filter(
-              (
-                meter,
-              ) =>
-                meter.id !==
-                meterId,
-            ),
-        }),
-      );
-    };
-
-  const saveReading =
-    (
-      meterId:
-        string,
-
-      registerId:
-        string,
-
-      currentValue:
-        number,
-
-      photoUri?:
-        string,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          meters:
-            current.meters.map(
-              (
-                meter,
-              ) =>
-                meter.id !==
-                meterId
-                  ? meter
-                  : {
-                      ...meter,
-
-                      registers:
-                        meter.registers.map(
-                          (
-                            register,
-                          ) =>
-                            register.id !==
-                            registerId
-                              ? register
-                              : {
-                                  ...register,
-
-                                  currentValue,
-
-                                  photoUri:
-                                    photoUri ??
-                                    register.photoUri,
-                                },
-                        ),
-                    },
-            ),
-        }),
-      );
-    };
-
-  const saveVariableAmount =
-    (
-      meterId:
-        string,
-
-      amount:
-        number,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          meters:
-            current.meters.map(
-              (
-                meter,
-              ) =>
-                meter.id ===
-                meterId
-                  ? {
-                      ...meter,
-
-                      currentAmount:
-                        amount,
-                    }
-                  : meter,
-            ),
-        }),
-      );
-    };
-
-  const addPayment =
-    (
-      input:
-        AddPaymentInput,
-    ) => {
-      const property =
-        state.properties.find(
-          (
-            item,
-          ) =>
-            item.id ===
-            input.propertyId,
-        );
-
-      const payment:
-        Payment = {
-        id:
-          makeId(
-            'pay',
-          ),
-
-        propertyId:
-          input.propertyId,
-
-        tenantName:
-          property?.tenantName ??
-          'Tenant',
-
-        amount:
-          input.amount,
-
-        currency:
-          input.currency,
-
-        date:
-          new Date()
-            .toISOString()
-            .slice(
-              0,
-              10,
-            ),
-
-        method:
-          input.method,
-
-        allocated:
-          false,
-
-        note:
-          input.note,
-      };
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          payments: [
-            payment,
-            ...current.payments,
-          ],
-        }),
-      );
-
-      return payment;
-    };
-
-  const generateInvoice =
-    (
-      propertyId:
-        string,
-    ) => {
-      const property =
-        state.properties.find(
-          (
-            item,
-          ) =>
-            item.id ===
-            propertyId,
-        );
-
-      if (
-        !property
-      ) {
-        throw new Error(
-          'Property not found.',
-        );
-      }
-
-      const lines:
-        Invoice['lines'] =
-        [];
-
-      if (
-        property.rentAmount >
-        0
-      ) {
-        lines.push({
-          id:
-            makeId(
-              'line',
-            ),
-
-          type:
-            'RENT',
-
-          label:
-            'Rent',
-
-          amount:
-            property.rentAmount,
-
-          currency:
-            property.rentCurrency,
-        });
-      }
-
-      state.meters
-        .filter(
-          (
-            meter,
-          ) =>
-            meter.propertyId ===
-            propertyId,
-        )
-        .forEach(
-          (
-            meter,
-          ) => {
-            if (
-              meter.billingMode ===
-                'FIXED' &&
-              meter.fixedAmount !==
-                undefined
-            ) {
-              lines.push({
-                id:
-                  makeId(
-                    'line',
-                  ),
-
-                type:
-                  'FIXED_CHARGE',
-
-                label:
-                  meter.name,
-
-                amount:
-                  meter.fixedAmount,
-
-                currency:
-                  meter.billingCurrency ??
-                  'UAH',
-              });
-
-              return;
-            }
-
-            if (
-              meter.billingMode ===
-                'VARIABLE' &&
-              meter.currentAmount !==
-                undefined
-            ) {
-              lines.push({
-                id:
-                  makeId(
-                    'line',
-                  ),
-
-                type:
-                  'CUSTOM_CHARGE',
-
-                label:
-                  meter.name,
-
-                amount:
-                  meter.currentAmount,
-
-                currency:
-                  meter.billingCurrency ??
-                  'UAH',
-              });
-
-              return;
-            }
-
-            if (
-              meter.billingMode !==
-              'METERED'
-            ) {
-              return;
-            }
-
-            meter.registers.forEach(
-              (
-                register,
-              ) => {
-                if (
-                  register.currentValue ===
-                  undefined
-                ) {
-                  return;
-                }
-
-                const consumption =
-                  Math.max(
-                    0,
-
-                    register.currentValue -
-                      register.previousValue,
-                  );
-
-                lines.push({
-                  id:
-                    makeId(
-                      'line',
-                    ),
-
-                  type:
-                    'UTILITY',
-
-                  label:
-                    `${meter.name} ${register.code}`,
-
-                  amount:
-                    Number(
-                      (
-                        consumption *
-                        register.tariff
-                      ).toFixed(
-                        2,
-                      ),
-                    ),
-
-                  currency:
-                    register.tariffCurrency,
-
-                  details:
-                    `${consumption.toFixed(
-                      2,
-                    )} ${register.unit} × ${register.tariff.toFixed(
-                      2,
-                    )}`,
-                });
-              },
-            );
-          },
-        );
-
-      const now =
-        new Date();
-
-      const period =
-        now
-          .toISOString()
-          .slice(
-            0,
-            7,
-          );
-
-      const due =
-        new Date(
-          now.getFullYear(),
-
-          now.getMonth() +
-            1,
-
-          property.paymentDueDay,
-        );
-
-      const invoice:
-        Invoice = {
-        id:
-          makeId(
-            'inv',
-          ),
-
-        propertyId,
-
-        tenantName:
-          property.tenantName ??
-          'Tenant',
-
-        period,
-
-        issueDate:
-          now
-            .toISOString()
-            .slice(
-              0,
-              10,
-            ),
-
-        dueDate:
-          due
-            .toISOString()
-            .slice(
-              0,
-              10,
-            ),
-
-        status:
-          'ISSUED',
-
-        lines,
-      };
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          invoices: [
-            invoice,
-
-            ...current.invoices.filter(
-              (
-                item,
-              ) =>
-                !(
-                  item.propertyId ===
-                    propertyId &&
-                  item.period ===
-                    period
-                ),
-            ),
-          ],
-        }),
-      );
-
-      return invoice;
-    };
-
-  const changeLanguage =
-    async (
-      language:
-        LanguageCode,
-    ) => {
-      await syncRemoteTranslations(
-        language,
-      );
-
-      await i18n.changeLanguage(
-        language,
-      );
-
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          settings: {
-            ...current.settings,
-
-            language,
-          },
-        }),
-      );
-    };
-
-  const setPushEnabled =
-    (
-      enabled:
-        boolean,
-    ) => {
-      setState(
-        (
-          current,
-        ) => ({
-          ...current,
-
-          settings: {
-            ...current.settings,
-
-            pushEnabled:
-              enabled,
-          },
-        }),
-      );
-    };
-
   const value =
     useMemo<
       AppContextValue
@@ -2012,6 +1555,8 @@ export function AppProvider({
         state,
 
         hydrated,
+
+        dataLoading,
 
         session,
 
@@ -2026,6 +1571,8 @@ export function AppProvider({
         logout,
 
         refreshAuth,
+
+        refreshData,
 
         setMode,
 
@@ -2043,6 +1590,8 @@ export function AppProvider({
 
         saveReading,
 
+        saveMeterReadings,
+
         saveVariableAmount,
 
         addPayment,
@@ -2057,6 +1606,7 @@ export function AppProvider({
       [
         state,
         hydrated,
+        dataLoading,
         session,
         authStatus,
         authError,
@@ -2080,7 +1630,9 @@ export function useApp() {
       AppContext,
     );
 
-  if (!value) {
+  if (
+    !value
+  ) {
     throw new Error(
       'useApp must be used inside AppProvider.',
     );

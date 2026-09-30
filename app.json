@@ -21,16 +21,13 @@
         }
       ],
       [
-        "expo-build-properties",
+        "expo-image-picker",
         {
-          "ios": {
-            "enableSceneSupport": true
-          }
+          "photosPermission": "Allow Dometra to select utility meter photos from your photo library."
         }
       ],
       "expo-localization",
-      "expo-notifications",
-      "expo-build-properties"
+      "expo-notifications"
     ]
   }
 }

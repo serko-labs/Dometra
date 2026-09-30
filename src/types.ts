@@ -8,7 +8,9 @@ export type CurrencyCode =
   'UAH' | 'USD' | 'EUR';
 
 export type PropertyStatus =
-  'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  | 'ACTIVE'
+  | 'INACTIVE'
+  | 'ARCHIVED';
 
 export type InvoiceStatus =
   | 'DRAFT'
@@ -28,33 +30,66 @@ export type MeterBillingMode =
   | 'FIXED'
   | 'VARIABLE';
 
-export interface UserSettings {
-  language: LanguageCode;
-  region: string;
+export interface Workspace {
+  id: string;
+
+  name: string;
+
+  baseCurrency:
+    CurrencyCode;
+
   timezone: string;
-  displayCurrency: CurrencyCode;
-  activeMode: AppMode;
-  pushEnabled: boolean;
+}
+
+export interface UserSettings {
+  language:
+    LanguageCode;
+
+  region: string;
+
+  timezone: string;
+
+  displayCurrency:
+    CurrencyCode;
+
+  activeMode:
+    AppMode;
+
+  pushEnabled:
+    boolean;
 }
 
 export interface Property {
   id: string;
 
+  workspaceId: string;
+
   name: string;
+
   address: string;
+
   city: string;
 
   areaM2: number;
 
-  status: PropertyStatus;
+  status:
+    PropertyStatus;
 
   tenantName?: string;
+
   tenantId?: string;
 
+  /*
+   * Rent / tenancy will move to
+   * Supabase in the next backend step.
+   */
   rentAmount: number;
-  rentCurrency: CurrencyCode;
 
-  utilitiesCurrency: CurrencyCode;
+  rentCurrency:
+    CurrencyCode;
+
+  utilitiesCurrency:
+    CurrencyCode;
 
   paymentDueDay: number;
 }
@@ -63,21 +98,63 @@ export interface MeterRegister {
   id: string;
 
   code: string;
+
   name: string;
 
   unit: string;
 
   tariff: number;
-  tariffCurrency: CurrencyCode;
 
+  tariffCurrency:
+    CurrencyCode;
+
+  /*
+   * Value that a new reading
+   * must be greater than or equal to.
+   */
   previousValue: number;
+
+  /*
+   * Reading entered for the
+   * current billing period.
+   */
   currentValue?: number;
 
+  /*
+   * Latest reading ever saved.
+   */
+  lastValue?: number;
+
+  lastReadingAt?: string;
+
+  lastBillingPeriod?: string;
+
+  /*
+   * Current billing period photo.
+   */
   photoUri?: string;
+
+  photoPath?: string;
+
+  /*
+   * Latest stored photo,
+   * regardless of billing period.
+   */
+  lastPhotoUri?: string;
+
+  lastPhotoPath?: string;
 }
 
 export interface Meter {
+  /*
+   * Actual meter id for metered services.
+   *
+   * For FIXED / VARIABLE custom services,
+   * serviceId is used here as well.
+   */
   id: string;
+
+  serviceId: string;
 
   propertyId: string;
 
@@ -90,19 +167,74 @@ export interface Meter {
     | 'HEAT'
     | 'CUSTOM';
 
-  billingMode: MeterBillingMode;
+  billingMode:
+    MeterBillingMode;
 
   serialNumber?: string;
 
   unit: string;
 
-  registers: MeterRegister[];
+  registers:
+    MeterRegister[];
 
   fixedAmount?: number;
 
   currentAmount?: number;
 
-  billingCurrency?: CurrencyCode;
+  lastAmount?: number;
+
+  lastAmountAt?: string;
+
+  lastBillingPeriod?: string;
+
+  billingCurrency?:
+    CurrencyCode;
+}
+
+export interface PropertyInput {
+  city: string;
+
+  address: string;
+
+  name?: string;
+
+  areaM2?: number;
+}
+
+export interface MeterInput {
+  propertyId: string;
+
+  category:
+    Meter['category'];
+
+  name?: string;
+
+  dualTariff?: boolean;
+
+  billingMode:
+    MeterBillingMode;
+
+  tariff?: number;
+
+  tariffT1?: number;
+
+  tariffT2?: number;
+
+  tariffCurrency?:
+    CurrencyCode;
+
+  fixedAmount?: number;
+
+  billingCurrency?:
+    CurrencyCode;
+}
+
+export interface MeterReadingInput {
+  registerId: string;
+
+  currentValue: number;
+
+  photoUri?: string;
 }
 
 export interface InvoiceLine {
@@ -118,7 +250,8 @@ export interface InvoiceLine {
 
   amount: number;
 
-  currency: CurrencyCode;
+  currency:
+    CurrencyCode;
 
   details?: string;
 }
@@ -136,9 +269,11 @@ export interface Invoice {
 
   dueDate: string;
 
-  status: InvoiceStatus;
+  status:
+    InvoiceStatus;
 
-  lines: InvoiceLine[];
+  lines:
+    InvoiceLine[];
 }
 
 export interface Payment {
@@ -150,11 +285,13 @@ export interface Payment {
 
   amount: number;
 
-  currency: CurrencyCode;
+  currency:
+    CurrencyCode;
 
   date: string;
 
-  method: PaymentMethod;
+  method:
+    PaymentMethod;
 
   allocated: boolean;
 
@@ -179,15 +316,30 @@ export interface Reminder {
 }
 
 export interface AppState {
-  settings: UserSettings;
+  workspace:
+    Workspace | null;
 
-  properties: Property[];
+  settings:
+    UserSettings;
 
-  meters: Meter[];
+  properties:
+    Property[];
 
-  invoices: Invoice[];
+  meters:
+    Meter[];
 
-  payments: Payment[];
+  /*
+   * These stay empty until their own
+   * Supabase tables are connected.
+   *
+   * They are NOT persisted locally.
+   */
+  invoices:
+    Invoice[];
 
-  reminders: Reminder[];
+  payments:
+    Payment[];
+
+  reminders:
+    Reminder[];
 }

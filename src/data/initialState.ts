@@ -1,13 +1,30 @@
-import { AppState } from '../types';
+import {
+  AppState,
+} from '../types';
 
-export const initialState: AppState = {
+export const initialState:
+  AppState = {
+  workspace:
+    null,
+
   settings: {
-    language: 'uk',
-    region: 'UA',
-    timezone: 'Europe/Kyiv',
-    displayCurrency: 'UAH',
-    activeMode: 'LANDLORD',
-    pushEnabled: true,
+    language:
+      'uk',
+
+    region:
+      'UA',
+
+    timezone:
+      'Europe/Kyiv',
+
+    displayCurrency:
+      'UAH',
+
+    activeMode:
+      'LANDLORD',
+
+    pushEnabled:
+      true,
   },
 
   properties: [],
