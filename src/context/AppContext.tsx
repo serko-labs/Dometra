@@ -42,6 +42,7 @@ import {
   Invoice,
   LanguageCode,
   Meter,
+  MeterBillingMode,
   Payment,
   PaymentMethod,
   Property,
@@ -60,29 +61,42 @@ export type AuthStatus =
 export type RegisterResult =
   'CONFIRM_EMAIL';
 
-interface AddPropertyInput {
-  name: string;
-  address: string;
+interface PropertyInput {
   city: string;
 
-  areaM2: number;
+  address: string;
 
-  rentAmount: number;
+  name?: string;
 
-  rentCurrency:
-    CurrencyCode;
+  areaM2?: number;
 }
 
-interface AddMeterInput {
+interface MeterInput {
   propertyId: string;
-
-  name: string;
 
   category:
     Meter['category'];
 
-  dualTariff:
-    boolean;
+  name?: string;
+
+  dualTariff?: boolean;
+
+  billingMode:
+    MeterBillingMode;
+
+  tariff?: number;
+
+  tariffT1?: number;
+
+  tariffT2?: number;
+
+  tariffCurrency?:
+    CurrencyCode;
+
+  fixedAmount?: number;
+
+  billingCurrency?:
+    CurrencyCode;
 }
 
 interface AddPaymentInput {
@@ -100,7 +114,8 @@ interface AddPaymentInput {
 }
 
 interface AppContextValue {
-  state: AppState;
+  state:
+    AppState;
 
   hydrated:
     boolean;
@@ -135,19 +150,44 @@ interface AppContextValue {
 
   addProperty: (
     input:
-      AddPropertyInput,
+      PropertyInput,
   ) => Property;
+
+  editProperty: (
+    propertyId: string,
+    input:
+      PropertyInput,
+  ) => Property;
+
+  removeProperty: (
+    propertyId: string,
+  ) => void;
 
   addMeter: (
     input:
-      AddMeterInput,
+      MeterInput,
   ) => Meter;
+
+  editMeter: (
+    meterId: string,
+    input:
+      MeterInput,
+  ) => Meter;
+
+  removeMeter: (
+    meterId: string,
+  ) => void;
 
   saveReading: (
     meterId: string,
     registerId: string,
     currentValue: number,
     photoUri?: string,
+  ) => void;
+
+  saveVariableAmount: (
+    meterId: string,
+    amount: number,
   ) => void;
 
   addPayment: (
@@ -226,12 +266,9 @@ function getAuthParams(
         queryEnd,
       );
 
-    const queryParams =
-      new URLSearchParams(
-        query,
-      );
-
-    queryParams.forEach(
+    new URLSearchParams(
+      query,
+    ).forEach(
       (
         value,
         key,
@@ -252,12 +289,9 @@ function getAuthParams(
         hashIndex + 1,
       );
 
-    const fragmentParams =
-      new URLSearchParams(
-        fragment,
-      );
-
-    fragmentParams.forEach(
+    new URLSearchParams(
+      fragment,
+    ).forEach(
       (
         value,
         key,
@@ -290,15 +324,13 @@ async function createSessionFromAuthUrl(
     return null;
   }
 
-  console.log(
-    '[Dometra Auth] Processing auth callback...',
-  );
-
   const params =
     getAuthParams(url);
 
   const error =
-    params.get('error');
+    params.get(
+      'error',
+    );
 
   const errorCode =
     params.get(
@@ -388,6 +420,239 @@ async function createSessionFromAuthUrl(
   return null;
 }
 
+function buildMeter(
+  input:
+    MeterInput,
+
+  existing?:
+    Meter,
+): Meter {
+  const tariffCurrency =
+    input.tariffCurrency ??
+    existing?.registers[0]
+      ?.tariffCurrency ??
+    'UAH';
+
+  const preserveRegister =
+    (
+      code:
+        string,
+    ) =>
+      existing?.registers.find(
+        (
+          register,
+        ) =>
+          register.code ===
+          code,
+      );
+
+  const createRegister =
+    (
+      code:
+        string,
+
+      name:
+        string,
+
+      unit:
+        string,
+
+      tariff:
+        number,
+    ): Meter['registers'][number] => {
+      const previous =
+        preserveRegister(
+          code,
+        );
+
+      return {
+        id:
+          previous?.id ??
+          makeId(
+            'reg',
+          ),
+
+        code,
+
+        name,
+
+        unit,
+
+        tariff,
+
+        tariffCurrency,
+
+        previousValue:
+          previous?.previousValue ??
+          0,
+
+        currentValue:
+          previous?.currentValue,
+
+        photoUri:
+          previous?.photoUri,
+      };
+    };
+
+  let name =
+    input.name?.trim() ??
+    '';
+
+  let unit = '';
+
+  let billingMode =
+    input.billingMode;
+
+  let registers:
+    Meter['registers'] =
+    [];
+
+  if (
+    input.category ===
+    'ELECTRICITY'
+  ) {
+    name =
+      'Electricity';
+
+    unit =
+      'kWh';
+
+    billingMode =
+      'METERED';
+
+    if (
+      input.dualTariff
+    ) {
+      registers = [
+        createRegister(
+          'T1',
+          'Day',
+          'kWh',
+          input.tariffT1 ??
+            0,
+        ),
+
+        createRegister(
+          'T2',
+          'Night',
+          'kWh',
+          input.tariffT2 ??
+            0,
+        ),
+      ];
+    } else {
+      registers = [
+        createRegister(
+          'TOTAL',
+          'Total',
+          'kWh',
+          input.tariff ??
+            0,
+        ),
+      ];
+    }
+  }
+
+  if (
+    input.category ===
+    'WATER'
+  ) {
+    name =
+      'Water';
+
+    unit =
+      'm³';
+
+    billingMode =
+      'METERED';
+
+    registers = [
+      createRegister(
+        'TOTAL',
+        'Total',
+        'm³',
+        input.tariff ??
+          0,
+      ),
+    ];
+  }
+
+  if (
+    input.category ===
+    'GAS'
+  ) {
+    name =
+      'Gas';
+
+    unit =
+      'm³';
+
+    billingMode =
+      'METERED';
+
+    registers = [
+      createRegister(
+        'TOTAL',
+        'Total',
+        'm³',
+        input.tariff ??
+          0,
+      ),
+    ];
+  }
+
+  if (
+    input.category ===
+    'CUSTOM'
+  ) {
+    name =
+      input.name?.trim() ||
+      'Custom';
+
+    unit = '';
+
+    registers = [];
+  }
+
+  return {
+    id:
+      existing?.id ??
+      makeId(
+        'meter',
+      ),
+
+    propertyId:
+      input.propertyId,
+
+    name,
+
+    category:
+      input.category,
+
+    billingMode,
+
+    unit,
+
+    registers,
+
+    fixedAmount:
+      billingMode ===
+      'FIXED'
+        ? input.fixedAmount
+        : undefined,
+
+    currentAmount:
+      billingMode ===
+      'VARIABLE'
+        ? existing?.currentAmount
+        : undefined,
+
+    billingCurrency:
+      input.billingCurrency ??
+      tariffCurrency,
+  };
+}
+
 export function AppProvider({
   children,
 }: {
@@ -442,11 +707,6 @@ export function AppProvider({
     async (
       userId: string,
     ) => {
-      console.log(
-        '[Dometra] Loading user state:',
-        userId,
-      );
-
       const stored =
         await AsyncStorage.getItem(
           stateStorageKey(
@@ -455,10 +715,6 @@ export function AppProvider({
         );
 
       if (!stored) {
-        console.log(
-          '[Dometra] No local user state. Starting empty.',
-        );
-
         const cleanState =
           cloneInitialState();
 
@@ -467,8 +723,7 @@ export function AppProvider({
         );
 
         await i18n.changeLanguage(
-          cleanState
-            .settings
+          cleanState.settings
             .language,
         );
 
@@ -486,18 +741,10 @@ export function AppProvider({
         );
 
         await i18n.changeLanguage(
-          parsed
-            .settings
+          parsed.settings
             .language,
         );
-      } catch (
-        error
-      ) {
-        console.error(
-          '[Dometra] Failed to load local state:',
-          error,
-        );
-
+      } catch {
         const cleanState =
           cloneInitialState();
 
@@ -506,8 +753,7 @@ export function AppProvider({
         );
 
         await i18n.changeLanguage(
-          cleanState
-            .settings
+          cleanState.settings
             .language,
         );
       }
@@ -518,20 +764,6 @@ export function AppProvider({
       nextSession:
         Session,
     ) => {
-      console.log(
-        '[Dometra Auth] Accepting session for:',
-        nextSession.user.email,
-      );
-
-      /*
-       * signInWithPassword / setSession /
-       * exchangeCodeForSession already
-       * returned a real Supabase session.
-       *
-       * No additional getUser() call
-       * is needed here.
-       */
-
       setSession(
         nextSession,
       );
@@ -545,8 +777,7 @@ export function AppProvider({
       );
 
       await loadUserState(
-        nextSession
-          .user.id,
+        nextSession.user.id,
       );
     };
 
@@ -568,10 +799,6 @@ export function AppProvider({
         return;
       }
 
-      console.log(
-        '[Dometra Auth] Restoring session...',
-      );
-
       setAuthStatus(
         'loading',
       );
@@ -581,10 +808,6 @@ export function AppProvider({
       );
 
       try {
-        /*
-         * getSession() loads the persisted
-         * session and refreshes it when needed.
-         */
         const {
           data,
           error,
@@ -598,10 +821,6 @@ export function AppProvider({
         if (
           !data.session
         ) {
-          console.log(
-            '[Dometra Auth] No stored session.',
-          );
-
           setSession(
             null,
           );
@@ -617,22 +836,12 @@ export function AppProvider({
           return;
         }
 
-        console.log(
-          '[Dometra Auth] Stored session restored:',
-          data.session.user.email,
-        );
-
         await acceptSession(
           data.session,
         );
       } catch (
         error
       ) {
-        console.error(
-          '[Dometra Auth] Session restore failed:',
-          error,
-        );
-
         setSession(
           null,
         );
@@ -654,24 +863,15 @@ export function AppProvider({
     let mounted =
       true;
 
-    /*
-     * Listen for Supabase auth changes.
-     *
-     * IMPORTANT:
-     * Keep this callback synchronous.
-     */
     const authSubscription =
       supabase?.auth.onAuthStateChange(
         (
           event,
           nextSession,
         ) => {
-          console.log(
-            '[Dometra Auth] Event:',
-            event,
-          );
-
-          if (!mounted) {
+          if (
+            !mounted
+          ) {
             return;
           }
 
@@ -716,20 +916,12 @@ export function AppProvider({
         },
       ).data.subscription;
 
-    /*
-     * Deep links received while
-     * Dometra is already running.
-     */
     const linkSubscription =
       Linking.addEventListener(
         'url',
         ({
           url,
         }) => {
-          console.log(
-            '[Dometra Auth] Deep link received.',
-          );
-
           void (
             async () => {
               try {
@@ -750,7 +942,7 @@ export function AppProvider({
                 error
               ) {
                 console.error(
-                  '[Dometra Auth] Authentication callback failed:',
+                  'Authentication callback failed:',
                   error,
                 );
 
@@ -781,10 +973,6 @@ export function AppProvider({
     const initialize =
       async () => {
         if (!supabase) {
-          console.error(
-            '[Dometra Auth] Supabase is not configured.',
-          );
-
           setAuthStatus(
             'configuration-error',
           );
@@ -797,10 +985,6 @@ export function AppProvider({
         }
 
         try {
-          /*
-           * Check whether app was opened
-           * from a confirmation link.
-           */
           const initialUrl =
             await Linking.getInitialURL();
 
@@ -809,10 +993,6 @@ export function AppProvider({
               AUTH_CALLBACK_URL,
             )
           ) {
-            console.log(
-              '[Dometra Auth] Initial auth URL detected.',
-            );
-
             const nextSession =
               await createSessionFromAuthUrl(
                 initialUrl,
@@ -837,10 +1017,6 @@ export function AppProvider({
             }
           }
 
-          /*
-           * Otherwise restore an existing
-           * persisted Supabase session.
-           */
           if (
             mounted
           ) {
@@ -853,11 +1029,6 @@ export function AppProvider({
         } catch (
           error
         ) {
-          console.error(
-            '[Dometra Auth] Initialization failed:',
-            error,
-          );
-
           if (
             mounted
           ) {
@@ -895,10 +1066,6 @@ export function AppProvider({
     };
   }, []);
 
-  /*
-   * Save the current user's local
-   * app state independently.
-   */
   useEffect(() => {
     if (
       !hydrated ||
@@ -933,15 +1100,6 @@ export function AppProvider({
         );
       }
 
-      console.log(
-        '[Dometra Auth] signInWithPassword:',
-        email,
-      );
-
-      setAuthError(
-        null,
-      );
-
       const {
         data,
         error,
@@ -957,16 +1115,7 @@ export function AppProvider({
           },
         );
 
-      console.log(
-        '[Dometra Auth] signInWithPassword finished.',
-      );
-
       if (error) {
-        console.error(
-          '[Dometra Auth] Login error:',
-          error.message,
-        );
-
         throw error;
       }
 
@@ -977,11 +1126,6 @@ export function AppProvider({
           'Supabase did not create a session.',
         );
       }
-
-      console.log(
-        '[Dometra Auth] Login successful:',
-        data.user?.email,
-      );
 
       await acceptSession(
         data.session,
@@ -998,15 +1142,6 @@ export function AppProvider({
           'Supabase is not configured.',
         );
       }
-
-      console.log(
-        '[Dometra Auth] signUp:',
-        email,
-      );
-
-      setAuthError(
-        null,
-      );
 
       const {
         data,
@@ -1029,66 +1164,35 @@ export function AppProvider({
         );
 
       if (error) {
-        console.error(
-          '[Dometra Auth] Registration error:',
-          error.message,
-        );
-
         throw error;
       }
 
-      /*
-       * Dometra requires Confirm Email.
-       *
-       * Therefore registration should
-       * return user but NO session.
-       */
       if (
         data.session
       ) {
         await supabase.auth.signOut();
 
         throw new Error(
-          'Email confirmation is disabled in Supabase. Enable Confirm Email in Authentication settings.',
+          'Email confirmation is disabled in Supabase.',
         );
       }
-
-      console.log(
-        '[Dometra Auth] Registration successful. Waiting for email confirmation.',
-      );
 
       return 'CONFIRM_EMAIL';
     };
 
   const logout =
     async () => {
-      if (!supabase) {
-        setSession(
-          null,
-        );
+      if (
+        supabase
+      ) {
+        const {
+          error,
+        } =
+          await supabase.auth.signOut();
 
-        setState(
-          cloneInitialState(),
-        );
-
-        setAuthStatus(
-          'configuration-error',
-        );
-
-        return;
-      }
-
-      console.log(
-        '[Dometra Auth] Signing out...',
-      );
-
-      const {
-        error,
-      } =
-        await supabase.auth.signOut();
-
-      if (error) {
-        throw error;
+        if (error) {
+          throw error;
+        }
       }
 
       setSession(
@@ -1108,394 +1212,549 @@ export function AppProvider({
       );
     };
 
-  const setMode = (
-    mode: AppMode,
-  ) => {
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
-
-        settings: {
-          ...current.settings,
-
-          activeMode:
-            mode,
-        },
-      }),
-    );
-  };
-
-  const addProperty = (
-    input:
-      AddPropertyInput,
-  ) => {
-    const property:
-      Property = {
-      id:
-        makeId(
-          'prop',
-        ),
-
-      name:
-        input.name,
-
-      address:
-        input.address,
-
-      city:
-        input.city,
-
-      areaM2:
-        input.areaM2,
-
-      status:
-        'ACTIVE',
-
-      rentAmount:
-        input.rentAmount,
-
-      rentCurrency:
-        input.rentCurrency,
-
-      utilitiesCurrency:
-        'UAH',
-
-      paymentDueDay:
-        5,
-    };
-
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
-
-        properties: [
-          property,
-          ...current.properties,
-        ],
-      }),
-    );
-
-    return property;
-  };
-
-  const addMeter = (
-    input:
-      AddMeterInput,
-  ) => {
-    const unit =
-      input.category ===
-        'WATER' ||
-      input.category ===
-        'GAS'
-        ? 'm³'
-        : 'kWh';
-
-    const meter:
-      Meter = {
-      id:
-        makeId(
-          'meter',
-        ),
-
-      propertyId:
-        input.propertyId,
-
-      name:
-        input.name,
-
-      category:
-        input.category,
-
-      unit,
-
-      registers:
-        input.dualTariff
-          ? [
-              {
-                id:
-                  makeId(
-                    'reg',
-                  ),
-
-                code:
-                  'T1',
-
-                name:
-                  'Day',
-
-                unit,
-
-                tariff:
-                  4.32,
-
-                tariffCurrency:
-                  'UAH',
-
-                previousValue:
-                  0,
-              },
-
-              {
-                id:
-                  makeId(
-                    'reg',
-                  ),
-
-                code:
-                  'T2',
-
-                name:
-                  'Night',
-
-                unit,
-
-                tariff:
-                  2.16,
-
-                tariffCurrency:
-                  'UAH',
-
-                previousValue:
-                  0,
-              },
-            ]
-          : [
-              {
-                id:
-                  makeId(
-                    'reg',
-                  ),
-
-                code:
-                  'TOTAL',
-
-                name:
-                  'Total',
-
-                unit,
-
-                tariff:
-                  input.category ===
-                  'WATER'
-                    ? 32.6
-                    : 4.32,
-
-                tariffCurrency:
-                  'UAH',
-
-                previousValue:
-                  0,
-              },
-            ],
-    };
-
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
-
-        meters: [
-          meter,
-          ...current.meters,
-        ],
-      }),
-    );
-
-    return meter;
-  };
-
-  const saveReading = (
-    meterId: string,
-    registerId: string,
-    currentValue: number,
-    photoUri?: string,
-  ) => {
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
-
-        meters:
-          current.meters.map(
-            (
-              meter,
-            ) =>
-              meter.id !==
-              meterId
-                ? meter
-                : {
-                    ...meter,
-
-                    registers:
-                      meter.registers.map(
-                        (
-                          register,
-                        ) =>
-                          register.id !==
-                          registerId
-                            ? register
-                            : {
-                                ...register,
-
-                                currentValue,
-
-                                photoUri:
-                                  photoUri ??
-                                  register.photoUri,
-                              },
-                      ),
-                  },
-          ),
-      }),
-    );
-  };
-
-  const addPayment = (
-    input:
-      AddPaymentInput,
-  ) => {
-    const property =
-      state.properties.find(
+  const setMode =
+    (
+      mode:
+        AppMode,
+    ) => {
+      setState(
         (
-          item,
-        ) =>
-          item.id ===
-          input.propertyId,
+          current,
+        ) => ({
+          ...current,
+
+          settings: {
+            ...current.settings,
+
+            activeMode:
+              mode,
+          },
+        }),
       );
-
-    const payment:
-      Payment = {
-      id:
-        makeId(
-          'pay',
-        ),
-
-      propertyId:
-        input.propertyId,
-
-      tenantName:
-        property?.tenantName ??
-        'Tenant',
-
-      amount:
-        input.amount,
-
-      currency:
-        input.currency,
-
-      date:
-        new Date()
-          .toISOString()
-          .slice(
-            0,
-            10,
-          ),
-
-      method:
-        input.method,
-
-      allocated:
-        false,
-
-      note:
-        input.note,
     };
 
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
+  const addProperty =
+    (
+      input:
+        PropertyInput,
+    ) => {
+      const cleanAddress =
+        input.address.trim();
 
-        payments: [
-          payment,
-          ...current.payments,
-        ],
-      }),
-    );
-
-    return payment;
-  };
-
-  const generateInvoice = (
-    propertyId: string,
-  ) => {
-    const property =
-      state.properties.find(
-        (
-          item,
-        ) =>
-          item.id ===
-          propertyId,
-      );
-
-    if (
-      !property
-    ) {
-      throw new Error(
-        'Property not found.',
-      );
-    }
-
-    const lines:
-      Invoice['lines'] = [
-      {
+      const property:
+        Property = {
         id:
           makeId(
-            'line',
+            'prop',
           ),
 
-        type:
-          'RENT',
+        name:
+          input.name?.trim() ||
+          cleanAddress,
 
-        label:
-          'Rent',
+        address:
+          cleanAddress,
+
+        city:
+          input.city.trim(),
+
+        areaM2:
+          input.areaM2 ??
+          0,
+
+        status:
+          'ACTIVE',
+
+        rentAmount:
+          0,
+
+        rentCurrency:
+          'UAH',
+
+        utilitiesCurrency:
+          'UAH',
+
+        paymentDueDay:
+          5,
+      };
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          properties: [
+            property,
+            ...current.properties,
+          ],
+        }),
+      );
+
+      return property;
+    };
+
+  const editProperty =
+    (
+      propertyId:
+        string,
+
+      input:
+        PropertyInput,
+    ) => {
+      const existing =
+        state.properties.find(
+          (
+            property,
+          ) =>
+            property.id ===
+            propertyId,
+        );
+
+      if (!existing) {
+        throw new Error(
+          'Property not found.',
+        );
+      }
+
+      const updated:
+        Property = {
+        ...existing,
+
+        name:
+          input.name?.trim() ||
+          input.address.trim(),
+
+        city:
+          input.city.trim(),
+
+        address:
+          input.address.trim(),
+
+        areaM2:
+          input.areaM2 ??
+          0,
+      };
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          properties:
+            current.properties.map(
+              (
+                property,
+              ) =>
+                property.id ===
+                propertyId
+                  ? {
+                      ...property,
+
+                      name:
+                        updated.name,
+
+                      city:
+                        updated.city,
+
+                      address:
+                        updated.address,
+
+                      areaM2:
+                        updated.areaM2,
+                    }
+                  : property,
+            ),
+        }),
+      );
+
+      return updated;
+    };
+
+  const removeProperty =
+    (
+      propertyId:
+        string,
+    ) => {
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          properties:
+            current.properties.filter(
+              (
+                property,
+              ) =>
+                property.id !==
+                propertyId,
+            ),
+
+          meters:
+            current.meters.filter(
+              (
+                meter,
+              ) =>
+                meter.propertyId !==
+                propertyId,
+            ),
+
+          invoices:
+            current.invoices.filter(
+              (
+                invoice,
+              ) =>
+                invoice.propertyId !==
+                propertyId,
+            ),
+
+          payments:
+            current.payments.filter(
+              (
+                payment,
+              ) =>
+                payment.propertyId !==
+                propertyId,
+            ),
+
+          reminders:
+            current.reminders.filter(
+              (
+                reminder,
+              ) =>
+                reminder.propertyId !==
+                propertyId,
+            ),
+        }),
+      );
+    };
+
+  const addMeter =
+    (
+      input:
+        MeterInput,
+    ) => {
+      const meter =
+        buildMeter(
+          input,
+        );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          meters: [
+            meter,
+            ...current.meters,
+          ],
+        }),
+      );
+
+      return meter;
+    };
+
+  const editMeter =
+    (
+      meterId:
+        string,
+
+      input:
+        MeterInput,
+    ) => {
+      const existing =
+        state.meters.find(
+          (
+            meter,
+          ) =>
+            meter.id ===
+            meterId,
+        );
+
+      if (!existing) {
+        throw new Error(
+          'Meter not found.',
+        );
+      }
+
+      const updated =
+        buildMeter(
+          input,
+          existing,
+        );
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          meters:
+            current.meters.map(
+              (
+                meter,
+              ) =>
+                meter.id ===
+                meterId
+                  ? updated
+                  : meter,
+            ),
+        }),
+      );
+
+      return updated;
+    };
+
+  const removeMeter =
+    (
+      meterId:
+        string,
+    ) => {
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          meters:
+            current.meters.filter(
+              (
+                meter,
+              ) =>
+                meter.id !==
+                meterId,
+            ),
+        }),
+      );
+    };
+
+  const saveReading =
+    (
+      meterId:
+        string,
+
+      registerId:
+        string,
+
+      currentValue:
+        number,
+
+      photoUri?:
+        string,
+    ) => {
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          meters:
+            current.meters.map(
+              (
+                meter,
+              ) =>
+                meter.id !==
+                meterId
+                  ? meter
+                  : {
+                      ...meter,
+
+                      registers:
+                        meter.registers.map(
+                          (
+                            register,
+                          ) =>
+                            register.id !==
+                            registerId
+                              ? register
+                              : {
+                                  ...register,
+
+                                  currentValue,
+
+                                  photoUri:
+                                    photoUri ??
+                                    register.photoUri,
+                                },
+                        ),
+                    },
+            ),
+        }),
+      );
+    };
+
+  const saveVariableAmount =
+    (
+      meterId:
+        string,
+
+      amount:
+        number,
+    ) => {
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          meters:
+            current.meters.map(
+              (
+                meter,
+              ) =>
+                meter.id ===
+                meterId
+                  ? {
+                      ...meter,
+
+                      currentAmount:
+                        amount,
+                    }
+                  : meter,
+            ),
+        }),
+      );
+    };
+
+  const addPayment =
+    (
+      input:
+        AddPaymentInput,
+    ) => {
+      const property =
+        state.properties.find(
+          (
+            item,
+          ) =>
+            item.id ===
+            input.propertyId,
+        );
+
+      const payment:
+        Payment = {
+        id:
+          makeId(
+            'pay',
+          ),
+
+        propertyId:
+          input.propertyId,
+
+        tenantName:
+          property?.tenantName ??
+          'Tenant',
 
         amount:
-          property.rentAmount,
+          input.amount,
 
         currency:
-          property.rentCurrency,
-      },
-    ];
+          input.currency,
 
-    state.meters
-      .filter(
+        date:
+          new Date()
+            .toISOString()
+            .slice(
+              0,
+              10,
+            ),
+
+        method:
+          input.method,
+
+        allocated:
+          false,
+
+        note:
+          input.note,
+      };
+
+      setState(
         (
-          meter,
-        ) =>
-          meter.propertyId ===
-          propertyId,
-      )
-      .forEach(
-        (
-          meter,
-        ) => {
-          meter.registers.forEach(
-            (
-              register,
-            ) => {
-              if (
-                register.currentValue ===
+          current,
+        ) => ({
+          ...current,
+
+          payments: [
+            payment,
+            ...current.payments,
+          ],
+        }),
+      );
+
+      return payment;
+    };
+
+  const generateInvoice =
+    (
+      propertyId:
+        string,
+    ) => {
+      const property =
+        state.properties.find(
+          (
+            item,
+          ) =>
+            item.id ===
+            propertyId,
+        );
+
+      if (
+        !property
+      ) {
+        throw new Error(
+          'Property not found.',
+        );
+      }
+
+      const lines:
+        Invoice['lines'] =
+        [];
+
+      if (
+        property.rentAmount >
+        0
+      ) {
+        lines.push({
+          id:
+            makeId(
+              'line',
+            ),
+
+          type:
+            'RENT',
+
+          label:
+            'Rent',
+
+          amount:
+            property.rentAmount,
+
+          currency:
+            property.rentCurrency,
+        });
+      }
+
+      state.meters
+        .filter(
+          (
+            meter,
+          ) =>
+            meter.propertyId ===
+            propertyId,
+        )
+        .forEach(
+          (
+            meter,
+          ) => {
+            if (
+              meter.billingMode ===
+                'FIXED' &&
+              meter.fixedAmount !==
                 undefined
-              ) {
-                return;
-              }
-
-              const consumption =
-                Math.max(
-                  0,
-
-                  register.currentValue -
-                    register.previousValue,
-                );
-
+            ) {
               lines.push({
                 id:
                   makeId(
@@ -1503,120 +1762,198 @@ export function AppProvider({
                   ),
 
                 type:
-                  'UTILITY',
+                  'FIXED_CHARGE',
 
                 label:
-                  `${meter.name} ${register.code}`,
+                  meter.name,
 
                 amount:
-                  Number(
-                    (
-                      consumption *
-                      register.tariff
-                    ).toFixed(
-                      2,
-                    ),
-                  ),
+                  meter.fixedAmount,
 
                 currency:
-                  register.tariffCurrency,
-
-                details:
-                  `${consumption.toFixed(
-                    2,
-                  )} ${register.unit} × ${register.tariff.toFixed(
-                    2,
-                  )}`,
+                  meter.billingCurrency ??
+                  'UAH',
               });
-            },
-          );
-        },
-      );
 
-    const now =
-      new Date();
+              return;
+            }
 
-    const period =
-      now
-        .toISOString()
-        .slice(
-          0,
-          7,
+            if (
+              meter.billingMode ===
+                'VARIABLE' &&
+              meter.currentAmount !==
+                undefined
+            ) {
+              lines.push({
+                id:
+                  makeId(
+                    'line',
+                  ),
+
+                type:
+                  'CUSTOM_CHARGE',
+
+                label:
+                  meter.name,
+
+                amount:
+                  meter.currentAmount,
+
+                currency:
+                  meter.billingCurrency ??
+                  'UAH',
+              });
+
+              return;
+            }
+
+            if (
+              meter.billingMode !==
+              'METERED'
+            ) {
+              return;
+            }
+
+            meter.registers.forEach(
+              (
+                register,
+              ) => {
+                if (
+                  register.currentValue ===
+                  undefined
+                ) {
+                  return;
+                }
+
+                const consumption =
+                  Math.max(
+                    0,
+
+                    register.currentValue -
+                      register.previousValue,
+                  );
+
+                lines.push({
+                  id:
+                    makeId(
+                      'line',
+                    ),
+
+                  type:
+                    'UTILITY',
+
+                  label:
+                    `${meter.name} ${register.code}`,
+
+                  amount:
+                    Number(
+                      (
+                        consumption *
+                        register.tariff
+                      ).toFixed(
+                        2,
+                      ),
+                    ),
+
+                  currency:
+                    register.tariffCurrency,
+
+                  details:
+                    `${consumption.toFixed(
+                      2,
+                    )} ${register.unit} × ${register.tariff.toFixed(
+                      2,
+                    )}`,
+                });
+              },
+            );
+          },
         );
 
-    const due =
-      new Date(
-        now.getFullYear(),
+      const now =
+        new Date();
 
-        now.getMonth() +
-          1,
-
-        property.paymentDueDay,
-      );
-
-    const invoice:
-      Invoice = {
-      id:
-        makeId(
-          'inv',
-        ),
-
-      propertyId,
-
-      tenantName:
-        property.tenantName ??
-        'Tenant',
-
-      period,
-
-      issueDate:
+      const period =
         now
           .toISOString()
           .slice(
             0,
-            10,
+            7,
+          );
+
+      const due =
+        new Date(
+          now.getFullYear(),
+
+          now.getMonth() +
+            1,
+
+          property.paymentDueDay,
+        );
+
+      const invoice:
+        Invoice = {
+        id:
+          makeId(
+            'inv',
           ),
 
-      dueDate:
-        due
-          .toISOString()
-          .slice(
-            0,
-            10,
-          ),
+        propertyId,
 
-      status:
-        'ISSUED',
+        tenantName:
+          property.tenantName ??
+          'Tenant',
 
-      lines,
+        period,
+
+        issueDate:
+          now
+            .toISOString()
+            .slice(
+              0,
+              10,
+            ),
+
+        dueDate:
+          due
+            .toISOString()
+            .slice(
+              0,
+              10,
+            ),
+
+        status:
+          'ISSUED',
+
+        lines,
+      };
+
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
+
+          invoices: [
+            invoice,
+
+            ...current.invoices.filter(
+              (
+                item,
+              ) =>
+                !(
+                  item.propertyId ===
+                    propertyId &&
+                  item.period ===
+                    period
+                ),
+            ),
+          ],
+        }),
+      );
+
+      return invoice;
     };
-
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
-
-        invoices: [
-          invoice,
-
-          ...current.invoices.filter(
-            (
-              item,
-            ) =>
-              !(
-                item.propertyId ===
-                  propertyId &&
-                item.period ===
-                  period
-              ),
-          ),
-        ],
-      }),
-    );
-
-    return invoice;
-  };
 
   const changeLanguage =
     async (
@@ -1646,24 +1983,26 @@ export function AppProvider({
       );
     };
 
-  const setPushEnabled = (
-    enabled: boolean,
-  ) => {
-    setState(
-      (
-        current,
-      ) => ({
-        ...current,
+  const setPushEnabled =
+    (
+      enabled:
+        boolean,
+    ) => {
+      setState(
+        (
+          current,
+        ) => ({
+          ...current,
 
-        settings: {
-          ...current.settings,
+          settings: {
+            ...current.settings,
 
-          pushEnabled:
-            enabled,
-        },
-      }),
-    );
-  };
+            pushEnabled:
+              enabled,
+          },
+        }),
+      );
+    };
 
   const value =
     useMemo<
@@ -1692,9 +2031,19 @@ export function AppProvider({
 
         addProperty,
 
+        editProperty,
+
+        removeProperty,
+
         addMeter,
 
+        editMeter,
+
+        removeMeter,
+
         saveReading,
+
+        saveVariableAmount,
 
         addPayment,
 
@@ -1716,7 +2065,9 @@ export function AppProvider({
 
   return (
     <AppContext.Provider
-      value={value}
+      value={
+        value
+      }
     >
       {children}
     </AppContext.Provider>

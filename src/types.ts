@@ -8,9 +8,7 @@ export type CurrencyCode =
   'UAH' | 'USD' | 'EUR';
 
 export type PropertyStatus =
-  | 'ACTIVE'
-  | 'INACTIVE'
-  | 'ARCHIVED';
+  'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 
 export type InvoiceStatus =
   | 'DRAFT'
@@ -24,6 +22,11 @@ export type PaymentMethod =
   | 'CASH'
   | 'CARD'
   | 'OTHER';
+
+export type MeterBillingMode =
+  | 'METERED'
+  | 'FIXED'
+  | 'VARIABLE';
 
 export interface UserSettings {
   language: LanguageCode;
@@ -65,11 +68,9 @@ export interface MeterRegister {
   unit: string;
 
   tariff: number;
-
   tariffCurrency: CurrencyCode;
 
   previousValue: number;
-
   currentValue?: number;
 
   photoUri?: string;
@@ -89,11 +90,19 @@ export interface Meter {
     | 'HEAT'
     | 'CUSTOM';
 
+  billingMode: MeterBillingMode;
+
   serialNumber?: string;
 
   unit: string;
 
   registers: MeterRegister[];
+
+  fixedAmount?: number;
+
+  currentAmount?: number;
+
+  billingCurrency?: CurrencyCode;
 }
 
 export interface InvoiceLine {
@@ -124,6 +133,7 @@ export interface Invoice {
   period: string;
 
   issueDate: string;
+
   dueDate: string;
 
   status: InvoiceStatus;
