@@ -1,4 +1,7 @@
-import React from 'react';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
 
 import {
   Alert,
@@ -8,6 +11,7 @@ import {
 } from 'react-native';
 
 import {
+  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
@@ -36,6 +40,11 @@ import {
 } from '../context/AppContext';
 
 import {
+  loadPropertyHistory,
+  PropertyHistoryItem,
+} from '../services/propertyHistoryService';
+
+import {
   Meter,
 } from '../types';
 
@@ -44,7 +53,7 @@ import {
   spacing,
 } from '../theme';
 
-function formatDate(
+function formatReadingDate(
   iso:
     string,
 ) {
@@ -63,7 +72,6 @@ function formatDate(
 
   return date.toLocaleDateString(
     undefined,
-
     {
       day:
         '2-digit',
@@ -73,6 +81,41 @@ function formatDate(
 
       year:
         'numeric',
+    },
+  );
+}
+
+function formatHistoryDate(
+  iso:
+    string,
+) {
+  const date =
+    new Date(
+      iso,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return '';
+  }
+
+  return date.toLocaleString(
+    undefined,
+    {
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      hour:
+        '2-digit',
+
+      minute:
+        '2-digit',
     },
   );
 }
@@ -87,7 +130,7 @@ function getLatestReading(
         register,
       ) =>
         register.lastReadingAt &&
-        register.currentValue !==
+        register.lastValue !==
           undefined,
     );
 
@@ -127,10 +170,10 @@ function getLatestReading(
             meter.registers.length >
             1
           ) {
-            return `${register.code}: ${register.currentValue} ${register.unit}`;
+            return `${register.code}: ${register.lastValue} ${register.unit}`;
           }
 
-          return `${register.currentValue} ${register.unit}`;
+          return `${register.lastValue} ${register.unit}`;
         },
       )
       .join(
@@ -145,6 +188,27 @@ function getLatestReading(
 
     values,
   };
+}
+
+function historyTone(
+  category:
+    PropertyHistoryItem['category'],
+) {
+  switch (
+    category
+  ) {
+    case 'PAYMENT':
+      return 'success' as const;
+
+    case 'INVOICE':
+      return 'warning' as const;
+
+    case 'READING':
+      return 'success' as const;
+
+    default:
+      return 'neutral' as const;
+  }
 }
 
 export function PropertyDetailsScreen() {
@@ -166,6 +230,20 @@ export function PropertyDetailsScreen() {
   } =
     useApp();
 
+  const [
+    history,
+    setHistory,
+  ] =
+    useState<
+      PropertyHistoryItem[]
+    >([]);
+
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] =
+    useState(false);
+
   const property =
     state.properties.find(
       (
@@ -176,7 +254,75 @@ export function PropertyDetailsScreen() {
           ?.propertyId,
     );
 
-  if (!property) {
+  const propertyId =
+    property?.id;
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        if (
+          !propertyId
+        ) {
+          return;
+        }
+
+        let active =
+          true;
+
+        const load =
+          async () => {
+            setHistoryLoading(
+              true,
+            );
+
+            try {
+              const items =
+                await loadPropertyHistory(
+                  propertyId,
+                  20,
+                );
+
+              if (
+                active
+              ) {
+                setHistory(
+                  items,
+                );
+              }
+            } catch (
+              error
+            ) {
+              console.error(
+                '[Dometra] Unable to load property history:',
+                error,
+              );
+            } finally {
+              if (
+                active
+              ) {
+                setHistoryLoading(
+                  false,
+                );
+              }
+            }
+          };
+
+        void load();
+
+        return () => {
+          active =
+            false;
+        };
+      },
+      [
+        propertyId,
+      ],
+    ),
+  );
+
+  if (
+    !property
+  ) {
     return (
       <Screen>
         <Text>
@@ -233,7 +379,7 @@ export function PropertyDetailsScreen() {
 
             onPress:
               () => {
-                removeMeter(
+                void removeMeter(
                   meterId,
                 );
               },
@@ -244,24 +390,36 @@ export function PropertyDetailsScreen() {
 
   const createInvoice =
     () => {
-      const invoice =
-        generateInvoice(
-          property.id,
+      try {
+        const invoice =
+          generateInvoice(
+            property.id,
+          );
+
+        Alert.alert(
+          t(
+            'invoiceCreated',
+          ),
         );
 
-      Alert.alert(
-        t(
-          'invoiceCreated',
-        ),
-      );
-
-      navigation.navigate(
-        'InvoiceDetails',
-        {
-          invoiceId:
-            invoice.id,
-        },
-      );
+        navigation.navigate(
+          'InvoiceDetails',
+          {
+            invoiceId:
+              invoice.id,
+          },
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          'Invoices',
+          error instanceof
+          Error
+            ? error.message
+            : 'Unable to create invoice.',
+        );
+      }
     };
 
   return (
@@ -389,10 +547,6 @@ export function PropertyDetailsScreen() {
         (
           meter,
         ) => {
-          const billingMode =
-            meter.billingMode ??
-            'METERED';
-
           const latestReading =
             getLatestReading(
               meter,
@@ -443,7 +597,7 @@ export function PropertyDetailsScreen() {
                       }
                     </Text>
 
-                    {billingMode ===
+                    {meter.billingMode ===
                     'METERED' ? (
                       <>
                         <Text
@@ -470,7 +624,7 @@ export function PropertyDetailsScreen() {
                             }
                           >
                             <Badge
-                              text={`Last ${formatDate(
+                              text={`Last ${formatReadingDate(
                                 latestReading.date,
                               )}`}
                               tone="success"
@@ -501,7 +655,7 @@ export function PropertyDetailsScreen() {
                       </>
                     ) : null}
 
-                    {billingMode ===
+                    {meter.billingMode ===
                     'FIXED' ? (
                       <Text
                         style={
@@ -518,7 +672,7 @@ export function PropertyDetailsScreen() {
                       </Text>
                     ) : null}
 
-                    {billingMode ===
+                    {meter.billingMode ===
                     'VARIABLE' ? (
                       <>
                         <Text
@@ -529,7 +683,7 @@ export function PropertyDetailsScreen() {
                           Variable service
                         </Text>
 
-                        {meter.currentAmount !==
+                        {meter.lastAmount !==
                         undefined ? (
                           <View
                             style={
@@ -538,7 +692,7 @@ export function PropertyDetailsScreen() {
                           >
                             {meter.lastAmountAt ? (
                               <Badge
-                                text={`Last ${formatDate(
+                                text={`Last ${formatReadingDate(
                                   meter.lastAmountAt,
                                 )}`}
                                 tone="success"
@@ -551,7 +705,7 @@ export function PropertyDetailsScreen() {
                               }
                             >
                               {
-                                meter.currentAmount
+                                meter.lastAmount
                               }{' '}
                               {meter.billingCurrency ??
                                 'UAH'}
@@ -573,7 +727,7 @@ export function PropertyDetailsScreen() {
                     ) : null}
                   </View>
 
-                  {billingMode ===
+                  {meter.billingMode ===
                   'METERED' ? (
                     <SecondaryButton
                       title="Reading"
@@ -589,7 +743,7 @@ export function PropertyDetailsScreen() {
                     />
                   ) : null}
 
-                  {billingMode ===
+                  {meter.billingMode ===
                   'VARIABLE' ? (
                     <SecondaryButton
                       title="Enter value"
@@ -623,6 +777,126 @@ export function PropertyDetailsScreen() {
           )
         }
       />
+
+      <SectionTitle
+        title="History"
+      />
+
+      {historyLoading &&
+      history.length ===
+        0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Loading history...
+          </Text>
+        </Card>
+      ) : null}
+
+      {!historyLoading &&
+      history.length ===
+        0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            No activity yet.
+          </Text>
+        </Card>
+      ) : null}
+
+      {history.map(
+        (
+          item,
+        ) => (
+          <View
+            key={
+              item.id
+            }
+            style={
+              styles.historyRow
+            }
+          >
+            <View
+              style={
+                styles.historyLineColumn
+              }
+            >
+              <View
+                style={
+                  styles.historyDot
+                }
+              />
+
+              <View
+                style={
+                  styles.historyLine
+                }
+              />
+            </View>
+
+            <View
+              style={
+                styles.historyContent
+              }
+            >
+              <View
+                style={
+                  styles.historyHeader
+                }
+              >
+                <Text
+                  style={
+                    styles.historyTitle
+                  }
+                >
+                  {
+                    item.title
+                  }
+                </Text>
+
+                <Badge
+                  text={
+                    item.category
+                  }
+                  tone={
+                    historyTone(
+                      item.category,
+                    )
+                  }
+                />
+              </View>
+
+              {item.details ? (
+                <Text
+                  style={
+                    styles.historyDetails
+                  }
+                >
+                  {
+                    item.details
+                  }
+                </Text>
+              ) : null}
+
+              <Text
+                style={
+                  styles.historyDate
+                }
+              >
+                {formatHistoryDate(
+                  item.timestamp,
+                )}
+              </Text>
+            </View>
+          </View>
+        ),
+      )}
 
       <SectionTitle
         title={
@@ -810,5 +1084,113 @@ const styles =
 
       fontWeight:
         '700',
+    },
+
+    historyRow: {
+      flexDirection:
+        'row',
+
+      minHeight:
+        78,
+    },
+
+    historyLineColumn: {
+      width:
+        22,
+
+      alignItems:
+        'center',
+    },
+
+    historyDot: {
+      width:
+        10,
+
+      height:
+        10,
+
+      borderRadius:
+        5,
+
+      backgroundColor:
+        colors.primary,
+
+      marginTop:
+        7,
+    },
+
+    historyLine: {
+      width:
+        1,
+
+      flex:
+        1,
+
+      backgroundColor:
+        colors.border,
+
+      marginTop:
+        5,
+    },
+
+    historyContent: {
+      flex:
+        1,
+
+      paddingLeft:
+        spacing.sm,
+
+      paddingBottom:
+        spacing.md,
+    },
+
+    historyHeader: {
+      flexDirection:
+        'row',
+
+      justifyContent:
+        'space-between',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.sm,
+    },
+
+    historyTitle: {
+      flex:
+        1,
+
+      color:
+        colors.text,
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '700',
+    },
+
+    historyDetails: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginTop:
+        4,
+    },
+
+    historyDate: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      marginTop:
+        5,
     },
   });

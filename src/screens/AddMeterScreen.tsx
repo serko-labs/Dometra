@@ -321,6 +321,17 @@ export function AddMeterScreen() {
       setTariffT2('');
     };
 
+  const returnToProperty =
+    () => {
+      navigation.popTo(
+        'PropertyDetails',
+
+        {
+          propertyId,
+        },
+      );
+    };
+
   const selectCategory =
     (
       next:
@@ -375,6 +386,9 @@ export function AddMeterScreen() {
       );
 
       try {
+        /*
+         * CUSTOM
+         */
         if (
           category ===
           'CUSTOM'
@@ -436,26 +450,20 @@ export function AddMeterScreen() {
               existing.id,
               input,
             );
-
-            navigation.goBack();
-
-            return;
+          } else {
+            await addMeter(
+              input,
+            );
           }
 
-          await addMeter(
-            input,
-          );
-
-          navigation.replace(
-            'PropertyDetails',
-
-            {
-              propertyId,
-            },
-          );
+          returnToProperty();
 
           return;
         }
+
+        /*
+         * METERED
+         */
 
         const unit =
           category ===
@@ -551,6 +559,12 @@ export function AddMeterScreen() {
           tariffCurrency,
         };
 
+        /*
+         * EDIT:
+         *
+         * Editing meter settings does NOT
+         * automatically ask for a new reading.
+         */
         if (
           existing
         ) {
@@ -559,20 +573,29 @@ export function AddMeterScreen() {
             input,
           );
 
-          navigation.goBack();
+          returnToProperty();
 
           return;
         }
 
+        /*
+         * CREATE:
+         *
+         * Replace AddMeter with MeterReading.
+         *
+         * Stack becomes:
+         *
+         * Home
+         * PropertyDetails
+         * MeterReading
+         *
+         * AddMeter is gone.
+         */
         const created =
           await addMeter(
             input,
           );
 
-        /*
-         * Meter exists in Supabase now.
-         * Continue directly to the first reading.
-         */
         navigation.replace(
           'MeterReading',
 

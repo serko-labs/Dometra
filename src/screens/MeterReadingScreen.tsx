@@ -94,6 +94,14 @@ export function MeterReadingScreen() {
       string | null
     >(null);
 
+  /*
+   * IMPORTANT:
+   *
+   * These are intentionally empty.
+   *
+   * Previous readings live in Supabase/history
+   * and are never prefilled into a new entry.
+   */
   const [
     draftValues,
     setDraftValues,
@@ -120,14 +128,7 @@ export function MeterReadingScreen() {
     variableAmount,
     setVariableAmount,
   ] =
-    useState(
-      meter?.currentAmount !==
-      undefined
-        ? String(
-            meter.currentAmount,
-          )
-        : '',
-    );
+    useState('');
 
   const [
     busy,
@@ -147,9 +148,14 @@ export function MeterReadingScreen() {
     );
   }
 
+  /*
+   * Go back to the EXISTING apartment route.
+   *
+   * Do not navigate() to a new copy of it.
+   */
   const returnToProperty =
     () => {
-      navigation.navigate(
+      navigation.popTo(
         'PropertyDetails',
 
         {
@@ -158,6 +164,12 @@ export function MeterReadingScreen() {
         },
       );
     };
+
+  /*
+   * ----------------------------------------------------------
+   * FIXED SERVICE
+   * ----------------------------------------------------------
+   */
 
   if (
     meter.billingMode ===
@@ -193,10 +205,25 @@ export function MeterReadingScreen() {
             {meter.billingCurrency ??
               'UAH'}
           </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            This service has a fixed monthly value.
+            No reading is required.
+          </Text>
         </Card>
       </Screen>
     );
   }
+
+  /*
+   * ----------------------------------------------------------
+   * VARIABLE SERVICE
+   * ----------------------------------------------------------
+   */
 
   if (
     meter.billingMode ===
@@ -220,6 +247,12 @@ export function MeterReadingScreen() {
 
     const saveVariable =
       async () => {
+        if (
+          !valid
+        ) {
+          return;
+        }
+
         setBusy(
           true,
         );
@@ -271,6 +304,15 @@ export function MeterReadingScreen() {
         />
 
         <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Enter a value for the current billing period.
+            Previous values are available in apartment history.
+          </Text>
+
           <Field
             label={`Amount (${meter.billingCurrency ?? 'UAH'})`}
             value={
@@ -283,6 +325,7 @@ export function MeterReadingScreen() {
             editable={
               !busy
             }
+            placeholder="0"
           />
 
           <PrimaryButton
@@ -303,6 +346,12 @@ export function MeterReadingScreen() {
       </Screen>
     );
   }
+
+  /*
+   * ----------------------------------------------------------
+   * CAMERA
+   * ----------------------------------------------------------
+   */
 
   const capturePhoto =
     async () => {
@@ -336,6 +385,11 @@ export function MeterReadingScreen() {
       } catch (
         error
       ) {
+        console.error(
+          '[Dometra] Camera capture failed:',
+          error,
+        );
+
         Alert.alert(
           'Dometra',
           'Unable to take photo.',
@@ -343,53 +397,79 @@ export function MeterReadingScreen() {
       }
     };
 
+  /*
+   * ----------------------------------------------------------
+   * GALLERY
+   * ----------------------------------------------------------
+   */
+
   const selectFromGallery =
     async (
       registerId:
         string,
     ) => {
-      const result =
-        await ImagePicker.launchImageLibraryAsync(
-          {
-            mediaTypes: [
-              'images',
-            ],
+      try {
+        const result =
+          await ImagePicker.launchImageLibraryAsync(
+            {
+              mediaTypes: [
+                'images',
+              ],
 
-            allowsEditing:
-              false,
+              allowsEditing:
+                false,
 
-            quality:
-              0.8,
+              quality:
+                0.8,
 
-            selectionLimit:
-              1,
-          },
+              selectionLimit:
+                1,
+            },
+          );
+
+        if (
+          result.canceled
+        ) {
+          return;
+        }
+
+        const selected =
+          result.assets[0];
+
+        if (
+          selected?.uri
+        ) {
+          setDraftPhotos(
+            (
+              current,
+            ) => ({
+              ...current,
+
+              [registerId]:
+                selected.uri,
+            }),
+          );
+        }
+      } catch (
+        error
+      ) {
+        console.error(
+          '[Dometra] Gallery selection failed:',
+          error,
         );
 
-      if (
-        result.canceled
-      ) {
-        return;
-      }
-
-      const selected =
-        result.assets[0];
-
-      if (
-        selected?.uri
-      ) {
-        setDraftPhotos(
-          (
-            current,
-          ) => ({
-            ...current,
-
-            [registerId]:
-              selected.uri,
-          }),
+        Alert.alert(
+          'Dometra',
+          'Unable to select photo.',
         );
       }
     };
+
+  /*
+   * ----------------------------------------------------------
+   * SAVE ALL REGISTERS
+   * ----------------------------------------------------------
+   */
 
   const saveAll =
     async () => {
@@ -399,24 +479,21 @@ export function MeterReadingScreen() {
             (
               register,
             ) => {
+              /*
+               * NEVER fallback to register.currentValue.
+               *
+               * New form = new blank entry.
+               */
               const value =
                 draftValues[
                   register.id
                 ] ??
-                (
-                  register.currentValue !==
-                  undefined
-                    ? String(
-                        register.currentValue,
-                      )
-                    : ''
-                );
+                '';
 
               const photoUri =
                 draftPhotos[
                   register.id
-                ] ??
-                register.photoUri;
+                ];
 
               const number =
                 Number(
@@ -439,12 +516,16 @@ export function MeterReadingScreen() {
                 );
               }
 
+              /*
+               * We still validate against the previous saved
+               * reading internally, but don't show that value.
+               */
               if (
                 number <
                 register.previousValue
               ) {
                 throw new Error(
-                  `${register.code} cannot be lower than ${register.previousValue} ${register.unit}.`,
+                  `${register.code} cannot be lower than the last saved reading.`,
                 );
               }
 
@@ -479,7 +560,7 @@ export function MeterReadingScreen() {
 
         Alert.alert(
           'Reading saved',
-          'The meter reading and photos are stored in Dometra.',
+          'The new meter reading has been saved.',
           [
             {
               text:
@@ -508,6 +589,12 @@ export function MeterReadingScreen() {
       }
     };
 
+  /*
+   * ----------------------------------------------------------
+   * CAMERA SCREEN
+   * ----------------------------------------------------------
+   */
+
   if (
     cameraRegisterId
   ) {
@@ -532,6 +619,14 @@ export function MeterReadingScreen() {
             {t(
               'cameraPermission',
             )}
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Dometra needs camera access to photograph the meter.
           </Text>
 
           <PrimaryButton
@@ -583,8 +678,16 @@ export function MeterReadingScreen() {
               styles.cameraTitle
             }
           >
+            {meter.name}
+            {' • '}
             {
-              meter.name
+              meter.registers.find(
+                (
+                  register,
+                ) =>
+                  register.id ===
+                  cameraRegisterId,
+              )?.code
             }
           </Text>
 
@@ -614,6 +717,12 @@ export function MeterReadingScreen() {
     );
   }
 
+  /*
+   * ----------------------------------------------------------
+   * NEW READING FORM
+   * ----------------------------------------------------------
+   */
+
   return (
     <Screen>
       <Header
@@ -631,20 +740,12 @@ export function MeterReadingScreen() {
             draftValues[
               register.id
             ] ??
-            (
-              register.currentValue !==
-              undefined
-                ? String(
-                    register.currentValue,
-                  )
-                : ''
-            );
+            '';
 
           const photo =
             draftPhotos[
               register.id
-            ] ??
-            register.photoUri;
+            ];
 
           const current =
             Number(
@@ -665,6 +766,12 @@ export function MeterReadingScreen() {
             current >=
               register.previousValue;
 
+          const consumption =
+            valid
+              ? current -
+                register.previousValue
+              : 0;
+
           return (
             <Card
               key={
@@ -676,7 +783,11 @@ export function MeterReadingScreen() {
                   styles.rowBetween
                 }
               >
-                <View>
+                <View
+                  style={
+                    styles.flex
+                  }
+                >
                   <Text
                     style={
                       styles.title
@@ -688,21 +799,6 @@ export function MeterReadingScreen() {
                     {' — '}
                     {
                       register.name
-                    }
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.muted
-                    }
-                  >
-                    Previous:
-                    {' '}
-                    {
-                      register.previousValue
-                    }{' '}
-                    {
-                      register.unit
                     }
                   </Text>
                 </View>
@@ -721,6 +817,7 @@ export function MeterReadingScreen() {
                   style={
                     styles.photo
                   }
+                  resizeMode="cover"
                 />
               ) : (
                 <View
@@ -730,10 +827,18 @@ export function MeterReadingScreen() {
                 >
                   <Text
                     style={
+                      styles.emptyPhotoIcon
+                    }
+                  >
+                    ▧
+                  </Text>
+
+                  <Text
+                    style={
                       styles.emptyPhotoText
                     }
                   >
-                    No photo
+                    Add a new meter photo
                   </Text>
                 </View>
               )}
@@ -788,9 +893,9 @@ export function MeterReadingScreen() {
                 ) =>
                   setDraftValues(
                     (
-                      current,
+                      currentDrafts,
                     ) => ({
-                      ...current,
+                      ...currentDrafts,
 
                       [register.id]:
                         text,
@@ -801,23 +906,34 @@ export function MeterReadingScreen() {
                 editable={
                   !busy
                 }
+                placeholder="Enter reading"
               />
 
-              <Text
+              <View
                 style={
-                  styles.consumption
+                  styles.consumptionRow
                 }
               >
-                Consumption:{' '}
-                {valid
-                  ? `${(
-                      current -
-                      register.previousValue
-                    ).toFixed(
-                      2,
-                    )} ${register.unit}`
-                  : '—'}
-              </Text>
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  Consumption
+                </Text>
+
+                <Text
+                  style={
+                    styles.consumption
+                  }
+                >
+                  {valid
+                    ? `${consumption.toFixed(
+                        2,
+                      )} ${register.unit}`
+                    : '—'}
+                </Text>
+              </View>
             </Card>
           );
         },
@@ -826,7 +942,7 @@ export function MeterReadingScreen() {
       <PrimaryButton
         title={
           busy
-            ? 'Saving to Dometra...'
+            ? 'Saving...'
             : 'Save'
         }
         disabled={
@@ -881,6 +997,9 @@ const styles =
 
       marginTop:
         4,
+
+      lineHeight:
+        18,
     },
 
     fixedValue: {
@@ -894,6 +1013,9 @@ const styles =
         '800',
 
       marginTop:
+        spacing.sm,
+
+      marginBottom:
         spacing.sm,
     },
 
@@ -916,7 +1038,10 @@ const styles =
 
     emptyPhoto: {
       height:
-        140,
+        145,
+
+      marginVertical:
+        spacing.md,
 
       borderWidth:
         1,
@@ -936,13 +1061,27 @@ const styles =
       justifyContent:
         'center',
 
-      marginVertical:
-        spacing.md,
+      gap:
+        7,
+    },
+
+    emptyPhotoIcon: {
+      color:
+        colors.muted,
+
+      fontSize:
+        28,
     },
 
     emptyPhotoText: {
       color:
         colors.muted,
+
+      fontSize:
+        13,
+
+      fontWeight:
+        '600',
     },
 
     photoActions: {
@@ -951,17 +1090,34 @@ const styles =
 
       gap:
         spacing.sm,
+
+      marginBottom:
+        spacing.md,
+    },
+
+    consumptionRow: {
+      flexDirection:
+        'row',
+
+      justifyContent:
+        'space-between',
+
+      alignItems:
+        'center',
+
+      marginTop:
+        spacing.sm,
     },
 
     consumption: {
       color:
-        colors.muted,
+        colors.text,
+
+      fontWeight:
+        '700',
 
       fontSize:
         13,
-
-      marginTop:
-        spacing.sm,
     },
 
     center: {
@@ -996,7 +1152,7 @@ const styles =
 
     cameraTitle: {
       color:
-        '#fff',
+        '#FFFFFF',
 
       fontSize:
         18,
