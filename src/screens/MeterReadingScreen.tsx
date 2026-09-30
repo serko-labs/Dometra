@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -42,6 +43,16 @@ import {
 } from '../context/AppContext';
 
 import {
+  loadTenantMeterContext,
+  saveTenantMeterReadings,
+  TenantMeterContext,
+} from '../services/tenantPortalRepository';
+
+import {
+  Meter,
+} from '../types';
+
+import {
   colors,
   radius,
   spacing,
@@ -66,14 +77,52 @@ export function MeterReadingScreen() {
   } =
     useApp();
 
-  const meter =
+  const meterId =
+    route.params
+      ?.meterId as string;
+
+  const source =
+    route.params
+      ?.source as
+      | 'TENANT'
+      | undefined;
+
+  const tenantMode =
+    source ===
+      'TENANT' ||
+    state.settings.activeMode ===
+      'TENANT';
+
+  const landlordMeter =
     state.meters.find(
       (
         item,
       ) =>
         item.id ===
-        route.params?.meterId,
+        meterId,
     );
+
+  const [
+    tenantContext,
+    setTenantContext,
+  ] =
+    useState<
+      TenantMeterContext | null
+    >(null);
+
+  const [
+    loadingMeter,
+    setLoadingMeter,
+  ] =
+    useState(
+      tenantMode &&
+      !landlordMeter,
+    );
+
+  const meter:
+    Meter | undefined =
+    landlordMeter ??
+    tenantContext?.meter;
 
   const [
     cameraPermission,
@@ -95,12 +144,10 @@ export function MeterReadingScreen() {
     >(null);
 
   /*
-   * IMPORTANT:
+   * Every visit starts blank.
    *
-   * These are intentionally empty.
-   *
-   * Previous readings live in Supabase/history
-   * and are never prefilled into a new entry.
+   * Historical values stay in Supabase and
+   * are visible on Readings / History pages.
    */
   const [
     draftValues,
@@ -136,25 +183,131 @@ export function MeterReadingScreen() {
   ] =
     useState(false);
 
+  useEffect(
+    () => {
+      if (
+        !tenantMode ||
+        landlordMeter ||
+        !meterId
+      ) {
+        return;
+      }
+
+      let active =
+        true;
+
+      const load =
+        async () => {
+          setLoadingMeter(
+            true,
+          );
+
+          try {
+            const context =
+              await loadTenantMeterContext(
+                meterId,
+              );
+
+            if (
+              active
+            ) {
+              setTenantContext(
+                context,
+              );
+            }
+          } catch (
+            error
+          ) {
+            if (
+              active
+            ) {
+              Alert.alert(
+                'Meter',
+                error instanceof
+                Error
+                  ? error.message
+                  : 'Unable to load meter.',
+              );
+            }
+          } finally {
+            if (
+              active
+            ) {
+              setLoadingMeter(
+                false,
+              );
+            }
+          }
+        };
+
+      void load();
+
+      return () => {
+        active =
+          false;
+      };
+    },
+    [
+      tenantMode,
+      landlordMeter,
+      meterId,
+    ],
+  );
+
+  if (
+    loadingMeter
+  ) {
+    return (
+      <Screen>
+        <Header
+          title="Meter reading"
+          subtitle="Loading meter..."
+        />
+      </Screen>
+    );
+  }
+
   if (
     !meter
   ) {
     return (
       <Screen>
-        <Text>
-          Meter not found
-        </Text>
+        <Header
+          title="Meter reading"
+          subtitle="Meter not found"
+        />
+
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            This meter is not available for the current account.
+          </Text>
+        </Card>
       </Screen>
     );
   }
 
-  /*
-   * Go back to the EXISTING apartment route.
-   *
-   * Do not navigate() to a new copy of it.
-   */
-  const returnToProperty =
+  const returnAfterSave =
     () => {
+      if (
+        tenantMode
+      ) {
+        if (
+          navigation.canGoBack()
+        ) {
+          navigation.goBack();
+        } else {
+          navigation.navigate(
+            'Main',
+          );
+        }
+
+        return;
+      }
+
       navigation.popTo(
         'PropertyDetails',
 
@@ -211,8 +364,7 @@ export function MeterReadingScreen() {
               styles.muted
             }
           >
-            This service has a fixed monthly value.
-            No reading is required.
+            No meter reading is required for this service.
           </Text>
         </Card>
       </Screen>
@@ -229,6 +381,39 @@ export function MeterReadingScreen() {
     meter.billingMode ===
     'VARIABLE'
   ) {
+    if (
+      tenantMode
+    ) {
+      return (
+        <Screen>
+          <Header
+            title={
+              meter.name
+            }
+            subtitle="Variable service"
+          />
+
+          <Card>
+            <Text
+              style={
+                styles.title
+              }
+            >
+              Landlord-managed service
+            </Text>
+
+            <Text
+              style={
+                styles.muted
+              }
+            >
+              Variable service charges are currently entered by the landlord.
+            </Text>
+          </Card>
+        </Screen>
+      );
+    }
+
     const amount =
       Number(
         variableAmount.replace(
@@ -272,7 +457,7 @@ export function MeterReadingScreen() {
                   'OK',
 
                 onPress:
-                  returnToProperty,
+                  returnAfterSave,
               },
             ],
           );
@@ -281,7 +466,6 @@ export function MeterReadingScreen() {
         ) {
           Alert.alert(
             'Unable to save',
-
             error instanceof
             Error
               ? error.message
@@ -304,15 +488,6 @@ export function MeterReadingScreen() {
         />
 
         <Card>
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            Enter a value for the current billing period.
-            Previous values are available in apartment history.
-          </Text>
-
           <Field
             label={`Amount (${meter.billingCurrency ?? 'UAH'})`}
             value={
@@ -322,10 +497,10 @@ export function MeterReadingScreen() {
               setVariableAmount
             }
             keyboardType="decimal-pad"
+            placeholder="0"
             editable={
               !busy
             }
-            placeholder="0"
           />
 
           <PrimaryButton
@@ -453,21 +628,19 @@ export function MeterReadingScreen() {
       } catch (
         error
       ) {
-        console.error(
-          '[Dometra] Gallery selection failed:',
-          error,
-        );
-
         Alert.alert(
           'Dometra',
-          'Unable to select photo.',
+          error instanceof
+          Error
+            ? error.message
+            : 'Unable to select photo.',
         );
       }
     };
 
   /*
    * ----------------------------------------------------------
-   * SAVE ALL REGISTERS
+   * SAVE
    * ----------------------------------------------------------
    */
 
@@ -479,11 +652,6 @@ export function MeterReadingScreen() {
             (
               register,
             ) => {
-              /*
-               * NEVER fallback to register.currentValue.
-               *
-               * New form = new blank entry.
-               */
               const value =
                 draftValues[
                   register.id
@@ -516,16 +684,12 @@ export function MeterReadingScreen() {
                 );
               }
 
-              /*
-               * We still validate against the previous saved
-               * reading internally, but don't show that value.
-               */
               if (
                 number <
                 register.previousValue
               ) {
                 throw new Error(
-                  `${register.code} cannot be lower than the last saved reading.`,
+                  `${register.code} cannot be lower than the last valid reading.`,
                 );
               }
 
@@ -533,7 +697,7 @@ export function MeterReadingScreen() {
                 !photoUri
               ) {
                 throw new Error(
-                  `Add a photo for ${register.code}.`,
+                  `Add a new photo for ${register.code}.`,
                 );
               }
 
@@ -553,21 +717,40 @@ export function MeterReadingScreen() {
           true,
         );
 
-        await saveMeterReadings(
-          meter.id,
-          readings,
-        );
+        if (
+          tenantMode
+        ) {
+          if (
+            !tenantContext
+          ) {
+            throw new Error(
+              'Tenant meter context is not available.',
+            );
+          }
+
+          await saveTenantMeterReadings(
+            tenantContext,
+            readings,
+          );
+        } else {
+          await saveMeterReadings(
+            meter.id,
+            readings,
+          );
+        }
 
         Alert.alert(
           'Reading saved',
-          'The new meter reading has been saved.',
+          tenantMode
+            ? 'Your meter reading has been sent successfully.'
+            : 'The new meter reading has been saved.',
           [
             {
               text:
                 'OK',
 
               onPress:
-                returnToProperty,
+                returnAfterSave,
             },
           ],
         );
@@ -576,7 +759,6 @@ export function MeterReadingScreen() {
       ) {
         Alert.alert(
           'Unable to save reading',
-
           error instanceof
           Error
             ? error.message
@@ -719,7 +901,7 @@ export function MeterReadingScreen() {
 
   /*
    * ----------------------------------------------------------
-   * NEW READING FORM
+   * NEW READING
    * ----------------------------------------------------------
    */
 
@@ -728,9 +910,19 @@ export function MeterReadingScreen() {
       <Header
         title="Meter reading"
         subtitle={
+          tenantContext
+            ?.propertyName ??
           meter.name
         }
       />
+
+      <Text
+        style={
+          styles.meterTitle
+        }
+      >
+        {meter.name}
+      </Text>
 
       {meter.registers.map(
         (
@@ -893,9 +1085,9 @@ export function MeterReadingScreen() {
                 ) =>
                   setDraftValues(
                     (
-                      currentDrafts,
+                      current,
                     ) => ({
-                      ...currentDrafts,
+                      ...current,
 
                       [register.id]:
                         text,
@@ -903,10 +1095,10 @@ export function MeterReadingScreen() {
                   )
                 }
                 keyboardType="decimal-pad"
+                placeholder="Enter reading"
                 editable={
                   !busy
                 }
-                placeholder="Enter reading"
               />
 
               <View
@@ -963,6 +1155,17 @@ const styles =
         1,
     },
 
+    meterTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        18,
+
+      fontWeight:
+        '800',
+    },
+
     rowBetween: {
       flexDirection:
         'row',
@@ -995,11 +1198,11 @@ const styles =
       fontSize:
         12,
 
-      marginTop:
-        4,
-
       lineHeight:
         18,
+
+      marginTop:
+        4,
     },
 
     fixedValue: {

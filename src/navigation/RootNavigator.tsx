@@ -31,7 +31,6 @@ import {
 } from '../theme';
 
 import {
-  PrimaryButton,
   Screen,
 } from '../components/ui';
 
@@ -64,10 +63,6 @@ import {
 } from '../screens/ReadingsScreen';
 
 import {
-  InvoicesScreen,
-} from '../screens/InvoicesScreen';
-
-import {
   PropertyDetailsScreen,
 } from '../screens/PropertyDetailsScreen';
 
@@ -95,27 +90,67 @@ import {
   LanguageScreen,
 } from '../screens/LanguageScreen';
 
-const AuthStack =
-  createNativeStackNavigator();
+import {
+  AddTenantMethodScreen,
+} from '../screens/AddTenantMethodScreen';
 
-const MainStack =
+import {
+  TenantProfileScreen,
+} from '../screens/TenantProfileScreen';
+
+import {
+  TenancyTermsScreen,
+} from '../screens/TenancyTermsScreen';
+
+import {
+  InviteTenantScreen,
+} from '../screens/InviteTenantScreen';
+
+import {
+  TenantInvitationScreen,
+} from '../screens/TenantInvitationScreen';
+
+const Stack =
   createNativeStackNavigator();
 
 const Tab =
   createBottomTabNavigator();
 
-const icons: Record<
-  string,
-  string
-> = {
-  Dashboard: '⌂',
-  Properties: '▦',
-  Payments: '$',
-  Settings: '⚙',
+const icons:
+  Record<
+    string,
+    string
+  > = {
+  Dashboard:
+    '⌂',
 
-  Home: '⌂',
-  Readings: '⌁',
-  Invoices: '≣',
+  Properties:
+    '▦',
+
+  Payments:
+    '$',
+
+  Settings:
+    '⚙',
+
+  Home:
+    '⌂',
+
+  Readings:
+    '⌁',
+};
+
+const linking = {
+  prefixes: [
+    'dometra://',
+  ],
+
+  config: {
+    screens: {
+      TenantInvitation:
+        'invite/:token',
+    },
+  },
 };
 
 function TabIcon({
@@ -128,21 +163,21 @@ function TabIcon({
   return (
     <Text
       style={{
-        fontSize: 20,
+        fontSize:
+          20,
 
-        opacity: focused
-          ? 1
-          : 0.45,
+        opacity:
+          focused
+            ? 1
+            : 0.45,
       }}
     >
-      {icons[routeName] ?? '•'}
+      {icons[
+        routeName
+      ] ?? '•'}
     </Text>
   );
 }
-
-/*
- * LANDLORD
- */
 
 function LandlordTabs() {
   const {
@@ -152,9 +187,11 @@ function LandlordTabs() {
 
   return (
     <Tab.Navigator
-      screenOptions={({
-        route,
-      }) => ({
+      screenOptions={(
+        {
+          route,
+        },
+      ) => ({
         headerShown:
           false,
 
@@ -236,10 +273,6 @@ function LandlordTabs() {
   );
 }
 
-/*
- * TENANT
- */
-
 function TenantTabs() {
   const {
     t,
@@ -248,9 +281,11 @@ function TenantTabs() {
 
   return (
     <Tab.Navigator
-      screenOptions={({
-        route,
-      }) => ({
+      screenOptions={(
+        {
+          route,
+        },
+      ) => ({
         headerShown:
           false,
 
@@ -284,7 +319,9 @@ function TenantTabs() {
         }
         options={{
           title:
-            t('home'),
+            t(
+              'home',
+            ),
         }}
       />
 
@@ -297,19 +334,6 @@ function TenantTabs() {
           title:
             t(
               'readings',
-            ),
-        }}
-      />
-
-      <Tab.Screen
-        name="Invoices"
-        component={
-          InvoicesScreen
-        }
-        options={{
-          title:
-            t(
-              'invoices',
             ),
         }}
       />
@@ -330,200 +354,25 @@ function TenantTabs() {
   );
 }
 
-/*
- * Select landlord/tenant mode.
- */
-
 function MainTabs() {
   const {
     state,
   } =
     useApp();
 
-  if (
-    state.settings
-      .activeMode ===
-    'TENANT'
-  ) {
-    return (
-      <TenantTabs />
-    );
-  }
-
-  return (
-    <LandlordTabs />
-  );
+  return state.settings.activeMode ===
+    'LANDLORD'
+    ? <LandlordTabs />
+    : <TenantTabs />;
 }
-
-/*
- * Unauthenticated navigation.
- *
- * This navigator exists ONLY
- * when session === null.
- */
-
-function AuthNavigator() {
-  return (
-    <NavigationContainer
-      key="auth-navigation"
-    >
-      <AuthStack.Navigator>
-        <AuthStack.Screen
-          name="Auth"
-          component={
-            AuthScreen
-          }
-          options={{
-            headerShown:
-              false,
-          }}
-        />
-      </AuthStack.Navigator>
-    </NavigationContainer>
-  );
-}
-
-/*
- * Authenticated navigation.
- *
- * AuthScreen does not exist anywhere
- * in this navigation tree.
- */
-
-function AuthenticatedNavigator() {
-  return (
-    <NavigationContainer
-      key="main-navigation"
-    >
-      <MainStack.Navigator
-        initialRouteName="Main"
-        screenOptions={{
-          headerShadowVisible:
-            false,
-
-          headerBackTitle:
-            'Back',
-        }}
-      >
-        <MainStack.Screen
-          name="Main"
-          component={
-            MainTabs
-          }
-          options={{
-            headerShown:
-              false,
-          }}
-        />
-
-        <MainStack.Screen
-          name="PropertyDetails"
-          component={
-            PropertyDetailsScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="AddProperty"
-          component={
-            AddPropertyScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="AddMeter"
-          component={
-            AddMeterScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="MeterReading"
-          component={
-            MeterReadingScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="InvoiceDetails"
-          component={
-            InvoiceDetailsScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="AddPayment"
-          component={
-            AddPaymentScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-
-        <MainStack.Screen
-          name="Language"
-          component={
-            LanguageScreen
-          }
-          options={{
-            title: '',
-          }}
-        />
-      </MainStack.Navigator>
-    </NavigationContainer>
-  );
-}
-
-/*
- * ROOT
- */
 
 export function RootNavigator() {
   const {
     hydrated,
     session,
     authStatus,
-    authError,
-    refreshAuth,
   } =
     useApp();
-
-  console.log(
-    '[Dometra Navigation]',
-    {
-      hydrated,
-      authStatus,
-      hasSession:
-        Boolean(session),
-      email:
-        session?.user.email ??
-        null,
-    },
-  );
-
-  /*
-   * Initial app startup.
-   *
-   * We do NOT show login until
-   * Supabase has checked whether
-   * a stored session exists.
-   */
 
   if (
     !hydrated ||
@@ -532,7 +381,9 @@ export function RootNavigator() {
   ) {
     return (
       <Screen
-        scroll={false}
+        scroll={
+          false
+        }
         style={
           styles.loader
         }
@@ -543,154 +394,198 @@ export function RootNavigator() {
             colors.primary
           }
         />
-
-        <Text
-          style={
-            styles.loadingText
-          }
-        >
-          Connecting to
-          Dometra...
-        </Text>
       </Screen>
     );
   }
-
-  /*
-   * Supabase configuration missing.
-   *
-   * Dometra must NOT work without
-   * Supabase.
-   */
-
-  if (
-    authStatus ===
-    'configuration-error'
-  ) {
-    return (
-      <Screen
-        scroll={false}
-        style={
-          styles.blocker
-        }
-      >
-        <Text
-          style={
-            styles.errorTitle
-          }
-        >
-          Configuration error
-        </Text>
-
-        <Text
-          style={
-            styles.errorText
-          }
-        >
-          Supabase is not
-          configured. Dometra
-          cannot be used without
-          Supabase.
-        </Text>
-
-        {authError ? (
-          <Text
-            style={
-              styles.errorTechnical
-            }
-          >
-            {authError}
-          </Text>
-        ) : null}
-      </Screen>
-    );
-  }
-
-  /*
-   * Network/session validation failed.
-   */
-
-  if (
-    authStatus ===
-    'connection-error'
-  ) {
-    return (
-      <Screen
-        scroll={false}
-        style={
-          styles.blocker
-        }
-      >
-        <Text
-          style={
-            styles.errorTitle
-          }
-        >
-          Unable to connect
-        </Text>
-
-        <Text
-          style={
-            styles.errorText
-          }
-        >
-          Dometra could not
-          connect to Supabase.
-        </Text>
-
-        {authError ? (
-          <Text
-            style={
-              styles.errorTechnical
-            }
-          >
-            {authError}
-          </Text>
-        ) : null}
-
-        <PrimaryButton
-          title="Try again"
-          onPress={() => {
-            void refreshAuth();
-          }}
-        />
-      </Screen>
-    );
-  }
-
-  /*
-   * NO SESSION
-   *
-   * Only Login / Register exists.
-   */
-
-  if (!session) {
-    return (
-      <AuthNavigator />
-    );
-  }
-
-  /*
-   * REAL SUPABASE SESSION
-   *
-   * Auth navigator is now completely
-   * unmounted and Main navigator
-   * starts from Main.
-   */
 
   return (
-    <AuthenticatedNavigator />
+    <NavigationContainer
+      linking={
+        linking
+      }
+    >
+      <Stack.Navigator
+        screenOptions={{
+          headerShadowVisible:
+            false,
+
+          headerBackTitle:
+            'Back',
+        }}
+      >
+        {!session ? (
+          <Stack.Screen
+            name="Auth"
+            component={
+              AuthScreen
+            }
+            options={{
+              headerShown:
+                false,
+            }}
+          />
+        ) : (
+          <>
+            <Stack.Screen
+              name="Main"
+              component={
+                MainTabs
+              }
+              options={{
+                headerShown:
+                  false,
+              }}
+            />
+
+            <Stack.Screen
+              name="PropertyDetails"
+              component={
+                PropertyDetailsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="AddProperty"
+              component={
+                AddPropertyScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="AddMeter"
+              component={
+                AddMeterScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="MeterReading"
+              component={
+                MeterReadingScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="AddTenantMethod"
+              component={
+                AddTenantMethodScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="TenantProfile"
+              component={
+                TenantProfileScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="TenancyTerms"
+              component={
+                TenancyTermsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="InviteTenant"
+              component={
+                InviteTenantScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="InvoiceDetails"
+              component={
+                InvoiceDetailsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="AddPayment"
+              component={
+                AddPaymentScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="Language"
+              component={
+                LanguageScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+          </>
+        )}
+
+        <Stack.Screen
+          name="TenantInvitation"
+          component={
+            TenantInvitationScreen
+          }
+          options={{
+            title:
+              '',
+          }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
 const styles =
   StyleSheet.create({
     tabBar: {
-      height: 66,
+      height:
+        66,
 
-      paddingTop: 7,
+      paddingTop:
+        7,
 
-      paddingBottom: 8,
+      paddingBottom:
+        8,
 
       borderTopColor:
         colors.border,
@@ -701,62 +596,6 @@ const styles =
         'center',
 
       alignItems:
-        'center',
-
-      gap: 14,
-    },
-
-    loadingText: {
-      color:
-        colors.muted,
-
-      fontSize: 14,
-
-      textAlign:
-        'center',
-    },
-
-    blocker: {
-      justifyContent:
-        'center',
-
-      gap: 18,
-    },
-
-    errorTitle: {
-      color:
-        colors.text,
-
-      fontSize: 28,
-
-      fontWeight:
-        '800',
-
-      textAlign:
-        'center',
-    },
-
-    errorText: {
-      color:
-        colors.muted,
-
-      fontSize: 16,
-
-      lineHeight: 23,
-
-      textAlign:
-        'center',
-    },
-
-    errorTechnical: {
-      color:
-        colors.muted,
-
-      fontSize: 12,
-
-      lineHeight: 18,
-
-      textAlign:
         'center',
     },
   });

@@ -4,6 +4,7 @@ import {
 
 export type PropertyHistoryCategory =
   | 'PROPERTY'
+  | 'TENANT'
   | 'METER'
   | 'READING'
   | 'SERVICE'
@@ -65,18 +66,25 @@ interface AuditRow {
     string;
 }
 
+function dataFor(
+  row:
+    AuditRow,
+) {
+  return (
+    row.after_data ??
+    row.before_data ??
+    {}
+  );
+}
+
 function stringValue(
   value:
     unknown,
 ) {
-  if (
-    typeof value ===
+  return typeof value ===
     'string'
-  ) {
-    return value;
-  }
-
-  return undefined;
+    ? value
+    : undefined;
 }
 
 function numberValue(
@@ -97,168 +105,26 @@ function numberValue(
     const parsed =
       Number(value);
 
-    if (
-      Number.isFinite(
-        parsed,
-      )
-    ) {
-      return parsed;
-    }
+    return Number.isFinite(
+      parsed,
+    )
+      ? parsed
+      : undefined;
   }
 
   return undefined;
 }
 
-function getData(
+function base(
   row:
     AuditRow,
-) {
-  return (
-    row.after_data ??
-    row.before_data ??
-    {}
-  );
-}
-
-function describeProperty(
-  row:
-    AuditRow,
+  title:
+    string,
+  category:
+    PropertyHistoryCategory,
+  details?:
+    string,
 ): PropertyHistoryItem {
-  const data =
-    getData(
-      row,
-    );
-
-  const name =
-    stringValue(
-      data.title,
-    ) ??
-    'Apartment';
-
-  const status =
-    stringValue(
-      data.status,
-    );
-
-  if (
-    row.action ===
-      'UPDATE' &&
-    status ===
-      'ARCHIVED'
-  ) {
-    return {
-      id:
-        String(
-          row.id,
-        ),
-
-      title:
-        'Apartment removed',
-
-      details:
-        name,
-
-      timestamp:
-        row.created_at,
-
-      action:
-        row.action,
-
-      category:
-        'PROPERTY',
-
-      userId:
-        row.user_id ??
-        undefined,
-
-      sessionId:
-        row.session_id ??
-        undefined,
-    };
-  }
-
-  return {
-    id:
-      String(
-        row.id,
-      ),
-
-    title:
-      row.action ===
-      'CREATE'
-        ? 'Apartment added'
-        : 'Apartment updated',
-
-    details:
-      name,
-
-    timestamp:
-      row.created_at,
-
-    action:
-      row.action,
-
-    category:
-      'PROPERTY',
-
-    userId:
-      row.user_id ??
-      undefined,
-
-    sessionId:
-      row.session_id ??
-      undefined,
-  };
-}
-
-function describeService(
-  row:
-    AuditRow,
-): PropertyHistoryItem {
-  const data =
-    getData(
-      row,
-    );
-
-  const customName =
-    stringValue(
-      data.custom_name,
-    );
-
-  const serviceCode =
-    stringValue(
-      data.service_code,
-    );
-
-  const active =
-    data.is_active;
-
-  const name =
-    customName ??
-    serviceCode ??
-    'Meter / service';
-
-  let title =
-    'Meter / service updated';
-
-  if (
-    row.action ===
-    'CREATE'
-  ) {
-    title =
-      'Meter / service added';
-  }
-
-  if (
-    row.action ===
-      'DELETE' ||
-    active ===
-      false
-  ) {
-    title =
-      'Meter / service removed';
-  }
-
   return {
     id:
       String(
@@ -267,8 +133,7 @@ function describeService(
 
     title,
 
-    details:
-      name,
+    details,
 
     timestamp:
       row.created_at,
@@ -276,8 +141,7 @@ function describeService(
     action:
       row.action,
 
-    category:
-      'METER',
+    category,
 
     userId:
       row.user_id ??
@@ -289,297 +153,332 @@ function describeService(
   };
 }
 
-function describeReading(
+function describe(
   row:
     AuditRow,
 ): PropertyHistoryItem {
   const data =
-    getData(
-      row,
-    );
+    dataFor(row);
 
-  const readingDate =
-    stringValue(
-      data.reading_date,
-    );
-
-  const period =
-    stringValue(
-      data.billing_period,
-    );
-
-  return {
-    id:
-      String(
-        row.id,
-      ),
-
-    title:
-      'Meter reading saved',
-
-    details:
-      readingDate ??
-      period ??
-      undefined,
-
-    timestamp:
-      row.created_at,
-
-    action:
-      row.action,
-
-    category:
-      'READING',
-
-    userId:
-      row.user_id ??
-      undefined,
-
-    sessionId:
-      row.session_id ??
-      undefined,
-  };
-}
-
-function describeServiceValue(
-  row:
-    AuditRow,
-): PropertyHistoryItem {
-  const data =
-    getData(
-      row,
-    );
-
-  const amount =
-    numberValue(
-      data.amount,
-    );
-
-  const currency =
-    stringValue(
-      data.currency_code,
-    );
-
-  return {
-    id:
-      String(
-        row.id,
-      ),
-
-    title:
-      'Service value saved',
-
-    details:
-      amount !==
-      undefined
-        ? `${amount} ${currency ?? ''}`.trim()
-        : undefined,
-
-    timestamp:
-      row.created_at,
-
-    action:
-      row.action,
-
-    category:
-      'SERVICE',
-
-    userId:
-      row.user_id ??
-      undefined,
-
-    sessionId:
-      row.session_id ??
-      undefined,
-  };
-}
-
-function describeInvoice(
-  row:
-    AuditRow,
-): PropertyHistoryItem {
-  const data =
-    getData(
-      row,
-    );
-
-  const period =
-    stringValue(
-      data.period,
-    );
-
-  return {
-    id:
-      String(
-        row.id,
-      ),
-
-    title:
-      row.action ===
-      'CREATE'
-        ? 'Invoice created'
-        : row.action ===
-            'DELETE'
-          ? 'Invoice removed'
-          : 'Invoice updated',
-
-    details:
-      period,
-
-    timestamp:
-      row.created_at,
-
-    action:
-      row.action,
-
-    category:
-      'INVOICE',
-
-    userId:
-      row.user_id ??
-      undefined,
-
-    sessionId:
-      row.session_id ??
-      undefined,
-  };
-}
-
-function describePayment(
-  row:
-    AuditRow,
-): PropertyHistoryItem {
-  const data =
-    getData(
-      row,
-    );
-
-  const amount =
-    numberValue(
-      data.amount,
-    );
-
-  const currency =
-    stringValue(
-      data.currency_code ??
-      data.currency,
-    );
-
-  return {
-    id:
-      String(
-        row.id,
-      ),
-
-    title:
-      row.action ===
-      'CREATE'
-        ? 'Rental payment received'
-        : row.action ===
-            'DELETE'
-          ? 'Rental payment removed'
-          : 'Rental payment updated',
-
-    details:
-      amount !==
-      undefined
-        ? `${amount} ${currency ?? ''}`.trim()
-        : undefined,
-
-    timestamp:
-      row.created_at,
-
-    action:
-      row.action,
-
-    category:
-      'PAYMENT',
-
-    userId:
-      row.user_id ??
-      undefined,
-
-    sessionId:
-      row.session_id ??
-      undefined,
-  };
-}
-
-function mapAuditRow(
-  row:
-    AuditRow,
-): PropertyHistoryItem {
   switch (
     row.table_name
   ) {
-    case 'properties':
-      return describeProperty(
+    case 'properties': {
+      const title =
+        stringValue(
+          data.title,
+        ) ??
+        'Apartment';
+
+      const status =
+        stringValue(
+          data.status,
+        );
+
+      if (
+        status ===
+          'ARCHIVED'
+      ) {
+        return base(
+          row,
+          'Apartment removed',
+          'PROPERTY',
+          title,
+        );
+      }
+
+      return base(
         row,
+        row.action ===
+          'CREATE'
+          ? 'Apartment added'
+          : 'Apartment updated',
+        'PROPERTY',
+        title,
+      );
+    }
+
+    case 'manual_tenant_contacts': {
+      const firstName =
+        stringValue(
+          data.first_name,
+        ) ?? '';
+
+      const lastName =
+        stringValue(
+          data.last_name,
+        ) ?? '';
+
+      const name =
+        `${firstName} ${lastName}`
+          .trim();
+
+      return base(
+        row,
+        row.action ===
+          'CREATE'
+          ? 'Manual tenant added'
+          : row.action ===
+              'DELETE'
+            ? 'Manual tenant removed'
+            : 'Tenant information updated',
+        'TENANT',
+        name || undefined,
+      );
+    }
+
+    case 'tenant_profiles':
+      return base(
+        row,
+        'Tenant profile updated',
+        'TENANT',
       );
 
-    case 'property_services':
-      return describeService(
+    case 'tenancies': {
+      const status =
+        stringValue(
+          data.status,
+        );
+
+      let title =
+        'Tenancy updated';
+
+      if (
+        row.action ===
+          'CREATE'
+      ) {
+        title =
+          status ===
+            'ACTIVE'
+            ? 'Tenancy started'
+            : 'Tenancy created';
+      } else if (
+        status ===
+          'ACTIVE'
+      ) {
+        title =
+          'Tenancy activated';
+      } else if (
+        status ===
+          'ENDED'
+      ) {
+        title =
+          'Tenancy ended';
+      } else if (
+        status ===
+          'CANCELLED'
+      ) {
+        title =
+          'Tenancy cancelled';
+      }
+
+      return base(
         row,
+        title,
+        'TENANT',
+        stringValue(
+          data.start_date,
+        ),
       );
+    }
+
+    case 'tenancy_members':
+      return base(
+        row,
+        row.action ===
+          'CREATE'
+          ? 'Tenant joined Dometra'
+          : 'Tenant membership updated',
+        'TENANT',
+      );
+
+    case 'tenancy_invitations': {
+      const status =
+        stringValue(
+          data.status,
+        );
+
+      let title =
+        'Tenant invitation updated';
+
+      if (
+        row.action ===
+          'CREATE'
+      ) {
+        title =
+          'Tenant invitation created';
+      } else if (
+        status ===
+          'ACCEPTED'
+      ) {
+        title =
+          'Tenant invitation accepted';
+      } else if (
+        status ===
+          'REVOKED'
+      ) {
+        title =
+          'Tenant invitation revoked';
+      } else if (
+        status ===
+          'EXPIRED'
+      ) {
+        title =
+          'Tenant invitation expired';
+      }
+
+      return base(
+        row,
+        title,
+        'TENANT',
+      );
+    }
+
+    case 'rent_terms': {
+      const amount =
+        numberValue(
+          data.rent_amount,
+        );
+
+      const currency =
+        stringValue(
+          data.currency_code,
+        );
+
+      return base(
+        row,
+        row.action ===
+          'CREATE'
+          ? 'Rental terms added'
+          : 'Rental terms updated',
+        'TENANT',
+        amount !== undefined
+          ? `${amount} ${currency ?? ''} / month`.trim()
+          : undefined,
+      );
+    }
+
+    case 'property_services': {
+      const name =
+        stringValue(
+          data.custom_name,
+        ) ??
+        stringValue(
+          data.service_code,
+        ) ??
+        'Meter / service';
+
+      const active =
+        data.is_active;
+
+      return base(
+        row,
+        active === false ||
+        row.action ===
+          'DELETE'
+          ? 'Meter / service removed'
+          : row.action ===
+              'CREATE'
+            ? 'Meter / service added'
+            : 'Meter / service updated',
+        'METER',
+        name,
+      );
+    }
 
     case 'meter_reading_sessions':
-      return describeReading(
+      return base(
         row,
+        'Meter reading saved',
+        'READING',
+        stringValue(
+          data.reading_date,
+        ) ??
+        stringValue(
+          data.billing_period,
+        ),
       );
 
-    case 'service_period_values':
-      return describeServiceValue(
+    case 'service_period_values': {
+      const amount =
+        numberValue(
+          data.amount,
+        );
+
+      const currency =
+        stringValue(
+          data.currency_code,
+        );
+
+      return base(
         row,
+        'Service value saved',
+        'SERVICE',
+        amount !== undefined
+          ? `${amount} ${currency ?? ''}`.trim()
+          : undefined,
       );
+    }
 
     case 'invoices':
-      return describeInvoice(
+      return base(
         row,
+        row.action ===
+          'CREATE'
+          ? 'Invoice created'
+          : row.action ===
+              'DELETE'
+            ? 'Invoice removed'
+            : 'Invoice updated',
+        'INVOICE',
+        stringValue(
+          data.period,
+        ),
       );
 
-    case 'payments':
-      return describePayment(
+    case 'payments': {
+      const amount =
+        numberValue(
+          data.amount,
+        );
+
+      const currency =
+        stringValue(
+          data.currency_code,
+        ) ??
+        stringValue(
+          data.currency,
+        );
+
+      return base(
         row,
+        row.action ===
+          'CREATE'
+          ? 'Rental payment received'
+          : row.action ===
+              'DELETE'
+            ? 'Rental payment removed'
+            : 'Rental payment updated',
+        'PAYMENT',
+        amount !== undefined
+          ? `${amount} ${currency ?? ''}`.trim()
+          : undefined,
       );
+    }
 
     default:
-      return {
-        id:
-          String(
-            row.id,
-          ),
-
-        title:
-          'Apartment activity',
-
-        details:
-          row.table_name,
-
-        timestamp:
-          row.created_at,
-
-        action:
-          row.action,
-
-        category:
-          'OTHER',
-
-        userId:
-          row.user_id ??
-          undefined,
-
-        sessionId:
-          row.session_id ??
-          undefined,
-      };
+      return base(
+        row,
+        'Apartment activity',
+        'OTHER',
+        row.table_name,
+      );
   }
 }
 
 export async function loadPropertyHistory(
-  propertyId:
-    string,
-
-  limit = 30,
+  propertyId: string,
+  limit = 40,
 ): Promise<
   PropertyHistoryItem[]
 > {
@@ -591,24 +490,17 @@ export async function loadPropertyHistory(
     );
   }
 
-  /*
-   * Keep the timeline human-readable.
-   *
-   * Internal rows such as register tariff
-   * updates and photo metadata are deliberately
-   * hidden from the apartment timeline.
-   */
-  const tables = [
+  const visibleTables = [
     'properties',
+    'manual_tenant_contacts',
+    'tenant_profiles',
+    'tenancies',
+    'tenancy_members',
+    'tenancy_invitations',
+    'rent_terms',
     'property_services',
     'meter_reading_sessions',
     'service_period_values',
-
-    /*
-     * These will automatically start appearing
-     * when invoices/payments are moved to
-     * Supabase and receive audit triggers.
-     */
     'invoices',
     'payments',
   ];
@@ -632,9 +524,7 @@ export async function loadPropertyHistory(
           'before_data',
           'after_data',
           'created_at',
-        ].join(
-          ',',
-        ),
+        ].join(','),
       )
       .eq(
         'property_id',
@@ -642,7 +532,7 @@ export async function loadPropertyHistory(
       )
       .in(
         'table_name',
-        tables,
+        visibleTables,
       )
       .order(
         'created_at',
@@ -651,9 +541,7 @@ export async function loadPropertyHistory(
             false,
         },
       )
-      .limit(
-        limit,
-      );
+      .limit(limit);
 
   if (
     error
@@ -666,7 +554,5 @@ export async function loadPropertyHistory(
       data ??
       []
     ) as AuditRow[]
-  ).map(
-    mapAuditRow,
-  );
+  ).map(describe);
 }

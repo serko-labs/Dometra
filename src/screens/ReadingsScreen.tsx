@@ -1,43 +1,581 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useTranslation } from 'react-i18next';
-import { Badge, Card, Header, Screen } from '../components/ui';
-import { useApp } from '../context/AppContext';
-import { colors, spacing } from '../theme';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
+
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import {
+  useFocusEffect,
+  useNavigation,
+} from '@react-navigation/native';
+
+import {
+  Badge,
+  Card,
+  Header,
+  Screen,
+  SecondaryButton,
+  SectionTitle,
+} from '../components/ui';
+
+import {
+  loadTenantApartments,
+  TenantApartmentPortal,
+} from '../services/tenantPortalRepository';
+
+import {
+  Meter,
+} from '../types';
+
+import {
+  colors,
+  spacing,
+} from '../theme';
+
+function formatDate(
+  value?: string,
+) {
+  if (
+    !value
+  ) {
+    return '';
+  }
+
+  const date =
+    new Date(
+      `${value}T00:00:00`,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      year:
+        'numeric',
+    },
+  );
+}
+
+function lastReadingText(
+  meter:
+    Meter,
+) {
+  const values =
+    meter.registers
+      .filter(
+        (
+          register,
+        ) =>
+          register.lastValue !==
+          undefined,
+      )
+      .map(
+        (
+          register,
+        ) =>
+          meter.registers.length >
+          1
+            ? `${register.code}: ${register.lastValue} ${register.unit}`
+            : `${register.lastValue} ${register.unit}`,
+      );
+
+  return values.join(
+    ' • ',
+  );
+}
+
+function lastReadingDate(
+  meter:
+    Meter,
+) {
+  const dates =
+    meter.registers
+      .map(
+        (
+          register,
+        ) =>
+          register.lastReadingAt,
+      )
+      .filter(
+        (
+          value,
+        ): value is string =>
+          Boolean(value),
+      );
+
+  if (
+    dates.length ===
+    0
+  ) {
+    return undefined;
+  }
+
+  return dates.sort()
+    .reverse()[0];
+}
 
 export function ReadingsScreen() {
-  const { t } = useTranslation();
-  const navigation = useNavigation<any>();
-  const { state } = useApp();
-  const rentedProperty = state.properties.find((property) => property.tenantName);
-  const meters = state.meters.filter((meter) => meter.propertyId === rentedProperty?.id);
+  const navigation =
+    useNavigation<any>();
+
+  const [
+    apartments,
+    setApartments,
+  ] =
+    useState<
+      TenantApartmentPortal[]
+    >([]);
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        let active =
+          true;
+
+        const load =
+          async () => {
+            setLoading(
+              true,
+            );
+
+            try {
+              const data =
+                await loadTenantApartments();
+
+              if (
+                active
+              ) {
+                setApartments(
+                  data,
+                );
+              }
+            } catch (
+              error
+            ) {
+              if (
+                active
+              ) {
+                Alert.alert(
+                  'Readings',
+                  error instanceof
+                  Error
+                    ? error.message
+                    : 'Unable to load meters.',
+                );
+              }
+            } finally {
+              if (
+                active
+              ) {
+                setLoading(
+                  false,
+                );
+              }
+            }
+          };
+
+        void load();
+
+        return () => {
+          active =
+            false;
+        };
+      },
+      [],
+    ),
+  );
+
+  const openReading =
+    (
+      meterId:
+        string,
+    ) => {
+      navigation
+        .getParent()
+        ?.navigate(
+          'MeterReading',
+          {
+            meterId,
+
+            source:
+              'TENANT',
+          },
+        );
+    };
+
   return (
     <Screen>
-      <Header title={t('readings')} subtitle={rentedProperty?.name} />
-      {meters.map((meter) => {
-        const done = meter.registers.filter((register) => register.currentValue !== undefined).length;
-        return (
-          <Pressable key={meter.id} onPress={() => navigation.navigate('MeterReading', { meterId: meter.id })}>
-            <Card>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Text style={styles.title}>{meter.name}</Text>
-                  <Text style={styles.muted}>{meter.registers.map((register) => register.code).join(' + ')} • {done}/{meter.registers.length}</Text>
-                </View>
-                <Badge text={done === meter.registers.length ? 'Done' : t('submitReadings')} tone={done === meter.registers.length ? 'success' : 'warning'} />
-              </View>
-            </Card>
-          </Pressable>
-        );
-      })}
+      <Header
+        title="Readings"
+        subtitle="Submit utility meter values"
+      />
+
+      {loading ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Loading meters...
+          </Text>
+        </Card>
+      ) : null}
+
+      {!loading &&
+      apartments.length ===
+        0 ? (
+        <Card>
+          <Text
+            style={
+              styles.title
+            }
+          >
+            No active tenancy
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Meter readings become available after you join an apartment.
+          </Text>
+        </Card>
+      ) : null}
+
+      {apartments.map(
+        (
+          apartment,
+        ) => {
+          const meters =
+            apartment.meters.filter(
+              (
+                meter,
+              ) =>
+                meter.billingMode ===
+                'METERED',
+            );
+
+          return (
+            <View
+              key={
+                apartment.tenancyId
+              }
+            >
+              <SectionTitle
+                title={
+                  apartment.propertyName
+                }
+              />
+
+              <Text
+                style={
+                  styles.address
+                }
+              >
+                {
+                  apartment.propertyAddress
+                },{' '}
+                {
+                  apartment.propertyCity
+                }
+              </Text>
+
+              {meters.length ===
+              0 ? (
+                <Card>
+                  <Text
+                    style={
+                      styles.muted
+                    }
+                  >
+                    No utility meters are configured for this apartment.
+                  </Text>
+                </Card>
+              ) : null}
+
+              {meters.map(
+                (
+                  meter,
+                ) => {
+                  const last =
+                    lastReadingText(
+                      meter,
+                    );
+
+                  const date =
+                    lastReadingDate(
+                      meter,
+                    );
+
+                  return (
+                    <Card
+                      key={
+                        meter.id
+                      }
+                    >
+                      <View
+                        style={
+                          styles.rowBetween
+                        }
+                      >
+                        <View
+                          style={
+                            styles.flex
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.title
+                            }
+                          >
+                            {
+                              meter.name
+                            }
+                          </Text>
+
+                          <Text
+                            style={
+                              styles.tariff
+                            }
+                          >
+                            {meter.registers
+                              .map(
+                                (
+                                  register,
+                                ) =>
+                                  `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
+                              )
+                              .join(
+                                ' • ',
+                              )}
+                          </Text>
+                        </View>
+
+                        <Badge
+                          text={
+                            meter.registers.length >
+                            1
+                              ? `${meter.registers.length} tariffs`
+                              : 'Meter'
+                          }
+                          tone="neutral"
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.separator
+                        }
+                      />
+
+                      {last ? (
+                        <>
+                          <Text
+                            style={
+                              styles.label
+                            }
+                          >
+                            Last reading
+                          </Text>
+
+                          <Text
+                            style={
+                              styles.lastValue
+                            }
+                          >
+                            {last}
+                          </Text>
+
+                          {date ? (
+                            <Text
+                              style={
+                                styles.muted
+                              }
+                            >
+                              {formatDate(
+                                date,
+                              )}
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : (
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          No readings yet.
+                        </Text>
+                      )}
+
+                      <View
+                        style={
+                          styles.buttonTop
+                        }
+                      >
+                        <SecondaryButton
+                          title="Add reading"
+                          onPress={() =>
+                            openReading(
+                              meter.id,
+                            )
+                          }
+                        />
+                      </View>
+                    </Card>
+                  );
+                },
+              )}
+            </View>
+          );
+        },
+      )}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  flex: { flex: 1 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  muted: { color: colors.muted, fontSize: 12, marginTop: 5 },
-});
+const styles =
+  StyleSheet.create({
+    flex: {
+      flex:
+        1,
+    },
+
+    rowBetween: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
+    title: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    address: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginBottom:
+        spacing.sm,
+
+      marginTop:
+        -4,
+    },
+
+    tariff: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      marginTop:
+        4,
+    },
+
+    label: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+
+      textTransform:
+        'uppercase',
+    },
+
+    lastValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        15,
+
+      fontWeight:
+        '800',
+
+      marginTop:
+        5,
+    },
+
+    muted: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      marginTop:
+        4,
+    },
+
+    separator: {
+      height:
+        StyleSheet.hairlineWidth,
+
+      backgroundColor:
+        colors.border,
+
+      marginVertical:
+        spacing.md,
+    },
+
+    buttonTop: {
+      marginTop:
+        spacing.md,
+    },
+  });
