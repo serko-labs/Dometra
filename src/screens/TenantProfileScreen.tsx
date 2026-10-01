@@ -28,8 +28,14 @@ import {
 } from '../components/ui';
 
 import {
+  useApp,
+} from '../context/AppContext';
+
+import {
   getMyTenantProfile,
+  getPropertyTenancy,
   saveMyTenantProfile,
+  updateManualTenantProfile,
 } from '../services/tenantRepository';
 
 import {
@@ -43,7 +49,10 @@ import {
 } from '../theme';
 
 type ScreenMode =
-  'MANUAL' | 'SELF';
+  | 'MANUAL'
+  | 'EDIT_MANUAL'
+  | 'SELF';
+
 
 function isEmail(
   value: string,
@@ -54,12 +63,18 @@ function isEmail(
     );
 }
 
+
 export function TenantProfileScreen() {
   const navigation =
     useNavigation<any>();
 
   const route =
     useRoute<any>();
+
+  const {
+    state,
+  } =
+    useApp();
 
   const mode =
     (
@@ -118,6 +133,30 @@ export function TenantProfileScreen() {
     >();
 
   const [
+    existingPhotoPath,
+    setExistingPhotoPath,
+  ] =
+    useState<
+      string | undefined
+    >();
+
+  const [
+    existingPhotoUri,
+    setExistingPhotoUri,
+  ] =
+    useState<
+      string | undefined
+    >();
+
+  const [
+    manualTenantId,
+    setManualTenantId,
+  ] =
+    useState<
+      string | undefined
+    >();
+
+  const [
     emergencyContact,
     setEmergencyContact,
   ] =
@@ -140,13 +179,16 @@ export function TenantProfileScreen() {
     setLoading,
   ] =
     useState(
-      mode === 'SELF',
+      mode !==
+      'MANUAL',
     );
+
 
   useEffect(
     () => {
       if (
-        mode !== 'SELF'
+        mode ===
+        'MANUAL'
       ) {
         return;
       }
@@ -157,56 +199,151 @@ export function TenantProfileScreen() {
       const load =
         async () => {
           try {
-            const profile =
-              await getMyTenantProfile();
-
             if (
-              !active ||
-              !profile
+              mode ===
+              'SELF'
             ) {
+              const profile =
+                await getMyTenantProfile();
+
+              if (
+                !active ||
+                !profile
+              ) {
+                return;
+              }
+
+              setFirstName(
+                profile.firstName,
+              );
+
+              setLastName(
+                profile.lastName,
+              );
+
+              setPhone(
+                profile.phone,
+              );
+
+              setEmail(
+                profile.email,
+              );
+
+              setPassportIdNumber(
+                profile.passportIdNumber ??
+                '',
+              );
+
+              setPassportPhotoUri(
+                profile.passportPhotoUri,
+              );
+
+              setExistingPhotoPath(
+                profile.passportPhotoPath,
+              );
+
+              setExistingPhotoUri(
+                profile.passportPhotoUri,
+              );
+
+              setEmergencyContact(
+                profile.emergencyContact ??
+                '',
+              );
+
+              setNotes(
+                profile.notes ??
+                '',
+              );
+
               return;
             }
 
-            setFirstName(
-              profile.firstName,
-            );
 
-            setLastName(
-              profile.lastName,
-            );
+            if (
+              mode ===
+                'EDIT_MANUAL' &&
+              propertyId
+            ) {
+              const tenancy =
+                await getPropertyTenancy(
+                  propertyId,
+                );
 
-            setPhone(
-              profile.phone,
-            );
+              if (
+                !active
+              ) {
+                return;
+              }
 
-            setEmail(
-              profile.email,
-            );
+              if (
+                !tenancy ||
+                tenancy.tenantType !==
+                  'MANUAL' ||
+                !tenancy.tenant?.id
+              ) {
+                throw new Error(
+                  'Manual tenant could not be found.',
+                );
+              }
 
-            setPassportIdNumber(
-              profile.passportIdNumber ??
-              '',
-            );
+              const tenant =
+                tenancy.tenant;
 
-            setPassportPhotoUri(
-              profile.passportPhotoUri,
-            );
+              setManualTenantId(
+                tenant.id,
+              );
 
-            setEmergencyContact(
-              profile.emergencyContact ??
-              '',
-            );
+              setFirstName(
+                tenant.firstName,
+              );
 
-            setNotes(
-              profile.notes ??
-              '',
-            );
+              setLastName(
+                tenant.lastName,
+              );
+
+              setPhone(
+                tenant.phone,
+              );
+
+              setEmail(
+                tenant.email,
+              );
+
+              setPassportIdNumber(
+                tenant.passportIdNumber ??
+                '',
+              );
+
+              setPassportPhotoUri(
+                tenant.passportPhotoUri,
+              );
+
+              setExistingPhotoPath(
+                tenant.passportPhotoPath,
+              );
+
+              setExistingPhotoUri(
+                tenant.passportPhotoUri,
+              );
+
+              setEmergencyContact(
+                tenant.emergencyContact ??
+                '',
+              );
+
+              setNotes(
+                tenant.notes ??
+                '',
+              );
+            }
           } catch (
             error
           ) {
             Alert.alert(
               'Unable to load profile',
-              error instanceof Error
+              error instanceof
+              Error
                 ? error.message
                 : 'Unknown error.',
             );
@@ -214,7 +351,9 @@ export function TenantProfileScreen() {
             if (
               active
             ) {
-              setLoading(false);
+              setLoading(
+                false,
+              );
             }
           }
         };
@@ -228,8 +367,10 @@ export function TenantProfileScreen() {
     },
     [
       mode,
+      propertyId,
     ],
   );
+
 
   const choosePassportPhoto =
     async () => {
@@ -269,6 +410,7 @@ export function TenantProfileScreen() {
       }
     };
 
+
   const buildInput =
     (): TenantProfileInput => ({
       firstName:
@@ -299,6 +441,7 @@ export function TenantProfileScreen() {
         notes.trim() ||
         undefined,
     });
+
 
   const validate =
     () => {
@@ -345,6 +488,7 @@ export function TenantProfileScreen() {
       }
     };
 
+
   const submit =
     async () => {
       try {
@@ -354,7 +498,8 @@ export function TenantProfileScreen() {
           buildInput();
 
         if (
-          mode === 'MANUAL'
+          mode ===
+          'MANUAL'
         ) {
           if (
             !propertyId
@@ -380,11 +525,57 @@ export function TenantProfileScreen() {
           return;
         }
 
-        setBusy(true);
+
+        setBusy(
+          true,
+        );
+
+
+        if (
+          mode ===
+          'EDIT_MANUAL'
+        ) {
+          if (
+            !propertyId ||
+            !manualTenantId ||
+            !state.workspace
+          ) {
+            throw new Error(
+              'Manual tenant information is incomplete.',
+            );
+          }
+
+          await updateManualTenantProfile({
+            workspaceId:
+              state.workspace.id,
+
+            propertyId,
+
+            tenantId:
+              manualTenantId,
+
+            input,
+
+            existingPhotoPath,
+
+            existingPhotoUri,
+          });
+
+          navigation.popTo(
+            'TenantDetails',
+            {
+              propertyId,
+            },
+          );
+
+          return;
+        }
+
 
         await saveMyTenantProfile(
           input,
         );
+
 
         if (
           inviteToken
@@ -400,20 +591,25 @@ export function TenantProfileScreen() {
           return;
         }
 
+
         navigation.goBack();
       } catch (
         error
       ) {
         Alert.alert(
           'Tenant profile',
-          error instanceof Error
+          error instanceof
+          Error
             ? error.message
             : 'Unknown error.',
         );
       } finally {
-        setBusy(false);
+        setBusy(
+          false,
+        );
       }
     };
+
 
   if (
     loading
@@ -428,18 +624,27 @@ export function TenantProfileScreen() {
     );
   }
 
+
   return (
     <Screen>
       <Header
         title={
-          mode === 'MANUAL'
-            ? 'Tenant details'
-            : 'Your tenant profile'
+          mode ===
+          'EDIT_MANUAL'
+            ? 'Edit tenant'
+            : mode ===
+                'MANUAL'
+              ? 'Tenant details'
+              : 'Your tenant profile'
         }
         subtitle={
-          mode === 'MANUAL'
-            ? 'Enter the tenant information'
-            : 'Complete your information before accepting an apartment invitation'
+          mode ===
+          'EDIT_MANUAL'
+            ? 'Update tenant information'
+            : mode ===
+                'MANUAL'
+              ? 'Enter the tenant information'
+              : 'Complete your tenant profile'
         }
       />
 
@@ -610,9 +815,10 @@ export function TenantProfileScreen() {
         title={
           busy
             ? 'Saving...'
-            : mode === 'MANUAL'
+            : mode ===
+                'MANUAL'
               ? 'Continue'
-              : 'Save profile'
+              : 'Save'
         }
         disabled={
           busy
@@ -624,6 +830,7 @@ export function TenantProfileScreen() {
     </Screen>
   );
 }
+
 
 const styles =
   StyleSheet.create({

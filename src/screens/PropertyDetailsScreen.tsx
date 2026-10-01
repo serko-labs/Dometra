@@ -5,6 +5,7 @@ import React, {
 
 import {
   Alert,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -24,7 +25,6 @@ import {
   Badge,
   Card,
   Header,
-  Money,
   PrimaryButton,
   Screen,
   SecondaryButton,
@@ -47,7 +47,6 @@ import {
 import {
   getPropertyTenancy,
   PropertyTenancySummary,
-  revokeTenantInvitation,
 } from '../services/tenantRepository';
 
 import {
@@ -60,17 +59,25 @@ import {
 } from '../theme';
 
 function formatDate(
-  iso: string,
+  value?: string,
 ) {
+  if (
+    !value
+  ) {
+    return '—';
+  }
+
   const date =
-    new Date(iso);
+    new Date(
+      `${value}T00:00:00`,
+    );
 
   if (
     Number.isNaN(
       date.getTime(),
     )
   ) {
-    return iso;
+    return value;
   }
 
   return date.toLocaleDateString(
@@ -78,8 +85,10 @@ function formatDate(
     {
       day:
         '2-digit',
+
       month:
         'short',
+
       year:
         'numeric',
     },
@@ -90,14 +99,16 @@ function formatHistoryDate(
   iso: string,
 ) {
   const date =
-    new Date(iso);
+    new Date(
+      iso,
+    );
 
   if (
     Number.isNaN(
       date.getTime(),
     )
   ) {
-    return iso;
+    return '';
   }
 
   return date.toLocaleString(
@@ -105,10 +116,13 @@ function formatHistoryDate(
     {
       day:
         '2-digit',
+
       month:
         'short',
+
       hour:
         '2-digit',
+
       minute:
         '2-digit',
     },
@@ -116,13 +130,12 @@ function formatHistoryDate(
 }
 
 function getLatestReading(
-  meter: Meter,
+  meter:
+    Meter,
 ) {
   const registers =
     meter.registers.filter(
-      (
-        register,
-      ) =>
+      register =>
         register.lastReadingAt &&
         register.lastValue !==
           undefined,
@@ -140,15 +153,37 @@ function getLatestReading(
       (
         latest,
         register,
-      ) =>
-        Math.max(
-          latest,
+      ) => {
+        const timestamp =
           new Date(
             register.lastReadingAt!,
-          ).getTime(),
-        ),
+          ).getTime();
+
+        return Math.max(
+          latest,
+          timestamp,
+        );
+      },
       0,
     );
+
+  const values =
+    registers
+      .map(
+        register => {
+          if (
+            meter.registers.length >
+            1
+          ) {
+            return `${register.code}: ${register.lastValue} ${register.unit}`;
+          }
+
+          return `${register.lastValue} ${register.unit}`;
+        },
+      )
+      .join(
+        ' • ',
+      );
 
   return {
     date:
@@ -156,18 +191,7 @@ function getLatestReading(
         latestTimestamp,
       ).toISOString(),
 
-    values:
-      registers
-        .map(
-          (
-            register,
-          ) =>
-            meter.registers.length >
-            1
-              ? `${register.code}: ${register.lastValue} ${register.unit}`
-              : `${register.lastValue} ${register.unit}`,
-        )
-        .join(' • '),
+    values,
   };
 }
 
@@ -175,20 +199,75 @@ function historyTone(
   category:
     PropertyHistoryItem['category'],
 ) {
-  if (
-    category === 'PAYMENT' ||
-    category === 'READING'
+  switch (
+    category
   ) {
-    return 'success' as const;
+    case 'PAYMENT':
+      return 'success' as const;
+
+    case 'INVOICE':
+      return 'warning' as const;
+
+    case 'READING':
+      return 'success' as const;
+
+    case 'TENANT':
+      return 'neutral' as const;
+
+    default:
+      return 'neutral' as const;
+  }
+}
+
+function tenancyBadge(
+  tenancy:
+    PropertyTenancySummary | null,
+) {
+  if (
+    !tenancy
+  ) {
+    return {
+      text:
+        'Available',
+
+      tone:
+        'neutral' as const,
+    };
   }
 
   if (
-    category === 'INVOICE'
+    tenancy.status ===
+    'CHECKOUT_PENDING'
   ) {
-    return 'warning' as const;
+    return {
+      text:
+        'Checkout required',
+
+      tone:
+        'warning' as const,
+    };
   }
 
-  return 'neutral' as const;
+  if (
+    tenancy.status ===
+    'PENDING'
+  ) {
+    return {
+      text:
+        'Invitation pending',
+
+      tone:
+        'warning' as const,
+    };
+  }
+
+  return {
+    text:
+      'Occupied',
+
+    tone:
+      'success' as const,
+  };
 }
 
 export function PropertyDetailsScreen() {
@@ -210,14 +289,15 @@ export function PropertyDetailsScreen() {
   } =
     useApp();
 
+  const propertyId =
+    route.params
+      ?.propertyId as string;
+
   const property =
     state.properties.find(
-      (
-        item,
-      ) =>
+      item =>
         item.id ===
-        route.params
-          ?.propertyId,
+        propertyId,
     );
 
   const [
@@ -229,6 +309,12 @@ export function PropertyDetailsScreen() {
     >(null);
 
   const [
+    tenancyLoading,
+    setTenancyLoading,
+  ] =
+    useState(true);
+
+  const [
     history,
     setHistory,
   ] =
@@ -237,14 +323,18 @@ export function PropertyDetailsScreen() {
     >([]);
 
   const [
-    detailsLoading,
-    setDetailsLoading,
+    historyLoading,
+    setHistoryLoading,
   ] =
     useState(false);
 
-  const propertyId =
-    property?.id;
-
+  /*
+   * Reload tenancy + history whenever we return
+   * to the apartment screen.
+   *
+   * This means editing tenant information is
+   * reflected immediately after pressing Back.
+   */
   useFocusEffect(
     useCallback(
       () => {
@@ -259,7 +349,13 @@ export function PropertyDetailsScreen() {
 
         const load =
           async () => {
-            setDetailsLoading(true);
+            setTenancyLoading(
+              true,
+            );
+
+            setHistoryLoading(
+              true,
+            );
 
             try {
               const [
@@ -270,6 +366,7 @@ export function PropertyDetailsScreen() {
                   getPropertyTenancy(
                     propertyId,
                   ),
+
                   loadPropertyHistory(
                     propertyId,
                     30,
@@ -277,28 +374,36 @@ export function PropertyDetailsScreen() {
                 ]);
 
               if (
-                active
+                !active
               ) {
-                setTenancy(
-                  tenancyData,
-                );
-
-                setHistory(
-                  historyData,
-                );
+                return;
               }
+
+              setTenancy(
+                tenancyData,
+              );
+
+              setHistory(
+                historyData,
+              );
             } catch (
               error
             ) {
               console.error(
-                '[Dometra] Unable to load apartment details:',
+                '[Dometra] Unable to load property details:',
                 error,
               );
             } finally {
               if (
                 active
               ) {
-                setDetailsLoading(false);
+                setTenancyLoading(
+                  false,
+                );
+
+                setHistoryLoading(
+                  false,
+                );
               }
             }
           };
@@ -321,35 +426,40 @@ export function PropertyDetailsScreen() {
   ) {
     return (
       <Screen>
-        <Text>
-          Property not found
-        </Text>
+        <Header
+          title="Apartment"
+          subtitle="Apartment not found"
+        />
       </Screen>
     );
   }
 
   const meters =
     state.meters.filter(
-      (
-        meter,
-      ) =>
+      meter =>
         meter.propertyId ===
         property.id,
     );
 
   const invoices =
     state.invoices.filter(
-      (
-        invoice,
-      ) =>
+      invoice =>
         invoice.propertyId ===
         property.id,
     );
 
+  const statusBadge =
+    tenancyBadge(
+      tenancy,
+    );
+
   const confirmRemoveMeter =
     (
-      meterId: string,
-      meterName: string,
+      meterId:
+        string,
+
+      meterName:
+        string,
     ) => {
       Alert.alert(
         'Remove meter / service?',
@@ -358,14 +468,18 @@ export function PropertyDetailsScreen() {
           {
             text:
               'Cancel',
+
             style:
               'cancel',
           },
+
           {
             text:
               'Remove',
+
             style:
               'destructive',
+
             onPress:
               () => {
                 void removeMeter(
@@ -377,61 +491,42 @@ export function PropertyDetailsScreen() {
       );
     };
 
-  const revokeInvitation =
+  const openTenant =
     () => {
       if (
-        !tenancy?.invitation
+        !tenancy
       ) {
         return;
       }
 
-      Alert.alert(
-        'Revoke invitation?',
-        'The current invitation will stop working.',
-        [
-          {
-            text:
-              'Cancel',
-            style:
-              'cancel',
-          },
-          {
-            text:
-              'Revoke',
-            style:
-              'destructive',
-            onPress:
-              () => {
-                void (
-                  async () => {
-                    try {
-                      await revokeTenantInvitation(
-                        tenancy.invitation!.id,
-                      );
+      navigation.navigate(
+        'TenantDetails',
+        {
+          propertyId:
+            property.id,
+        },
+      );
+    };
 
-                      setTenancy(null);
+  const editManualTenant =
+    () => {
+      if (
+        !tenancy ||
+        tenancy.tenantType !==
+          'MANUAL'
+      ) {
+        return;
+      }
 
-                      setHistory(
-                        await loadPropertyHistory(
-                          property.id,
-                          30,
-                        ),
-                      );
-                    } catch (
-                      error
-                    ) {
-                      Alert.alert(
-                        'Unable to revoke invitation',
-                        error instanceof Error
-                          ? error.message
-                          : 'Unknown error.',
-                      );
-                    }
-                  }
-                )();
-              },
-          },
-        ],
+      navigation.navigate(
+        'TenantProfile',
+        {
+          mode:
+            'EDIT_MANUAL',
+
+          propertyId:
+            property.id,
+        },
       );
     };
 
@@ -442,6 +537,12 @@ export function PropertyDetailsScreen() {
           generateInvoice(
             property.id,
           );
+
+        Alert.alert(
+          t(
+            'invoiceCreated',
+          ),
+        );
 
         navigation.navigate(
           'InvoiceDetails',
@@ -455,7 +556,9 @@ export function PropertyDetailsScreen() {
       ) {
         Alert.alert(
           'Invoices',
-          error instanceof Error
+
+          error instanceof
+          Error
             ? error.message
             : 'Unable to create invoice.',
         );
@@ -464,6 +567,13 @@ export function PropertyDetailsScreen() {
 
   return (
     <Screen>
+      {/*
+       * No separate "Apartment / City" card.
+       *
+       * Everything needed is already visible
+       * in the header.
+       */}
+
       <Header
         title={
           property.name
@@ -472,84 +582,26 @@ export function PropertyDetailsScreen() {
         right={
           <Badge
             text={
-              tenancy?.status ===
-                'ACTIVE'
-                ? t(
-                    'occupied',
-                  )
-                : tenancy?.status ===
-                    'PENDING'
-                  ? 'Pending'
-                  : t(
-                      'vacant',
-                    )
+              statusBadge.text
             }
             tone={
-              tenancy?.status ===
-              'ACTIVE'
-                ? 'success'
-                : tenancy?.status ===
-                    'PENDING'
-                  ? 'warning'
-                  : 'neutral'
+              statusBadge.tone
             }
           />
         }
       />
 
-      <Card>
-        <View
-          style={
-            styles.infoGrid
-          }
-        >
-          {property.areaM2 >
-          0 ? (
-            <View>
-              <Text
-                style={
-                  styles.label
-                }
-              >
-                Square
-              </Text>
-
-              <Text
-                style={
-                  styles.value
-                }
-              >
-                {property.areaM2} m²
-              </Text>
-            </View>
-          ) : (
-            <View>
-              <Text
-                style={
-                  styles.label
-                }
-              >
-                Apartment
-              </Text>
-
-              <Text
-                style={
-                  styles.value
-                }
-              >
-                {property.city}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Card>
+      {/*
+       * ======================================================
+       * TENANT
+       * ======================================================
+       */}
 
       <SectionTitle
         title="Tenant"
       />
 
-      {detailsLoading &&
-      !tenancy ? (
+      {tenancyLoading ? (
         <Card>
           <Text
             style={
@@ -561,7 +613,7 @@ export function PropertyDetailsScreen() {
         </Card>
       ) : null}
 
-      {!detailsLoading &&
+      {!tenancyLoading &&
       !tenancy ? (
         <Card>
           <Text
@@ -577,7 +629,7 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            Add a tenant manually or invite an existing Dometra user.
+            Add a manual tenant or invite a Dometra user.
           </Text>
 
           <View
@@ -585,7 +637,7 @@ export function PropertyDetailsScreen() {
               styles.buttonTop
             }
           >
-            <SecondaryButton
+            <PrimaryButton
               title="+ Add tenant"
               onPress={() =>
                 navigation.navigate(
@@ -601,167 +653,238 @@ export function PropertyDetailsScreen() {
         </Card>
       ) : null}
 
-      {tenancy ? (
-        <Card>
-          <View
-            style={
-              styles.rowBetween
-            }
-          >
+      {!tenancyLoading &&
+      tenancy ? (
+        <Pressable
+          onPress={
+            openTenant
+          }
+        >
+          <Card>
             <View
               style={
-                styles.flex
+                styles.rowBetween
               }
             >
-              <Text
+              <View
                 style={
-                  styles.value
+                  styles.flex
                 }
               >
-                {tenancy.tenant
-                  ? `${tenancy.tenant.firstName} ${tenancy.tenant.lastName}`
-                  : 'Tenant invitation'}
+                {tenancy.tenant ? (
+                  <>
+                    <View
+                      style={
+                        styles.tenantTitleRow
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.tenantName
+                        }
+                      >
+                        {
+                          tenancy.tenant.firstName
+                        }{' '}
+                        {
+                          tenancy.tenant.lastName
+                        }
+                      </Text>
+
+                      <Badge
+                        text={
+                          tenancy.tenantType ===
+                          'MANUAL'
+                            ? 'Manual'
+                            : 'Dometra'
+                        }
+                        tone="neutral"
+                      />
+                    </View>
+
+                    <Text
+                      style={
+                        styles.tenantContact
+                      }
+                    >
+                      {
+                        tenancy.tenant.phone
+                      }
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.tenantContact
+                      }
+                    >
+                      {
+                        tenancy.tenant.email
+                      }
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text
+                      style={
+                        styles.tenantName
+                      }
+                    >
+                      Tenant invitation
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.muted
+                      }
+                    >
+                      Waiting for the tenant to accept the invitation.
+                    </Text>
+                  </>
+                )}
+              </View>
+
+              <Text
+                style={
+                  styles.chevron
+                }
+              >
+                ›
               </Text>
+            </View>
 
-              {tenancy.tenant ? (
-                <>
-                  <Text
-                    style={
-                      styles.muted
-                    }
-                  >
-                    {tenancy.tenant.phone}
-                  </Text>
+            <View
+              style={
+                styles.separator
+              }
+            />
 
-                  <Text
-                    style={
-                      styles.muted
-                    }
-                  >
-                    {tenancy.tenant.email}
-                  </Text>
-                </>
-              ) : (
+            <View
+              style={
+                styles.rentalRow
+              }
+            >
+              <View
+                style={
+                  styles.rentalCell
+                }
+              >
+                <Text
+                  style={
+                    styles.label
+                  }
+                >
+                  Rent
+                </Text>
+
+                <Text
+                  style={
+                    styles.rentalValue
+                  }
+                >
+                  {
+                    tenancy.rentAmount
+                  }{' '}
+                  {
+                    tenancy.currency
+                  }
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.rentalCell
+                }
+              >
+                <Text
+                  style={
+                    styles.label
+                  }
+                >
+                  Since
+                </Text>
+
+                <Text
+                  style={
+                    styles.rentalValue
+                  }
+                >
+                  {formatDate(
+                    tenancy.startDate,
+                  )}
+                </Text>
+              </View>
+            </View>
+
+            {tenancy.endDate ? (
+              <View
+                style={
+                  styles.contractInfo
+                }
+              >
                 <Text
                   style={
                     styles.muted
                   }
                 >
-                  Waiting for a Dometra user to accept the invitation.
+                  Agreement until{' '}
+                  {formatDate(
+                    tenancy.endDate,
+                  )}
                 </Text>
-              )}
-            </View>
 
-            <Badge
-              text={
-                tenancy.tenantType ===
-                  'MANUAL'
-                  ? 'Manual'
-                  : tenancy.tenantType ===
-                      'DOMETRA'
-                    ? 'Dometra'
-                    : 'Invited'
-              }
-              tone={
-                tenancy.status ===
-                'ACTIVE'
-                  ? 'success'
-                  : 'warning'
-              }
-            />
-          </View>
+                {tenancy.autoProlongation ? (
+                  <Badge
+                    text="Auto-prolongation"
+                    tone="success"
+                  />
+                ) : null}
+              </View>
+            ) : null}
 
-          <View
-            style={
-              styles.separator
-            }
-          />
-
-          <View
-            style={
-              styles.rowBetween
-            }
-          >
-            <View>
-              <Text
+            {tenancy.tenantType ===
+            'MANUAL' ? (
+              <View
                 style={
-                  styles.label
+                  styles.buttonTop
                 }
               >
-                Rent
-              </Text>
-
-              <Money
-                amount={
-                  tenancy.rentAmount
-                }
-                currency={
-                  tenancy.currency
-                }
-                strong
-              />
-            </View>
-
-            <View
-              style={
-                styles.alignRight
-              }
-            >
-              <Text
-                style={
-                  styles.label
-                }
-              >
-                Since
-              </Text>
-
-              <Text
-                style={
-                  styles.valueSmall
-                }
-              >
-                {formatDate(
-                  tenancy.startDate,
-                )}
-              </Text>
-            </View>
-          </View>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            Payment due on day {tenancy.paymentDueDay} of each month.
-          </Text>
-
-          {tenancy.status ===
-            'PENDING' &&
-          tenancy.invitation ? (
-            <View
-              style={
-                styles.buttonTop
-              }
-            >
-              <SecondaryButton
-                title="Revoke invitation"
-                onPress={
-                  revokeInvitation
-                }
-              />
-            </View>
-          ) : null}
-        </Card>
+                <SecondaryButton
+                  title="Edit tenant"
+                  onPress={
+                    editManualTenant
+                  }
+                />
+              </View>
+            ) : null}
+          </Card>
+        </Pressable>
       ) : null}
+
+      {/*
+       * ======================================================
+       * METERS
+       * ======================================================
+       */}
 
       <SectionTitle
         title="Meters & services"
       />
 
+      {meters.length ===
+      0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            No meters or services yet.
+          </Text>
+        </Card>
+      ) : null}
+
       {meters.map(
-        (
-          meter,
-        ) => {
+        meter => {
           const latestReading =
             getLatestReading(
               meter,
@@ -778,6 +901,7 @@ export function PropertyDetailsScreen() {
                   {
                     propertyId:
                       property.id,
+
                     meterId:
                       meter.id,
                   },
@@ -806,7 +930,9 @@ export function PropertyDetailsScreen() {
                         styles.value
                       }
                     >
-                      {meter.name}
+                      {
+                        meter.name
+                      }
                     </Text>
 
                     {meter.billingMode ===
@@ -819,12 +945,12 @@ export function PropertyDetailsScreen() {
                         >
                           {meter.registers
                             .map(
-                              (
-                                register,
-                              ) =>
+                              register =>
                                 `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
                             )
-                            .join(' • ')}
+                            .join(
+                              ' • ',
+                            )}
                         </Text>
 
                         {latestReading ? (
@@ -835,7 +961,10 @@ export function PropertyDetailsScreen() {
                           >
                             <Badge
                               text={`Last ${formatDate(
-                                latestReading.date,
+                                latestReading.date.slice(
+                                  0,
+                                  10,
+                                ),
                               )}`}
                               tone="success"
                             />
@@ -845,7 +974,9 @@ export function PropertyDetailsScreen() {
                                 styles.lastReadingValue
                               }
                             >
-                              {latestReading.values}
+                              {
+                                latestReading.values
+                              }
                             </Text>
                           </View>
                         ) : (
@@ -870,19 +1001,52 @@ export function PropertyDetailsScreen() {
                           styles.muted
                         }
                       >
-                        Fixed • {meter.fixedAmount} {meter.billingCurrency ?? 'UAH'} / month
+                        Fixed •{' '}
+                        {
+                          meter.fixedAmount
+                        }{' '}
+                        {
+                          meter.billingCurrency ??
+                          'UAH'
+                        }{' '}
+                        / month
                       </Text>
                     ) : null}
 
                     {meter.billingMode ===
                     'VARIABLE' ? (
-                      <Text
-                        style={
-                          styles.muted
-                        }
-                      >
-                        Variable service
-                      </Text>
+                      <>
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          Variable service
+                        </Text>
+
+                        {meter.lastAmount !==
+                        undefined ? (
+                          <View
+                            style={
+                              styles.lastReading
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.lastReadingValue
+                              }
+                            >
+                              {
+                                meter.lastAmount
+                              }{' '}
+                              {
+                                meter.billingCurrency ??
+                                'UAH'
+                              }
+                            </Text>
+                          </View>
+                        ) : null}
+                      </>
                     ) : null}
                   </View>
 
@@ -937,29 +1101,46 @@ export function PropertyDetailsScreen() {
         }
       />
 
+      {/*
+       * ======================================================
+       * HISTORY
+       * ======================================================
+       */}
+
       <SectionTitle
         title="History"
       />
 
-      {history.length ===
-      0 ? (
+      {historyLoading &&
+      history.length ===
+        0 ? (
         <Card>
           <Text
             style={
               styles.muted
             }
           >
-            {detailsLoading
-              ? 'Loading history...'
-              : 'No activity yet.'}
+            Loading history...
+          </Text>
+        </Card>
+      ) : null}
+
+      {!historyLoading &&
+      history.length ===
+        0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            No activity yet.
           </Text>
         </Card>
       ) : null}
 
       {history.map(
-        (
-          item,
-        ) => (
+        item => (
           <View
             key={
               item.id
@@ -1001,7 +1182,9 @@ export function PropertyDetailsScreen() {
                     styles.historyTitle
                   }
                 >
-                  {item.title}
+                  {
+                    item.title
+                  }
                 </Text>
 
                 <Badge
@@ -1022,7 +1205,9 @@ export function PropertyDetailsScreen() {
                     styles.historyDetails
                   }
                 >
-                  {item.details}
+                  {
+                    item.details
+                  }
                 </Text>
               ) : null}
 
@@ -1040,6 +1225,12 @@ export function PropertyDetailsScreen() {
         ),
       )}
 
+      {/*
+       * ======================================================
+       * INVOICES
+       * ======================================================
+       */}
+
       <SectionTitle
         title={
           t(
@@ -1054,9 +1245,7 @@ export function PropertyDetailsScreen() {
           3,
         )
         .map(
-          (
-            invoice,
-          ) => (
+          invoice => (
             <Card
               key={
                 invoice.id
@@ -1073,7 +1262,9 @@ export function PropertyDetailsScreen() {
                       styles.value
                     }
                   >
-                    {invoice.period}
+                    {
+                      invoice.period
+                    }
                   </Text>
 
                   <Text
@@ -1081,7 +1272,9 @@ export function PropertyDetailsScreen() {
                       styles.muted
                     }
                   >
-                    {invoice.status}
+                    {
+                      invoice.status
+                    }
                   </Text>
                 </View>
 
@@ -1122,94 +1315,34 @@ export function PropertyDetailsScreen() {
 
 const styles =
   StyleSheet.create({
-    rowBetween: {
-      flexDirection:
-        'row',
-      justifyContent:
-        'space-between',
-      alignItems:
-        'center',
-      gap:
-        spacing.md,
-    },
-
-    infoGrid: {
-      flexDirection:
-        'row',
-      alignItems:
-        'flex-start',
-      justifyContent:
-        'space-between',
-      gap:
-        spacing.md,
-    },
-
     flex: {
       flex:
         1,
     },
 
-    alignRight: {
+    rowBetween: {
+      flexDirection:
+        'row',
+
+      justifyContent:
+        'space-between',
+
       alignItems:
-        'flex-end',
-    },
+        'center',
 
-    label: {
-      color:
-        colors.muted,
-      fontSize:
-        12,
-    },
-
-    value: {
-      color:
-        colors.text,
-      fontSize:
-        16,
-      fontWeight:
-        '700',
-      marginTop:
-        4,
-    },
-
-    valueSmall: {
-      color:
-        colors.text,
-      fontSize:
-        13,
-      fontWeight:
-        '700',
-      marginTop:
-        4,
+      gap:
+        spacing.md,
     },
 
     emptyTitle: {
       color:
         colors.text,
+
       fontSize:
         15,
+
       fontWeight:
         '800',
-    },
-
-    muted: {
-      color:
-        colors.muted,
-      fontSize:
-        12,
-      marginTop:
-        4,
-      lineHeight:
-        18,
-    },
-
-    separator: {
-      height:
-        StyleSheet.hairlineWidth,
-      backgroundColor:
-        colors.border,
-      marginVertical:
-        spacing.md,
     },
 
     buttonTop: {
@@ -1217,15 +1350,163 @@ const styles =
         spacing.md,
     },
 
+    tenantTitleRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      flexWrap:
+        'wrap',
+
+      gap:
+        8,
+    },
+
+    tenantName: {
+      color:
+        colors.text,
+
+      fontSize:
+        17,
+
+      fontWeight:
+        '800',
+    },
+
+    tenantContact: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginTop:
+        4,
+    },
+
+    chevron: {
+      color:
+        colors.muted,
+
+      fontSize:
+        28,
+
+      fontWeight:
+        '300',
+    },
+
+    separator: {
+      height:
+        StyleSheet.hairlineWidth,
+
+      backgroundColor:
+        colors.border,
+
+      marginVertical:
+        spacing.md,
+    },
+
+    rentalRow: {
+      flexDirection:
+        'row',
+
+      gap:
+        spacing.md,
+    },
+
+    rentalCell: {
+      flex:
+        1,
+    },
+
+    label: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+
+      textTransform:
+        'uppercase',
+    },
+
+    rentalValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        4,
+    },
+
+    contractInfo: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      flexWrap:
+        'wrap',
+
+      gap:
+        8,
+
+      marginTop:
+        spacing.md,
+    },
+
+    value: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '700',
+    },
+
+    muted: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginTop:
+        4,
+
+      lineHeight:
+        18,
+    },
+
     lastReading: {
       flexDirection:
         'row',
+
       flexWrap:
         'wrap',
+
       alignItems:
         'center',
+
       gap:
         8,
+
       marginTop:
         10,
     },
@@ -1233,8 +1514,10 @@ const styles =
     lastReadingValue: {
       color:
         colors.text,
+
       fontSize:
         12,
+
       fontWeight:
         '700',
     },
@@ -1242,6 +1525,7 @@ const styles =
     historyRow: {
       flexDirection:
         'row',
+
       minHeight:
         78,
     },
@@ -1249,6 +1533,7 @@ const styles =
     historyLineColumn: {
       width:
         22,
+
       alignItems:
         'center',
     },
@@ -1256,12 +1541,16 @@ const styles =
     historyDot: {
       width:
         10,
+
       height:
         10,
+
       borderRadius:
         5,
+
       backgroundColor:
         colors.primary,
+
       marginTop:
         7,
     },
@@ -1269,10 +1558,13 @@ const styles =
     historyLine: {
       width:
         1,
+
       flex:
         1,
+
       backgroundColor:
         colors.border,
+
       marginTop:
         5,
     },
@@ -1280,8 +1572,10 @@ const styles =
     historyContent: {
       flex:
         1,
+
       paddingLeft:
         spacing.sm,
+
       paddingBottom:
         spacing.md,
     },
@@ -1289,10 +1583,13 @@ const styles =
     historyHeader: {
       flexDirection:
         'row',
+
       justifyContent:
         'space-between',
+
       alignItems:
         'center',
+
       gap:
         spacing.sm,
     },
@@ -1300,10 +1597,13 @@ const styles =
     historyTitle: {
       flex:
         1,
+
       color:
         colors.text,
+
       fontSize:
         14,
+
       fontWeight:
         '700',
     },
@@ -1311,8 +1611,10 @@ const styles =
     historyDetails: {
       color:
         colors.muted,
+
       fontSize:
         12,
+
       marginTop:
         4,
     },
@@ -1320,8 +1622,10 @@ const styles =
     historyDate: {
       color:
         colors.muted,
+
       fontSize:
         11,
+
       marginTop:
         5,
     },

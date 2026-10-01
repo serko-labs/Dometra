@@ -1,22 +1,44 @@
-import {
-  File,
-} from 'expo-file-system';
+import { File } from 'expo-file-system';
 
-import {
-  supabase,
-} from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 import {
   CreatedTenantInvitation,
   CurrencyCode,
   TenantInvitation,
+  TenantMeterReading,
   TenantProfile,
   TenantProfileInput,
+  TenancyOpeningReadingInput,
   TenancyTermsInput,
 } from '../types';
 
 const DOCUMENT_BUCKET =
   'tenant-documents';
+
+export interface PropertyTenantDetails {
+  id?: string;
+
+  userId?: string;
+
+  firstName: string;
+
+  lastName: string;
+
+  phone: string;
+
+  email: string;
+
+  passportIdNumber?: string;
+
+  passportPhotoPath?: string;
+
+  passportPhotoUri?: string;
+
+  emergencyContact?: string;
+
+  notes?: string;
+}
 
 export interface PropertyTenancySummary {
   id: string;
@@ -26,6 +48,7 @@ export interface PropertyTenancySummary {
   status:
     | 'PENDING'
     | 'ACTIVE'
+    | 'CHECKOUT_PENDING'
     | 'ENDED'
     | 'CANCELLED';
 
@@ -33,34 +56,28 @@ export interface PropertyTenancySummary {
 
   endDate?: string;
 
+  autoProlongation: boolean;
+
   rentAmount: number;
 
-  currency:
-    CurrencyCode;
+  currency: CurrencyCode;
 
   paymentDueDay: number;
 
   depositAmount?: number;
 
-  depositCurrency?:
-    CurrencyCode;
+  depositCurrency?: CurrencyCode;
 
   agreementPath?: string;
+
+  agreementUri?: string;
 
   tenantType:
     | 'MANUAL'
     | 'DOMETRA'
     | 'INVITED';
 
-  tenant?: {
-    firstName: string;
-
-    lastName: string;
-
-    phone: string;
-
-    email: string;
-  };
+  tenant?: PropertyTenantDetails;
 
   invitation?: {
     id: string;
@@ -69,6 +86,9 @@ export interface PropertyTenancySummary {
 
     expiresAt: string;
   };
+
+  openingReadings:
+    TenantMeterReading[];
 }
 
 function requireSupabase() {
@@ -83,11 +103,90 @@ function requireSupabase() {
   return supabase;
 }
 
+function supabaseErrorMessage(
+  fallback: string,
+  error: unknown,
+): string {
+  if (
+    error &&
+    typeof error === 'object'
+  ) {
+    const source =
+      error as {
+        code?: unknown;
+        message?: unknown;
+        details?: unknown;
+        hint?: unknown;
+      };
+
+    const parts:
+      string[] = [];
+
+    if (
+      typeof source.message ===
+        'string' &&
+      source.message.trim()
+    ) {
+      parts.push(
+        source.message.trim(),
+      );
+    }
+
+    if (
+      typeof source.details ===
+        'string' &&
+      source.details.trim()
+    ) {
+      parts.push(
+        `Details: ${source.details.trim()}`,
+      );
+    }
+
+    if (
+      typeof source.hint ===
+        'string' &&
+      source.hint.trim()
+    ) {
+      parts.push(
+        `Hint: ${source.hint.trim()}`,
+      );
+    }
+
+    if (
+      typeof source.code ===
+        'string' &&
+      source.code.trim()
+    ) {
+      parts.push(
+        `Code: ${source.code.trim()}`,
+      );
+    }
+
+    if (
+      parts.length >
+      0
+    ) {
+      return parts.join(
+        '\n',
+      );
+    }
+  }
+
+  if (
+    error instanceof Error &&
+    error.message
+  ) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 function currency(
   value:
-    string |
-    null |
-    undefined,
+    | string
+    | null
+    | undefined,
 ): CurrencyCode {
   if (
     value === 'USD' ||
@@ -101,10 +200,10 @@ function currency(
 
 function asNumber(
   value:
-    number |
-    string |
-    null |
-    undefined,
+    | number
+    | string
+    | null
+    | undefined,
 ) {
   if (
     value === null ||
@@ -113,19 +212,18 @@ function asNumber(
     return undefined;
   }
 
-  const parsed =
+  const result =
     Number(value);
 
   return Number.isFinite(
-    parsed,
+    result,
   )
-    ? parsed
+    ? result
     : undefined;
 }
 
 function normalizeExtension(
-  extension:
-    string,
+  extension: string,
 ) {
   const clean =
     extension
@@ -213,8 +311,7 @@ async function uploadImageDocument(
 }
 
 async function removeDocuments(
-  paths:
-    string[],
+  paths: string[],
 ) {
   if (
     paths.length === 0
@@ -229,7 +326,9 @@ async function removeDocuments(
     .from(
       DOCUMENT_BUCKET,
     )
-    .remove(paths);
+    .remove(
+      paths,
+    );
 }
 
 async function createSignedUrl(
@@ -266,19 +365,20 @@ async function createSignedUrl(
   return data?.signedUrl;
 }
 
-export async function getMyTenantProfile(): Promise<
-  TenantProfile | null
-> {
+export async function getMyTenantProfile():
+Promise<TenantProfile | null> {
   const client =
     requireSupabase();
 
   const {
     data:
       userData,
+
     error:
       userError,
   } =
-    await client.auth.getUser();
+    await client.auth
+      .getUser();
 
   if (
     userError
@@ -387,10 +487,12 @@ export async function saveMyTenantProfile(
   const {
     data:
       userData,
+
     error:
       userError,
   } =
-    await client.auth.getUser();
+    await client.auth
+      .getUser();
 
   if (
     userError
@@ -519,6 +621,144 @@ export async function saveMyTenantProfile(
   }
 }
 
+export async function updateManualTenantProfile(
+  params: {
+    workspaceId: string;
+
+    propertyId: string;
+
+    tenantId: string;
+
+    input:
+      TenantProfileInput;
+
+    existingPhotoPath?:
+      string;
+
+    existingPhotoUri?:
+      string;
+  },
+) {
+  const client =
+    requireSupabase();
+
+  let passportPhotoPath =
+    params.existingPhotoPath;
+
+  let uploadedPath:
+    string | undefined;
+
+  try {
+    if (
+      params.input.passportPhotoUri &&
+      params.input.passportPhotoUri !==
+        params.existingPhotoUri
+    ) {
+      uploadedPath =
+        await uploadImageDocument(
+          params.input.passportPhotoUri,
+          `manual/${params.workspaceId}/${params.propertyId}`,
+        );
+
+      passportPhotoPath =
+        uploadedPath;
+    }
+
+    const {
+      error,
+    } =
+      await client
+        .from(
+          'manual_tenant_contacts',
+        )
+        .update({
+          first_name:
+            params.input.firstName.trim(),
+
+          last_name:
+            params.input.lastName.trim(),
+
+          phone:
+            params.input.phone.trim(),
+
+          email:
+            params.input.email
+              .trim()
+              .toLowerCase(),
+
+          passport_id_number:
+            params.input.passportIdNumber
+              ?.trim() ||
+            null,
+
+          passport_photo_path:
+            passportPhotoPath ??
+            null,
+
+          emergency_contact:
+            params.input.emergencyContact
+              ?.trim() ||
+            null,
+
+          notes:
+            params.input.notes
+              ?.trim() ||
+            null,
+        })
+        .eq(
+          'id',
+          params.tenantId,
+        );
+
+    if (
+      error
+    ) {
+      throw error;
+    }
+
+    if (
+      uploadedPath &&
+      params.existingPhotoPath &&
+      params.existingPhotoPath !==
+        uploadedPath
+    ) {
+      await removeDocuments([
+        params.existingPhotoPath,
+      ]);
+    }
+  } catch (
+    error
+  ) {
+    if (
+      uploadedPath
+    ) {
+      await removeDocuments([
+        uploadedPath,
+      ]);
+    }
+
+    throw error;
+  }
+}
+
+function rpcOpeningReadings(
+  readings?:
+    TenancyOpeningReadingInput[],
+) {
+  return (
+    readings ??
+    []
+  ).map(
+    reading => ({
+      meter_register_id:
+        reading.meterRegisterId,
+
+      value:
+        reading.value,
+    }),
+  );
+}
+
 export async function createManualTenancy(
   workspaceId: string,
   propertyId: string,
@@ -573,7 +813,7 @@ export async function createManualTenancy(
       error,
     } =
       await client.rpc(
-        'create_manual_tenancy',
+        'create_manual_tenancy_v2',
         {
           p_property_id:
             propertyId,
@@ -641,6 +881,14 @@ export async function createManualTenancy(
           p_agreement_path:
             agreementPath ??
             null,
+
+          p_auto_prolongation:
+            terms.autoProlongation,
+
+          p_opening_readings:
+            rpcOpeningReadings(
+              terms.openingReadings,
+            ),
         },
       );
 
@@ -690,7 +938,7 @@ export async function createTenantInvitation(
       error,
     } =
       await client.rpc(
-        'create_tenant_invitation',
+        'create_tenant_invitation_v2',
         {
           p_property_id:
             propertyId,
@@ -725,30 +973,141 @@ export async function createTenantInvitation(
           p_agreement_path:
             agreementPath ??
             null,
+
+          p_auto_prolongation:
+            terms.autoProlongation,
+
+          p_opening_readings:
+            rpcOpeningReadings(
+              terms.openingReadings,
+            ),
         },
       );
 
     if (
       error
     ) {
-      throw error;
+      console.error(
+        '[Dometra] createTenantInvitation RPC failed:',
+        {
+          code:
+            error.code,
+
+          message:
+            error.message,
+
+          details:
+            error.details,
+
+          hint:
+            error.hint,
+
+          propertyId,
+
+          workspaceId,
+
+          terms: {
+            rentAmount:
+              terms.rentAmount,
+
+            currency:
+              terms.currency,
+
+            startDate:
+              terms.startDate,
+
+            paymentDueDay:
+              terms.paymentDueDay,
+
+            endDate:
+              terms.endDate,
+
+            depositAmount:
+              terms.depositAmount,
+
+            depositCurrency:
+              terms.depositCurrency,
+
+            autoProlongation:
+              terms.autoProlongation,
+
+            openingReadingsCount:
+              terms.openingReadings
+                ?.length ??
+              0,
+
+            hasAgreement:
+              Boolean(
+                terms.agreementUri,
+              ),
+          },
+        },
+      );
+
+      throw new Error(
+        supabaseErrorMessage(
+          'Unable to create tenant invitation.',
+          error,
+        ),
+      );
     }
 
     const row =
-      Array.isArray(data)
+      Array.isArray(
+        data,
+      )
         ? data[0]
         : data;
 
     if (
-      !row?.token
+      !row
     ) {
+      throw new Error(
+        'Supabase created no invitation result.',
+      );
+    }
+
+    if (
+      !row.token
+    ) {
+      console.error(
+        '[Dometra] Invitation result has no token:',
+        row,
+      );
+
       throw new Error(
         'Invitation token was not returned by Supabase.',
       );
     }
 
+    if (
+      !row.tenancy_id
+    ) {
+      throw new Error(
+        'Tenancy ID was not returned by Supabase.',
+      );
+    }
+
+    if (
+      !row.invitation_id
+    ) {
+      throw new Error(
+        'Invitation ID was not returned by Supabase.',
+      );
+    }
+
+    if (
+      !row.expires_at
+    ) {
+      throw new Error(
+        'Invitation expiration date was not returned by Supabase.',
+      );
+    }
+
     const token =
-      String(row.token);
+      String(
+        row.token,
+      );
 
     return {
       tenancyId:
@@ -777,12 +1136,32 @@ export async function createTenantInvitation(
     if (
       agreementPath
     ) {
-      await removeDocuments([
-        agreementPath,
-      ]);
+      try {
+        await removeDocuments([
+          agreementPath,
+        ]);
+      } catch (
+        cleanupError
+      ) {
+        console.warn(
+          '[Dometra] Unable to clean invitation agreement after failure:',
+          cleanupError,
+        );
+      }
     }
 
-    throw error;
+    if (
+      error instanceof Error
+    ) {
+      throw error;
+    }
+
+    throw new Error(
+      supabaseErrorMessage(
+        'Unable to create tenant invitation.',
+        error,
+      ),
+    );
   }
 }
 
@@ -811,7 +1190,9 @@ export async function getTenantInvitation(
   }
 
   const row =
-    Array.isArray(data)
+    Array.isArray(
+      data,
+    )
       ? data[0]
       : data;
 
@@ -952,15 +1333,14 @@ export async function revokeTenantInvitation(
 
 export async function getPropertyTenancy(
   propertyId: string,
-): Promise<
-  PropertyTenancySummary | null
-> {
+): Promise<PropertyTenancySummary | null> {
   const client =
     requireSupabase();
 
   const {
     data:
       tenancy,
+
     error:
       tenancyError,
   } =
@@ -977,6 +1357,7 @@ export async function getPropertyTenancy(
           'start_date',
           'end_date',
           'agreement_path',
+          'auto_prolongation',
         ].join(','),
       )
       .eq(
@@ -988,6 +1369,7 @@ export async function getPropertyTenancy(
         [
           'PENDING',
           'ACTIVE',
+          'CHECKOUT_PENDING',
         ],
       )
       .order(
@@ -1015,6 +1397,7 @@ export async function getPropertyTenancy(
   const {
     data:
       rentTerms,
+
     error:
       rentError,
   } =
@@ -1052,7 +1435,7 @@ export async function getPropertyTenancy(
       'INVITED';
 
   let tenant:
-    PropertyTenancySummary['tenant'];
+    PropertyTenantDetails | undefined;
 
   if (
     tenancy.manual_tenant_contact_id
@@ -1060,6 +1443,7 @@ export async function getPropertyTenancy(
     const {
       data:
         manual,
+
       error:
         manualError,
     } =
@@ -1069,10 +1453,15 @@ export async function getPropertyTenancy(
         )
         .select(
           [
+            'id',
             'first_name',
             'last_name',
             'phone',
             'email',
+            'passport_id_number',
+            'passport_photo_path',
+            'emergency_contact',
+            'notes',
           ].join(','),
         )
         .eq(
@@ -1090,7 +1479,14 @@ export async function getPropertyTenancy(
     tenantType =
       'MANUAL';
 
+    const photoPath =
+      manual.passport_photo_path ??
+      undefined;
+
     tenant = {
+      id:
+        manual.id,
+
       firstName:
         manual.first_name,
 
@@ -1102,11 +1498,32 @@ export async function getPropertyTenancy(
 
       email:
         manual.email,
+
+      passportIdNumber:
+        manual.passport_id_number ??
+        undefined,
+
+      passportPhotoPath:
+        photoPath,
+
+      passportPhotoUri:
+        await createSignedUrl(
+          photoPath,
+        ),
+
+      emergencyContact:
+        manual.emergency_contact ??
+        undefined,
+
+      notes:
+        manual.notes ??
+        undefined,
     };
   } else {
     const {
       data:
         member,
+
       error:
         memberError,
     } =
@@ -1140,6 +1557,7 @@ export async function getPropertyTenancy(
       const {
         data:
           profile,
+
         error:
           profileError,
       } =
@@ -1149,10 +1567,15 @@ export async function getPropertyTenancy(
           )
           .select(
             [
+              'user_id',
               'first_name',
               'last_name',
               'phone',
               'email',
+              'passport_id_number',
+              'passport_photo_path',
+              'emergency_contact',
+              'notes',
             ].join(','),
           )
           .eq(
@@ -1170,7 +1593,14 @@ export async function getPropertyTenancy(
       tenantType =
         'DOMETRA';
 
+      const photoPath =
+        profile.passport_photo_path ??
+        undefined;
+
       tenant = {
+        userId:
+          profile.user_id,
+
         firstName:
           profile.first_name,
 
@@ -1182,6 +1612,26 @@ export async function getPropertyTenancy(
 
         email:
           profile.email,
+
+        passportIdNumber:
+          profile.passport_id_number ??
+          undefined,
+
+        passportPhotoPath:
+          photoPath,
+
+        passportPhotoUri:
+          await createSignedUrl(
+            photoPath,
+          ),
+
+        emergencyContact:
+          profile.emergency_contact ??
+          undefined,
+
+        notes:
+          profile.notes ??
+          undefined,
       };
     }
   }
@@ -1189,6 +1639,7 @@ export async function getPropertyTenancy(
   const {
     data:
       invitation,
+
     error:
       invitationError,
   } =
@@ -1223,6 +1674,210 @@ export async function getPropertyTenancy(
     throw invitationError;
   }
 
+  const {
+    data:
+      readingData,
+
+    error:
+      readingError,
+  } =
+    await client
+      .from(
+        'tenancy_meter_readings',
+      )
+      .select(
+        [
+          'id',
+          'tenancy_id',
+          'meter_register_id',
+          'reading_type',
+          'reading_date',
+          'value',
+        ].join(','),
+      )
+      .eq(
+        'tenancy_id',
+        tenancy.id,
+      )
+      .eq(
+        'reading_type',
+        'MOVE_IN',
+      );
+
+  if (
+    readingError
+  ) {
+    throw readingError;
+  }
+
+  const readings =
+    readingData ??
+    [];
+
+  const registerIds =
+    readings.map(
+      reading =>
+        reading.meter_register_id,
+    );
+
+  let openingReadings:
+    TenantMeterReading[] =
+    [];
+
+  if (
+    registerIds.length >
+    0
+  ) {
+    const {
+      data:
+        registerData,
+
+      error:
+        registerError,
+    } =
+      await client
+        .from(
+          'meter_registers',
+        )
+        .select(
+          [
+            'id',
+            'meter_id',
+            'code',
+            'name',
+            'unit',
+          ].join(','),
+        )
+        .in(
+          'id',
+          registerIds,
+        );
+
+    if (
+      registerError
+    ) {
+      throw registerError;
+    }
+
+    const meterIds = [
+      ...new Set(
+        (
+          registerData ??
+          []
+        ).map(
+          register =>
+            register.meter_id,
+        ),
+      ),
+    ];
+
+    let meterData:
+      Array<{
+        id: string;
+        name: string;
+      }> =
+      [];
+
+    if (
+      meterIds.length >
+      0
+    ) {
+      const {
+        data,
+        error,
+      } =
+        await client
+          .from(
+            'meters',
+          )
+          .select(
+            'id,name',
+          )
+          .in(
+            'id',
+            meterIds,
+          );
+
+      if (
+        error
+      ) {
+        throw error;
+      }
+
+      meterData =
+        data ??
+        [];
+    }
+
+    openingReadings =
+      readings.map(
+        reading => {
+          const register =
+            (
+              registerData ??
+              []
+            ).find(
+              item =>
+                item.id ===
+                reading.meter_register_id,
+            );
+
+          const meter =
+            meterData.find(
+              item =>
+                item.id ===
+                register?.meter_id,
+            );
+
+          return {
+            id:
+              reading.id,
+
+            tenancyId:
+              reading.tenancy_id,
+
+            meterRegisterId:
+              reading.meter_register_id,
+
+            meterId:
+              register?.meter_id ??
+              '',
+
+            meterName:
+              meter?.name ??
+              'Meter',
+
+            registerCode:
+              register?.code ??
+              '',
+
+            registerName:
+              register?.name ??
+              '',
+
+            unit:
+              register?.unit ??
+              '',
+
+            type:
+              'MOVE_IN',
+
+            date:
+              reading.reading_date,
+
+            value:
+              Number(
+                reading.value,
+              ),
+          };
+        },
+      );
+  }
+
+  const agreementPath =
+    tenancy.agreement_path ??
+    undefined;
+
   return {
     id:
       tenancy.id,
@@ -1239,6 +1894,11 @@ export async function getPropertyTenancy(
     endDate:
       tenancy.end_date ??
       undefined,
+
+    autoProlongation:
+      Boolean(
+        tenancy.auto_prolongation,
+      ),
 
     rentAmount:
       Number(
@@ -1263,15 +1923,19 @@ export async function getPropertyTenancy(
       ),
 
     depositCurrency:
-      rentTerms?.deposit_currency
+      rentTerms
+        ?.deposit_currency
         ? currency(
             rentTerms.deposit_currency,
           )
         : undefined,
 
-    agreementPath:
-      tenancy.agreement_path ??
-      undefined,
+    agreementPath,
+
+    agreementUri:
+      await createSignedUrl(
+        agreementPath,
+      ),
 
     tenantType,
 
@@ -1290,5 +1954,7 @@ export async function getPropertyTenancy(
               invitation.expires_at,
           }
         : undefined,
+
+    openingReadings,
   };
 }

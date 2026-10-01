@@ -99,6 +99,14 @@ import {
 } from '../screens/TenantProfileScreen';
 
 import {
+  TenantDetailsScreen,
+} from '../screens/TenantDetailsScreen';
+
+import {
+  CheckoutTenantScreen,
+} from '../screens/CheckoutTenantScreen';
+
+import {
   TenancyTermsScreen,
 } from '../screens/TenancyTermsScreen';
 
@@ -187,11 +195,9 @@ function LandlordTabs() {
 
   return (
     <Tab.Navigator
-      screenOptions={(
-        {
-          route,
-        },
-      ) => ({
+      screenOptions={({
+        route,
+      }) => ({
         headerShown:
           false,
 
@@ -281,11 +287,9 @@ function TenantTabs() {
 
   return (
     <Tab.Navigator
-      screenOptions={(
-        {
-          route,
-        },
-      ) => ({
+      screenOptions={({
+        route,
+      }) => ({
         headerShown:
           false,
 
@@ -441,6 +445,28 @@ export function RootNavigator() {
               name="PropertyDetails"
               component={
                 PropertyDetailsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="TenantDetails"
+              component={
+                TenantDetailsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="CheckoutTenant"
+              component={
+                CheckoutTenantScreen
               }
               options={{
                 title:

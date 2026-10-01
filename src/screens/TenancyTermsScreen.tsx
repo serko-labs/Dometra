@@ -1,4 +1,5 @@
 import React, {
+  useMemo,
   useState,
 } from 'react';
 
@@ -7,6 +8,7 @@ import {
   Image,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -39,6 +41,7 @@ import {
 import {
   CurrencyCode,
   TenantProfileInput,
+  TenancyOpeningReadingInput,
   TenancyTermsInput,
 } from '../types';
 
@@ -57,6 +60,7 @@ const currencies:
   'USD',
   'EUR',
 ];
+
 
 function parseNumber(
   value: string,
@@ -84,12 +88,15 @@ function parseNumber(
     : undefined;
 }
 
+
 function isDate(
   value: string,
 ) {
   if (
     !/^\d{4}-\d{2}-\d{2}$/
-      .test(value)
+      .test(
+        value,
+      )
   ) {
     return false;
   }
@@ -103,6 +110,7 @@ function isDate(
     date.getTime(),
   );
 }
+
 
 export function TenancyTermsScreen() {
   const navigation =
@@ -139,6 +147,24 @@ export function TenancyTermsScreen() {
         propertyId,
     );
 
+  const propertyMeters =
+    useMemo(
+      () =>
+        state.meters.filter(
+          (
+            meter,
+          ) =>
+            meter.propertyId ===
+              propertyId &&
+            meter.billingMode ===
+              'METERED',
+        ),
+      [
+        state.meters,
+        propertyId,
+      ],
+    );
+
   const [
     rentAmount,
     setRentAmount,
@@ -172,6 +198,12 @@ export function TenancyTermsScreen() {
     useState('');
 
   const [
+    autoProlongation,
+    setAutoProlongation,
+  ] =
+    useState(false);
+
+  const [
     depositAmount,
     setDepositAmount,
   ] =
@@ -194,10 +226,22 @@ export function TenancyTermsScreen() {
     >();
 
   const [
+    openingValues,
+    setOpeningValues,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({});
+
+  const [
     busy,
     setBusy,
   ] =
     useState(false);
+
 
   const chooseAgreement =
     async () => {
@@ -237,6 +281,97 @@ export function TenancyTermsScreen() {
       }
     };
 
+
+  const useLatestReadings =
+    () => {
+      const next:
+        Record<
+          string,
+          string
+        > = {};
+
+      for (
+        const meter
+        of propertyMeters
+      ) {
+        for (
+          const register
+          of meter.registers
+        ) {
+          if (
+            register.lastValue !==
+            undefined
+          ) {
+            next[
+              register.id
+            ] =
+              String(
+                register.lastValue,
+              );
+          }
+        }
+      }
+
+      setOpeningValues(
+        next,
+      );
+    };
+
+
+  const buildOpeningReadings =
+    () => {
+      const result:
+        TenancyOpeningReadingInput[] =
+        [];
+
+      for (
+        const meter
+        of propertyMeters
+      ) {
+        for (
+          const register
+          of meter.registers
+        ) {
+          const value =
+            openingValues[
+              register.id
+            ];
+
+          if (
+            !value?.trim()
+          ) {
+            continue;
+          }
+
+          const parsed =
+            parseNumber(
+              value,
+            );
+
+          if (
+            parsed ===
+              undefined ||
+            parsed < 0
+          ) {
+            throw new Error(
+              `Enter a valid opening value for ${meter.name} ${register.code}.`,
+            );
+          }
+
+          result.push({
+            meterRegisterId:
+              register.id,
+
+            value:
+              parsed,
+          });
+        }
+      }
+
+      return result;
+    };
+
+
   const buildTerms =
     (): TenancyTermsInput => {
       const rent =
@@ -245,7 +380,8 @@ export function TenancyTermsScreen() {
         );
 
       if (
-        rent === undefined ||
+        rent ===
+          undefined ||
         rent < 0
       ) {
         throw new Error(
@@ -310,7 +446,8 @@ export function TenancyTermsScreen() {
       if (
         depositAmount.trim() &&
         (
-          deposit === undefined ||
+          deposit ===
+            undefined ||
           deposit < 0
         )
       ) {
@@ -339,13 +476,20 @@ export function TenancyTermsScreen() {
           deposit,
 
         depositCurrency:
-          deposit !== undefined
+          deposit !==
+          undefined
             ? depositCurrency
             : undefined,
 
         agreementUri,
+
+        autoProlongation,
+
+        openingReadings:
+          buildOpeningReadings(),
       };
     };
+
 
   const submit =
     async () => {
@@ -439,7 +583,8 @@ export function TenancyTermsScreen() {
       ) {
         Alert.alert(
           'Unable to save tenancy',
-          error instanceof Error
+          error instanceof
+          Error
             ? error.message
             : 'Unknown error.',
         );
@@ -448,14 +593,14 @@ export function TenancyTermsScreen() {
       }
     };
 
+
   return (
     <Screen>
       <Header
         title="Rental terms"
         subtitle={
-          property
-            ? property.name
-            : 'Apartment'
+          property?.name ??
+          'Apartment'
         }
       />
 
@@ -513,18 +658,24 @@ export function TenancyTermsScreen() {
               }}
               style={[
                 styles.chip,
-                currency === item &&
+
+                currency ===
+                  item &&
                   styles.chipActive,
               ]}
             >
               <Text
                 style={[
                   styles.chipText,
-                  currency === item &&
+
+                  currency ===
+                    item &&
                     styles.chipTextActive,
                 ]}
               >
-                {item}
+                {
+                  item
+                }
               </Text>
             </Pressable>
           ),
@@ -576,6 +727,58 @@ export function TenancyTermsScreen() {
         }
       />
 
+      <Card>
+        <View
+          style={
+            styles.switchRow
+          }
+        >
+          <View
+            style={
+              styles.flex
+            }
+          >
+            <Text
+              style={
+                styles.documentTitle
+              }
+            >
+              Auto-prolongation
+            </Text>
+
+            <Text
+              style={
+                styles.hint
+              }
+            >
+              Keep the tenancy active when the agreement end date is reached.
+            </Text>
+          </View>
+
+          <Switch
+            value={
+              autoProlongation
+            }
+            onValueChange={
+              setAutoProlongation
+            }
+            disabled={
+              busy
+            }
+          />
+        </View>
+
+        {!endDate.trim() ? (
+          <Text
+            style={
+              styles.smallHint
+            }
+          >
+            This setting only affects tenancies with an end date.
+          </Text>
+        ) : null}
+      </Card>
+
       <Field
         label="Security deposit (optional)"
         value={
@@ -623,24 +826,151 @@ export function TenancyTermsScreen() {
                   }
                   style={[
                     styles.chip,
-                    depositCurrency === item &&
+
+                    depositCurrency ===
+                      item &&
                       styles.chipActive,
                   ]}
                 >
                   <Text
                     style={[
                       styles.chipText,
-                      depositCurrency === item &&
+
+                      depositCurrency ===
+                        item &&
                         styles.chipTextActive,
                     ]}
                   >
-                    {item}
+                    {
+                      item
+                    }
                   </Text>
                 </Pressable>
               ),
             )}
           </View>
         </>
+      ) : null}
+
+      {propertyMeters.length >
+      0 ? (
+        <Card>
+          <View
+            style={
+              styles.sectionHeader
+            }
+          >
+            <View
+              style={
+                styles.flex
+              }
+            >
+              <Text
+                style={
+                  styles.documentTitle
+                }
+              >
+                Opening meter readings
+              </Text>
+
+              <Text
+                style={
+                  styles.hint
+                }
+              >
+                Optional. These values define the tenant's starting meter state.
+              </Text>
+            </View>
+
+            <SecondaryButton
+              title="Use latest"
+              onPress={
+                useLatestReadings
+              }
+            />
+          </View>
+
+          {propertyMeters.map(
+            (
+              meter,
+            ) => (
+              <View
+                key={
+                  meter.id
+                }
+                style={
+                  styles.meterBlock
+                }
+              >
+                <Text
+                  style={
+                    styles.meterName
+                  }
+                >
+                  {
+                    meter.name
+                  }
+                </Text>
+
+                {meter.registers.map(
+                  (
+                    register,
+                  ) => (
+                    <Field
+                      key={
+                        register.id
+                      }
+                      label={
+                        meter.registers.length >
+                        1
+                          ? `${register.code} — ${register.name}`
+                          : `${register.name} (${register.unit})`
+                      }
+                      value={
+                        openingValues[
+                          register.id
+                        ] ??
+                        ''
+                      }
+                      onChangeText={(
+                        text,
+                      ) =>
+                        setOpeningValues(
+                          (
+                            current,
+                          ) => ({
+                            ...current,
+
+                            [register.id]:
+                              text,
+                          }),
+                        )
+                      }
+                      keyboardType="decimal-pad"
+                      placeholder={
+                        register.lastValue !==
+                        undefined
+                          ? `Latest: ${register.lastValue}`
+                          : 'Optional'
+                      }
+                      editable={
+                        !busy
+                      }
+                    />
+                  ),
+                )}
+              </View>
+            ),
+          )}
+
+          <Text
+            style={
+              styles.smallHint
+            }
+          >
+            Leave these fields empty if the tenant moves in later and the readings may change.
+          </Text>
+        </Card>
       ) : null}
 
       <Card>
@@ -710,8 +1040,14 @@ export function TenancyTermsScreen() {
   );
 }
 
+
 const styles =
   StyleSheet.create({
+    flex: {
+      flex:
+        1,
+    },
+
     label: {
       color:
         colors.text,
@@ -775,6 +1111,28 @@ const styles =
         colors.primary,
     },
 
+    switchRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.md,
+    },
+
+    sectionHeader: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'flex-start',
+
+      gap:
+        spacing.md,
+    },
+
     documentTitle: {
       color:
         colors.text,
@@ -798,6 +1156,39 @@ const styles =
 
       marginTop:
         4,
+    },
+
+    smallHint: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      lineHeight:
+        17,
+
+      marginTop:
+        spacing.sm,
+    },
+
+    meterBlock: {
+      marginTop:
+        spacing.md,
+
+      gap:
+        spacing.sm,
+    },
+
+    meterName: {
+      color:
+        colors.text,
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '800',
     },
 
     agreementPhoto: {

@@ -43,12 +43,18 @@ export type InvitationStatus =
   | 'EXPIRED'
   | 'REVOKED';
 
+export type TenancyReadingType =
+  | 'MOVE_IN'
+  | 'MOVE_OUT';
+
+
 export interface Workspace {
   id: string;
   name: string;
   baseCurrency: CurrencyCode;
   timezone: string;
 }
+
 
 export interface UserSettings {
   language: LanguageCode;
@@ -59,6 +65,7 @@ export interface UserSettings {
   pushEnabled: boolean;
 }
 
+
 export interface Property {
   id: string;
   workspaceId: string;
@@ -67,6 +74,12 @@ export interface Property {
   city: string;
   areaM2: number;
   status: PropertyStatus;
+
+  /*
+   * Legacy presentation fields.
+   *
+   * Tenancies are the source of truth for occupancy.
+   */
   tenantName?: string;
   tenantId?: string;
   rentAmount: number;
@@ -75,6 +88,7 @@ export interface Property {
   paymentDueDay: number;
 }
 
+
 export interface MeterRegister {
   id: string;
   code: string;
@@ -82,39 +96,62 @@ export interface MeterRegister {
   unit: string;
   tariff: number;
   tariffCurrency: CurrencyCode;
+
+  /*
+   * Used internally for validation/calculation.
+   * New reading screens must still start blank.
+   */
   previousValue: number;
+
   currentValue?: number;
+
   lastValue?: number;
   lastReadingAt?: string;
   lastBillingPeriod?: string;
+
   photoUri?: string;
   photoPath?: string;
+
   lastPhotoUri?: string;
   lastPhotoPath?: string;
 }
+
 
 export interface Meter {
   id: string;
   serviceId: string;
   propertyId: string;
+
   name: string;
+
   category:
     | 'ELECTRICITY'
     | 'WATER'
     | 'GAS'
     | 'HEAT'
     | 'CUSTOM';
+
   billingMode: MeterBillingMode;
+
   serialNumber?: string;
+
   unit: string;
+
   registers: MeterRegister[];
+
   fixedAmount?: number;
+
   currentAmount?: number;
+
   lastAmount?: number;
+
   lastAmountAt?: string;
+
   lastBillingPeriod?: string;
+
   billingCurrency?: CurrencyCode;
 }
+
 
 export interface PropertyInput {
   city: string;
@@ -123,19 +160,29 @@ export interface PropertyInput {
   areaM2?: number;
 }
 
+
 export interface MeterInput {
   propertyId: string;
+
   category: Meter['category'];
+
   name?: string;
+
   dualTariff?: boolean;
+
   billingMode: MeterBillingMode;
+
   tariff?: number;
   tariffT1?: number;
   tariffT2?: number;
+
   tariffCurrency?: CurrencyCode;
+
   fixedAmount?: number;
+
   billingCurrency?: CurrencyCode;
 }
+
 
 export interface MeterReadingInput {
   registerId: string;
@@ -143,96 +190,223 @@ export interface MeterReadingInput {
   photoUri?: string;
 }
 
+
+/*
+ * ==========================================================
+ * TENANT PROFILE
+ * ==========================================================
+ */
+
 export interface TenantProfileInput {
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
+
   passportIdNumber?: string;
   passportPhotoUri?: string;
   emergencyContact?: string;
   notes?: string;
 }
+
 
 export interface TenantProfile {
   userId: string;
+
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
+
   passportIdNumber?: string;
+
   passportPhotoPath?: string;
   passportPhotoUri?: string;
+
   emergencyContact?: string;
+
   notes?: string;
 }
+
 
 export interface ManualTenantContact {
   id: string;
+
   workspaceId: string;
+
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
+
   passportIdNumber?: string;
+
   passportPhotoPath?: string;
   passportPhotoUri?: string;
+
   emergencyContact?: string;
+
   notes?: string;
 }
 
+
+/*
+ * ==========================================================
+ * TENANCY METER READINGS
+ * ==========================================================
+ */
+
+export interface TenancyOpeningReadingInput {
+  meterRegisterId: string;
+  value: number;
+}
+
+
+export interface TenancyMeterReading {
+  id: string;
+
+  tenancyId: string;
+
+  meterRegisterId: string;
+
+  meterId: string;
+
+  meterName: string;
+
+  registerCode: string;
+
+  registerName: string;
+
+  unit: string;
+
+  type: TenancyReadingType;
+
+  date: string;
+
+  value: number;
+}
+
+
+/*
+ * ==========================================================
+ * RENTAL TERMS
+ * ==========================================================
+ */
+
 export interface TenancyTermsInput {
   rentAmount: number;
+
   currency: CurrencyCode;
+
   startDate: string;
+
   paymentDueDay: number;
+
   endDate?: string;
+
   depositAmount?: number;
+
   depositCurrency?: CurrencyCode;
+
   agreementUri?: string;
+
+  autoProlongation: boolean;
+
+  openingReadings?: TenancyOpeningReadingInput[];
 }
+
 
 export interface RentTerms {
   id: string;
+
   tenancyId: string;
+
   rentAmount: number;
+
   currency: CurrencyCode;
+
   paymentDueDay: number;
+
   depositAmount?: number;
+
   depositCurrency?: CurrencyCode;
+
   validFrom: string;
+
   validTo?: string;
 }
 
+
+/*
+ * ==========================================================
+ * TENANCY
+ * ==========================================================
+ */
+
 export interface Tenancy {
   id: string;
+
   propertyId: string;
+
   status: TenancyStatus;
+
   startDate: string;
+
   endDate?: string;
+
+  autoProlongation: boolean;
+
   agreementPath?: string;
+  agreementUri?: string;
+
   manualTenant?: ManualTenantContact;
+
   tenantProfile?: TenantProfile;
+
   rentTerms?: RentTerms;
+
+  openingReadings?: TenancyMeterReading[];
 }
+
+
+/*
+ * ==========================================================
+ * INVITATION
+ * ==========================================================
+ */
 
 export interface TenantInvitation {
   id: string;
+
   tenancyId: string;
+
   propertyId: string;
+
   propertyName: string;
+
   propertyAddress: string;
+
   propertyCity: string;
+
   rentAmount: number;
+
   currency: CurrencyCode;
+
   paymentDueDay: number;
+
   startDate: string;
+
   endDate?: string;
+
   depositAmount?: number;
+
   depositCurrency?: CurrencyCode;
+
   status: InvitationStatus;
+
   expiresAt: string;
 }
+
 
 export interface CreatedTenantInvitation {
   tenancyId: string;
@@ -242,60 +416,102 @@ export interface CreatedTenantInvitation {
   link: string;
 }
 
+
+/*
+ * ==========================================================
+ * FINANCE
+ * ==========================================================
+ */
+
 export interface InvoiceLine {
   id: string;
+
   type:
     | 'RENT'
     | 'UTILITY'
     | 'FIXED_CHARGE'
     | 'CUSTOM_CHARGE';
+
   label: string;
+
   amount: number;
+
   currency: CurrencyCode;
+
   details?: string;
 }
 
+
 export interface Invoice {
   id: string;
+
   propertyId: string;
+
   tenantName: string;
+
   period: string;
+
   issueDate: string;
+
   dueDate: string;
+
   status: InvoiceStatus;
+
   lines: InvoiceLine[];
 }
 
+
 export interface Payment {
   id: string;
+
   propertyId: string;
+
   tenantName: string;
+
   amount: number;
+
   currency: CurrencyCode;
+
   date: string;
+
   method: PaymentMethod;
+
   allocated: boolean;
+
   note?: string;
 }
 
+
 export interface Reminder {
   id: string;
+
   type:
     | 'RENT_DUE'
     | 'METER_READINGS'
     | 'PAYMENT_OVERDUE';
+
   propertyId: string;
+
   title: string;
+
   dueText: string;
+
   completed: boolean;
 }
 
+
 export interface AppState {
   workspace: Workspace | null;
+
   settings: UserSettings;
+
   properties: Property[];
+
   meters: Meter[];
+
   invoices: Invoice[];
+
   payments: Payment[];
+
   reminders: Reminder[];
 }
