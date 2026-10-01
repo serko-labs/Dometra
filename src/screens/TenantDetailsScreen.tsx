@@ -23,12 +23,14 @@ import {
   Header,
   PrimaryButton,
   Screen,
+  SecondaryButton,
   SectionTitle,
 } from '../components/ui';
 
 import {
   getPropertyTenancy,
   PropertyTenancySummary,
+  revokeTenantInvitation,
 } from '../services/tenantRepository';
 
 import {
@@ -133,6 +135,29 @@ export function TenantDetailsScreen() {
   ] =
     useState(true);
 
+  const [
+    deletingInvitation,
+    setDeletingInvitation,
+  ] =
+    useState(false);
+
+  const loadTenancy =
+    useCallback(
+      async () => {
+        const result =
+          await getPropertyTenancy(
+            propertyId,
+          );
+
+        setTenancy(
+          result,
+        );
+      },
+      [
+        propertyId,
+      ],
+    );
+
   useFocusEffect(
     useCallback(
       () => {
@@ -196,6 +221,105 @@ export function TenantDetailsScreen() {
     ),
   );
 
+  const deleteInvitation =
+    () => {
+      if (
+        !tenancy?.invitation ||
+        deletingInvitation
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        'Delete invitation?',
+        'The invitation link will stop working and the apartment will become available again.',
+        [
+          {
+            text:
+              'Cancel',
+
+            style:
+              'cancel',
+          },
+          {
+            text:
+              'Delete',
+
+            style:
+              'destructive',
+
+            onPress:
+              async () => {
+                setDeletingInvitation(
+                  true,
+                );
+
+                try {
+                  await revokeTenantInvitation(
+                    tenancy.invitation!.id,
+                  );
+
+                  Alert.alert(
+                    'Invitation deleted',
+                    'The invitation has been cancelled and the apartment is available again.',
+                    [
+                      {
+                        text:
+                          'OK',
+
+                        onPress:
+                          () => {
+                            if (
+                              typeof navigation.popTo ===
+                              'function'
+                            ) {
+                              navigation.popTo(
+                                'PropertyDetails',
+                                {
+                                  propertyId,
+                                },
+                              );
+
+                              return;
+                            }
+
+                            navigation.navigate(
+                              'PropertyDetails',
+                              {
+                                propertyId,
+                              },
+                            );
+                          },
+                      },
+                    ],
+                  );
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to delete invitation',
+                    error instanceof
+                    Error
+                      ? error.message
+                      : 'Please try again.',
+                  );
+
+                  try {
+                    await loadTenancy();
+                  } catch {
+                    // Ignore reload failure here.
+                  }
+                } finally {
+                  setDeletingInvitation(
+                    false,
+                  );
+                }
+              },
+          },
+        ],
+      );
+    };
+
   if (
     loading
   ) {
@@ -249,6 +373,14 @@ export function TenantDetailsScreen() {
     tenancyStatus ===
     'CHECKOUT_PENDING';
 
+  const invitationPending =
+    tenancyStatus ===
+      'PENDING' &&
+    tenancy.tenantType ===
+      'INVITED' &&
+    tenancy.invitation?.status ===
+      'PENDING';
+
   const canCheckout =
     tenancyStatus ===
       'ACTIVE' ||
@@ -293,7 +425,7 @@ export function TenantDetailsScreen() {
         <Card>
           <Text
             style={
-              styles.checkoutTitle
+              styles.importantTitle
             }
           >
             Checkout required
@@ -307,6 +439,62 @@ export function TenantDetailsScreen() {
             The rental agreement has reached its end date. Complete checkout to close the rental.
           </Text>
         </Card>
+      ) : null}
+
+      {invitationPending ? (
+        <>
+          <SectionTitle
+            title="Invitation"
+          />
+
+          <Card>
+            <View
+              style={
+                styles.invitationHeader
+              }
+            >
+              <View
+                style={
+                  styles.flex
+                }
+              >
+                <Text
+                  style={
+                    styles.importantTitle
+                  }
+                >
+                  Waiting for tenant
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  The tenant has not accepted this invitation yet.
+                </Text>
+              </View>
+
+              <Badge
+                text="Pending"
+                tone="warning"
+              />
+            </View>
+
+            {tenancy.invitation?.expiresAt ? (
+              <Text
+                style={
+                  styles.invitationExpiry
+                }
+              >
+                Expires:{' '}
+                {new Date(
+                  tenancy.invitation.expiresAt,
+                ).toLocaleString()}
+              </Text>
+            ) : null}
+          </Card>
+        </>
       ) : null}
 
       {tenant ? (
@@ -588,6 +776,33 @@ export function TenantDetailsScreen() {
         />
       ) : null}
 
+      {invitationPending ? (
+        <View
+          style={
+            styles.deleteBlock
+          }
+        >
+          <SecondaryButton
+            title={
+              deletingInvitation
+                ? 'Deleting invitation...'
+                : 'Delete invitation'
+            }
+            onPress={
+              deleteInvitation
+            }
+          />
+
+          <Text
+            style={
+              styles.deleteHint
+            }
+          >
+            The invitation can be deleted until the tenant accepts it.
+          </Text>
+        </View>
+      ) : null}
+
       {tenancy.tenantType ===
       'DOMETRA' ? (
         <Text
@@ -605,7 +820,8 @@ export function TenantDetailsScreen() {
 const styles =
   StyleSheet.create({
     flex: {
-      flex: 1,
+      flex:
+        1,
     },
 
     detailRow: {
@@ -700,7 +916,7 @@ const styles =
         3,
     },
 
-    checkoutTitle: {
+    importantTitle: {
       color:
         colors.text,
 
@@ -709,6 +925,31 @@ const styles =
 
       fontWeight:
         '800',
+    },
+
+    invitationHeader: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'flex-start',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
+    invitationExpiry: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      marginTop:
+        spacing.md,
     },
 
     readingRow: {
@@ -750,6 +991,28 @@ const styles =
         '800',
     },
 
+    deleteBlock: {
+      marginTop:
+        spacing.md,
+    },
+
+    deleteHint: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      lineHeight:
+        17,
+
+      textAlign:
+        'center',
+
+      marginTop:
+        8,
+    },
+
     footerHint: {
       color:
         colors.muted,
@@ -762,5 +1025,8 @@ const styles =
 
       textAlign:
         'center',
+
+      marginTop:
+        spacing.md,
     },
   });

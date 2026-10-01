@@ -15,6 +15,10 @@ import {
 export interface TenantApartmentPortal {
   tenancyId: string;
 
+  status:
+    | 'ACTIVE'
+    | 'CHECKOUT_PENDING';
+
   propertyId: string;
 
   workspaceId: string;
@@ -62,6 +66,10 @@ export interface TenantMeterContext {
 
 interface TenancyRow {
   id: string;
+
+  status:
+    | 'ACTIVE'
+    | 'CHECKOUT_PENDING';
 
   property_id: string;
 
@@ -125,9 +133,9 @@ interface ServiceRow {
     string | null;
 
   calculation_method:
-    'METER' |
-    'FIXED' |
-    'MANUAL';
+    | 'METER'
+    | 'FIXED'
+    | 'MANUAL';
 
   unit:
     string | null;
@@ -318,6 +326,7 @@ export async function loadTenantApartments(): Promise<
   const {
     data:
       userData,
+
     error:
       userError,
   } =
@@ -340,9 +349,21 @@ export async function loadTenantApartments(): Promise<
     );
   }
 
+  /*
+   * One user can belong to many tenancies.
+   *
+   * We intentionally do NOT use:
+   *
+   *   .single()
+   *   .maybeSingle()
+   *   .limit(1)
+   *
+   * here.
+   */
   const {
     data:
       memberData,
+
     error:
       memberError,
   } =
@@ -356,6 +377,10 @@ export async function loadTenantApartments(): Promise<
       .eq(
         'user_id',
         userId,
+      )
+      .eq(
+        'role',
+        'TENANT',
       );
 
   if (
@@ -365,15 +390,17 @@ export async function loadTenantApartments(): Promise<
   }
 
   const tenancyIds =
-    (
-      memberData ??
-      []
-    ).map(
-      (
-        item,
-      ) =>
-        item.tenancy_id as string,
-    );
+    [
+      ...new Set(
+        (
+          memberData ??
+          []
+        ).map(
+          item =>
+            item.tenancy_id as string,
+        ),
+      ),
+    ];
 
   if (
     tenancyIds.length ===
@@ -382,9 +409,16 @@ export async function loadTenantApartments(): Promise<
     return [];
   }
 
+  /*
+   * A tenant can rent several apartments at once.
+   *
+   * CHECKOUT_PENDING remains visible because the tenancy
+   * has not actually ended yet.
+   */
   const {
     data:
       tenancyData,
+
     error:
       tenancyError,
   } =
@@ -395,6 +429,7 @@ export async function loadTenantApartments(): Promise<
       .select(
         [
           'id',
+          'status',
           'property_id',
           'start_date',
           'end_date',
@@ -407,9 +442,12 @@ export async function loadTenantApartments(): Promise<
         'id',
         tenancyIds,
       )
-      .eq(
+      .in(
         'status',
-        'ACTIVE',
+        [
+          'ACTIVE',
+          'CHECKOUT_PENDING',
+        ],
       )
       .order(
         'start_date',
@@ -440,9 +478,7 @@ export async function loadTenantApartments(): Promise<
 
   const activeTenancyIds =
     tenancies.map(
-      (
-        tenancy,
-      ) =>
+      tenancy =>
         tenancy.id,
     );
 
@@ -450,9 +486,7 @@ export async function loadTenantApartments(): Promise<
     [
       ...new Set(
         tenancies.map(
-          (
-            tenancy,
-          ) =>
+          tenancy =>
             tenancy.property_id,
         ),
       ),
@@ -537,6 +571,7 @@ export async function loadTenantApartments(): Promise<
   const {
     data:
       serviceData,
+
     error:
       serviceError,
   } =
@@ -587,9 +622,7 @@ export async function loadTenantApartments(): Promise<
 
   const serviceIds =
     services.map(
-      (
-        service,
-      ) =>
+      service =>
         service.id,
     );
 
@@ -717,9 +750,7 @@ export async function loadTenantApartments(): Promise<
 
   const meterIds =
     meterRows.map(
-      (
-        meter,
-      ) =>
+      meter =>
         meter.id,
     );
 
@@ -833,9 +864,7 @@ export async function loadTenantApartments(): Promise<
     ) {
       const meter =
         meterRows.find(
-          (
-            row,
-          ) =>
+          row =>
             row.property_service_id ===
             service.id,
         );
@@ -849,30 +878,22 @@ export async function loadTenantApartments(): Promise<
       const registers =
         registerRows
           .filter(
-            (
-              register,
-            ) =>
+            register =>
               register.meter_id ===
               meter.id,
           )
           .map(
-            (
-              register,
-            ) => {
+            register => {
               const tariff =
                 tariffRows.find(
-                  (
-                    row,
-                  ) =>
+                  row =>
                     row.meter_register_id ===
                     register.id,
                 );
 
               const latest =
                 latestRows.find(
-                  (
-                    row,
-                  ) =>
+                  row =>
                     row.meter_register_id ===
                     register.id,
                 );
@@ -885,12 +906,10 @@ export async function loadTenantApartments(): Promise<
                   : undefined;
 
               /*
-               * Important:
+               * Current input stays blank.
                *
-               * New input forms remain blank.
-               *
-               * previousValue exists only for validation
-               * and consumption calculation.
+               * previousValue is only used internally
+               * for validation / consumption calculation.
                */
               const previousValue =
                 latest
@@ -992,9 +1011,7 @@ export async function loadTenantApartments(): Promise<
     ) {
       const tariff =
         tariffRows.find(
-          (
-            row,
-          ) =>
+          row =>
             row.property_service_id ===
               service.id &&
             row.meter_register_id ===
@@ -1045,9 +1062,7 @@ export async function loadTenantApartments(): Promise<
 
     const latestManual =
       manualRows.find(
-        (
-          row,
-        ) =>
+        row =>
           row.property_service_id ===
           service.id,
       );
@@ -1102,14 +1117,10 @@ export async function loadTenantApartments(): Promise<
 
   return tenancies
     .map(
-      (
-        tenancy,
-      ) => {
+      tenancy => {
         const property =
           properties.find(
-            (
-              item,
-            ) =>
+            item =>
               item.id ===
               tenancy.property_id,
           );
@@ -1122,9 +1133,7 @@ export async function loadTenantApartments(): Promise<
 
         const rent =
           rentTerms.find(
-            (
-              item,
-            ) =>
+            item =>
               item.tenancy_id ===
               tenancy.id,
           );
@@ -1132,6 +1141,9 @@ export async function loadTenantApartments(): Promise<
         return {
           tenancyId:
             tenancy.id,
+
+          status:
+            tenancy.status,
 
           propertyId:
             property.id,
@@ -1195,9 +1207,7 @@ export async function loadTenantApartments(): Promise<
 
           meters:
             meters.filter(
-              (
-                meter,
-              ) =>
+              meter =>
                 meter.propertyId ===
                 property.id,
             ),
@@ -1226,9 +1236,7 @@ export async function loadTenantMeterContext(
   ) {
     const meter =
       apartment.meters.find(
-        (
-          item,
-        ) =>
+        item =>
           item.id ===
           meterId,
       );

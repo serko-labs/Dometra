@@ -82,16 +82,12 @@ function lastReadingText(
   const values =
     meter.registers
       .filter(
-        (
-          register,
-        ) =>
+        register =>
           register.lastValue !==
           undefined,
       )
       .map(
-        (
-          register,
-        ) =>
+        register =>
           meter.registers.length >
           1
             ? `${register.code}: ${register.lastValue} ${register.unit}`
@@ -110,9 +106,7 @@ function lastReadingDate(
   const dates =
     meter.registers
       .map(
-        (
-          register,
-        ) =>
+        register =>
           register.lastReadingAt,
       )
       .filter(
@@ -129,7 +123,8 @@ function lastReadingDate(
     return undefined;
   }
 
-  return dates.sort()
+  return dates
+    .sort()
     .reverse()[0];
 }
 
@@ -270,17 +265,17 @@ export function ReadingsScreen() {
       ) : null}
 
       {apartments.map(
-        (
-          apartment,
-        ) => {
+        apartment => {
           const meters =
             apartment.meters.filter(
-              (
-                meter,
-              ) =>
+              meter =>
                 meter.billingMode ===
                 'METERED',
             );
+
+          const checkoutPending =
+            apartment.status ===
+            'CHECKOUT_PENDING';
 
           return (
             <View
@@ -307,6 +302,43 @@ export function ReadingsScreen() {
                 }
               </Text>
 
+              {checkoutPending ? (
+                <Card>
+                  <View
+                    style={
+                      styles.rowBetween
+                    }
+                  >
+                    <View
+                      style={
+                        styles.flex
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.title
+                        }
+                      >
+                        Checkout required
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.muted
+                        }
+                      >
+                        This rental is waiting for checkout. Regular monthly readings are disabled.
+                      </Text>
+                    </View>
+
+                    <Badge
+                      text="Pending"
+                      tone="warning"
+                    />
+                  </View>
+                </Card>
+              ) : null}
+
               {meters.length ===
               0 ? (
                 <Card>
@@ -321,9 +353,7 @@ export function ReadingsScreen() {
               ) : null}
 
               {meters.map(
-                (
-                  meter,
-                ) => {
+                meter => {
                   const last =
                     lastReadingText(
                       meter,
@@ -367,9 +397,7 @@ export function ReadingsScreen() {
                           >
                             {meter.registers
                               .map(
-                                (
-                                  register,
-                                ) =>
+                                register =>
                                   `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
                               )
                               .join(
@@ -435,20 +463,22 @@ export function ReadingsScreen() {
                         </Text>
                       )}
 
-                      <View
-                        style={
-                          styles.buttonTop
-                        }
-                      >
-                        <SecondaryButton
-                          title="Add reading"
-                          onPress={() =>
-                            openReading(
-                              meter.id,
-                            )
+                      {!checkoutPending ? (
+                        <View
+                          style={
+                            styles.buttonTop
                           }
-                        />
-                      </View>
+                        >
+                          <SecondaryButton
+                            title="Add reading"
+                            onPress={() =>
+                              openReading(
+                                meter.id,
+                              )
+                            }
+                          />
+                        </View>
+                      ) : null}
                     </Card>
                   );
                 },

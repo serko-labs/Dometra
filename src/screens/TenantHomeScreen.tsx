@@ -78,28 +78,20 @@ function latestMeterText(
   const values =
     apartment.meters
       .filter(
-        (
-          meter,
-        ) =>
+        meter =>
           meter.billingMode ===
           'METERED',
       )
       .flatMap(
-        (
-          meter,
-        ) =>
+        meter =>
           meter.registers
             .filter(
-              (
-                register,
-              ) =>
+              register =>
                 register.lastValue !==
                 undefined,
             )
             .map(
-              (
-                register,
-              ) =>
+              register =>
                 `${
                   meter.name
                 }${
@@ -115,6 +107,32 @@ function latestMeterText(
     0,
     3,
   );
+}
+
+function apartmentStatus(
+  apartment:
+    TenantApartmentPortal,
+) {
+  if (
+    apartment.status ===
+    'CHECKOUT_PENDING'
+  ) {
+    return {
+      text:
+        'Checkout required',
+
+      tone:
+        'warning' as const,
+    };
+  }
+
+  return {
+    text:
+      'Active',
+
+    tone:
+      'success' as const,
+  };
 }
 
 export function TenantHomeScreen() {
@@ -169,7 +187,7 @@ export function TenantHomeScreen() {
                   error instanceof
                   Error
                     ? error.message
-                    : 'Unable to load your apartment.',
+                    : 'Unable to load your apartments.',
                 );
               }
             } finally {
@@ -208,7 +226,7 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            Loading apartment...
+            Loading apartments...
           </Text>
         </Card>
       ) : null}
@@ -236,11 +254,14 @@ export function TenantHomeScreen() {
       ) : null}
 
       {apartments.map(
-        (
-          apartment,
-        ) => {
+        apartment => {
           const latest =
             latestMeterText(
+              apartment,
+            );
+
+          const status =
+            apartmentStatus(
               apartment,
             );
 
@@ -286,8 +307,12 @@ export function TenantHomeScreen() {
                   </View>
 
                   <Badge
-                    text="Active"
-                    tone="success"
+                    text={
+                      status.text
+                    }
+                    tone={
+                      status.tone
+                    }
                   />
                 </View>
 
@@ -515,9 +540,9 @@ export function TenantHomeScreen() {
                             ) : null}
 
                             {meter.billingMode ===
-                            'VARIABLE' &&
+                              'VARIABLE' &&
                             meter.lastAmount !==
-                            undefined ? (
+                              undefined ? (
                               <Text
                                 style={
                                   styles.muted
