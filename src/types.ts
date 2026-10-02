@@ -1,11 +1,17 @@
 export type AppMode =
-  'LANDLORD' | 'TENANT';
+  | 'LANDLORD'
+  | 'TENANT';
 
 export type LanguageCode =
-  'uk' | 'en' | 'de' | 'ru';
+  | 'uk'
+  | 'en'
+  | 'de'
+  | 'ru';
 
 export type CurrencyCode =
-  'UAH' | 'USD' | 'EUR';
+  | 'UAH'
+  | 'USD'
+  | 'EUR';
 
 export type PropertyStatus =
   | 'ACTIVE'
@@ -17,7 +23,8 @@ export type InvoiceStatus =
   | 'ISSUED'
   | 'PARTIALLY_PAID'
   | 'PAID'
-  | 'OVERDUE';
+  | 'OVERDUE'
+  | 'VOID';
 
 export type PaymentMethod =
   | 'BANK_TRANSFER'
@@ -33,6 +40,7 @@ export type MeterBillingMode =
 export type TenancyStatus =
   | 'PENDING'
   | 'ACTIVE'
+  | 'CHECKOUT_PENDING'
   | 'ENDED'
   | 'CANCELLED';
 
@@ -49,80 +57,157 @@ export type TenancyReadingType =
 
 
 export interface Workspace {
-  id: string;
-  name: string;
-  baseCurrency: CurrencyCode;
-  timezone: string;
+  id:
+    string;
+
+  name:
+    string;
+
+  baseCurrency:
+    CurrencyCode;
+
+  timezone:
+    string;
 }
 
 
 export interface UserSettings {
-  language: LanguageCode;
-  region: string;
-  timezone: string;
-  displayCurrency: CurrencyCode;
-  activeMode: AppMode;
-  pushEnabled: boolean;
+  language:
+    LanguageCode;
+
+  region:
+    string;
+
+  timezone:
+    string;
+
+  displayCurrency:
+    CurrencyCode;
+
+  activeMode:
+    AppMode;
+
+  pushEnabled:
+    boolean;
 }
 
 
 export interface Property {
-  id: string;
-  workspaceId: string;
-  name: string;
-  address: string;
-  city: string;
-  areaM2: number;
-  status: PropertyStatus;
+  id:
+    string;
+
+  workspaceId:
+    string;
+
+  name:
+    string;
+
+  address:
+    string;
+
+  city:
+    string;
+
+  areaM2:
+    number;
+
+  status:
+    PropertyStatus;
 
   /*
    * Legacy presentation fields.
    *
    * Tenancies are the source of truth for occupancy.
+   * These can be removed after every property card
+   * reads tenancy data directly.
    */
-  tenantName?: string;
-  tenantId?: string;
-  rentAmount: number;
-  rentCurrency: CurrencyCode;
-  utilitiesCurrency: CurrencyCode;
-  paymentDueDay: number;
+  tenantName?:
+    string;
+
+  tenantId?:
+    string;
+
+  rentAmount:
+    number;
+
+  rentCurrency:
+    CurrencyCode;
+
+  utilitiesCurrency:
+    CurrencyCode;
+
+  paymentDueDay:
+    number;
 }
 
 
 export interface MeterRegister {
-  id: string;
-  code: string;
-  name: string;
-  unit: string;
-  tariff: number;
-  tariffCurrency: CurrencyCode;
+  id:
+    string;
+
+  code:
+    string;
+
+  name:
+    string;
+
+  unit:
+    string;
+
+  tariff:
+    number;
+
+  tariffCurrency:
+    CurrencyCode;
 
   /*
-   * Used internally for validation/calculation.
-   * New reading screens must still start blank.
+   * Used internally for validation and
+   * consumption calculations.
+   *
+   * Reading screens must still open with
+   * an empty current-reading field.
    */
-  previousValue: number;
+  previousValue:
+    number;
 
-  currentValue?: number;
+  currentValue?:
+    number;
 
-  lastValue?: number;
-  lastReadingAt?: string;
-  lastBillingPeriod?: string;
+  lastValue?:
+    number;
 
-  photoUri?: string;
-  photoPath?: string;
+  lastReadingAt?:
+    string;
 
-  lastPhotoUri?: string;
-  lastPhotoPath?: string;
+  lastBillingPeriod?:
+    string;
+
+  photoUri?:
+    string;
+
+  photoPath?:
+    string;
+
+  lastPhotoUri?:
+    string;
+
+  lastPhotoPath?:
+    string;
 }
 
 
 export interface Meter {
-  id: string;
-  serviceId: string;
-  propertyId: string;
+  id:
+    string;
 
-  name: string;
+  serviceId:
+    string;
+
+  propertyId:
+    string;
+
+  name:
+    string;
 
   category:
     | 'ELECTRICITY'
@@ -131,63 +216,98 @@ export interface Meter {
     | 'HEAT'
     | 'CUSTOM';
 
-  billingMode: MeterBillingMode;
+  billingMode:
+    MeterBillingMode;
 
-  serialNumber?: string;
+  serialNumber?:
+    string;
 
-  unit: string;
+  unit:
+    string;
 
-  registers: MeterRegister[];
+  registers:
+    MeterRegister[];
 
-  fixedAmount?: number;
+  fixedAmount?:
+    number;
 
-  currentAmount?: number;
+  currentAmount?:
+    number;
 
-  lastAmount?: number;
+  lastAmount?:
+    number;
 
-  lastAmountAt?: string;
+  lastAmountAt?:
+    string;
 
-  lastBillingPeriod?: string;
+  lastBillingPeriod?:
+    string;
 
-  billingCurrency?: CurrencyCode;
+  billingCurrency?:
+    CurrencyCode;
 }
 
 
 export interface PropertyInput {
-  city: string;
-  address: string;
-  name?: string;
-  areaM2?: number;
+  city:
+    string;
+
+  address:
+    string;
+
+  name?:
+    string;
+
+  areaM2?:
+    number;
 }
 
 
 export interface MeterInput {
-  propertyId: string;
+  propertyId:
+    string;
 
-  category: Meter['category'];
+  category:
+    Meter['category'];
 
-  name?: string;
+  name?:
+    string;
 
-  dualTariff?: boolean;
+  dualTariff?:
+    boolean;
 
-  billingMode: MeterBillingMode;
+  billingMode:
+    MeterBillingMode;
 
-  tariff?: number;
-  tariffT1?: number;
-  tariffT2?: number;
+  tariff?:
+    number;
 
-  tariffCurrency?: CurrencyCode;
+  tariffT1?:
+    number;
 
-  fixedAmount?: number;
+  tariffT2?:
+    number;
 
-  billingCurrency?: CurrencyCode;
+  tariffCurrency?:
+    CurrencyCode;
+
+  fixedAmount?:
+    number;
+
+  billingCurrency?:
+    CurrencyCode;
 }
 
 
 export interface MeterReadingInput {
-  registerId: string;
-  currentValue: number;
-  photoUri?: string;
+  registerId:
+    string;
+
+  currentValue:
+    number;
+
+  photoUri?:
+    string;
 }
 
 
@@ -198,55 +318,98 @@ export interface MeterReadingInput {
  */
 
 export interface TenantProfileInput {
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
+  firstName:
+    string;
 
-  passportIdNumber?: string;
-  passportPhotoUri?: string;
-  emergencyContact?: string;
-  notes?: string;
+  lastName:
+    string;
+
+  phone:
+    string;
+
+  email:
+    string;
+
+  passportIdNumber?:
+    string;
+
+  passportPhotoUri?:
+    string;
+
+  emergencyContact?:
+    string;
+
+  notes?:
+    string;
 }
 
 
 export interface TenantProfile {
-  userId: string;
+  userId:
+    string;
 
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
+  firstName:
+    string;
 
-  passportIdNumber?: string;
+  lastName:
+    string;
 
-  passportPhotoPath?: string;
-  passportPhotoUri?: string;
+  phone:
+    string;
 
-  emergencyContact?: string;
+  email:
+    string;
 
-  notes?: string;
+  passportIdNumber?:
+    string;
+
+  passportPhotoPath?:
+    string;
+
+  passportPhotoUri?:
+    string;
+
+  emergencyContact?:
+    string;
+
+  notes?:
+    string;
 }
 
 
 export interface ManualTenantContact {
-  id: string;
+  id:
+    string;
 
-  workspaceId: string;
+  workspaceId:
+    string;
 
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
+  firstName:
+    string;
 
-  passportIdNumber?: string;
+  lastName:
+    string;
 
-  passportPhotoPath?: string;
-  passportPhotoUri?: string;
+  phone:
+    string;
 
-  emergencyContact?: string;
+  email:
+    string;
 
-  notes?: string;
+  passportIdNumber?:
+    string;
+
+  passportPhotoPath?:
+    string;
+
+  passportPhotoUri?:
+    string;
+
+  emergencyContact?:
+    string;
+
+  notes?:
+    string;
 }
 
 
@@ -257,34 +420,58 @@ export interface ManualTenantContact {
  */
 
 export interface TenancyOpeningReadingInput {
-  meterRegisterId: string;
-  value: number;
+  meterRegisterId:
+    string;
+
+  value:
+    number;
 }
 
 
 export interface TenancyMeterReading {
-  id: string;
+  id:
+    string;
 
-  tenancyId: string;
+  tenancyId:
+    string;
 
-  meterRegisterId: string;
+  meterRegisterId:
+    string;
 
-  meterId: string;
+  meterId:
+    string;
 
-  meterName: string;
+  meterName:
+    string;
 
-  registerCode: string;
+  registerCode:
+    string;
 
-  registerName: string;
+  registerName:
+    string;
 
-  unit: string;
+  unit:
+    string;
 
-  type: TenancyReadingType;
+  type:
+    TenancyReadingType;
 
-  date: string;
+  date:
+    string;
 
-  value: number;
+  value:
+    number;
 }
+
+/*
+ * Backwards-compatible alias.
+ *
+ * tenantRepository still uses the previous name.
+ * We will remove this alias when that repository
+ * is cleaned up.
+ */
+export type TenantMeterReading =
+  TenancyMeterReading;
 
 
 /*
@@ -294,46 +481,65 @@ export interface TenancyMeterReading {
  */
 
 export interface TenancyTermsInput {
-  rentAmount: number;
+  rentAmount:
+    number;
 
-  currency: CurrencyCode;
+  currency:
+    CurrencyCode;
 
-  startDate: string;
+  startDate:
+    string;
 
-  paymentDueDay: number;
+  paymentDueDay:
+    number;
 
-  endDate?: string;
+  endDate?:
+    string;
 
-  depositAmount?: number;
+  depositAmount?:
+    number;
 
-  depositCurrency?: CurrencyCode;
+  depositCurrency?:
+    CurrencyCode;
 
-  agreementUri?: string;
+  agreementUri?:
+    string;
 
-  autoProlongation: boolean;
+  autoProlongation:
+    boolean;
 
-  openingReadings?: TenancyOpeningReadingInput[];
+  openingReadings?:
+    TenancyOpeningReadingInput[];
 }
 
 
 export interface RentTerms {
-  id: string;
+  id:
+    string;
 
-  tenancyId: string;
+  tenancyId:
+    string;
 
-  rentAmount: number;
+  rentAmount:
+    number;
 
-  currency: CurrencyCode;
+  currency:
+    CurrencyCode;
 
-  paymentDueDay: number;
+  paymentDueDay:
+    number;
 
-  depositAmount?: number;
+  depositAmount?:
+    number;
 
-  depositCurrency?: CurrencyCode;
+  depositCurrency?:
+    CurrencyCode;
 
-  validFrom: string;
+  validFrom:
+    string;
 
-  validTo?: string;
+  validTo?:
+    string;
 }
 
 
@@ -344,28 +550,41 @@ export interface RentTerms {
  */
 
 export interface Tenancy {
-  id: string;
+  id:
+    string;
 
-  propertyId: string;
+  propertyId:
+    string;
 
-  status: TenancyStatus;
+  status:
+    TenancyStatus;
 
-  startDate: string;
+  startDate:
+    string;
 
-  endDate?: string;
+  endDate?:
+    string;
 
-  autoProlongation: boolean;
+  autoProlongation:
+    boolean;
 
-  agreementPath?: string;
-  agreementUri?: string;
+  agreementPath?:
+    string;
 
-  manualTenant?: ManualTenantContact;
+  agreementUri?:
+    string;
 
-  tenantProfile?: TenantProfile;
+  manualTenant?:
+    ManualTenantContact;
 
-  rentTerms?: RentTerms;
+  tenantProfile?:
+    TenantProfile;
 
-  openingReadings?: TenancyMeterReading[];
+  rentTerms?:
+    RentTerms;
+
+  openingReadings?:
+    TenancyMeterReading[];
 }
 
 
@@ -376,142 +595,124 @@ export interface Tenancy {
  */
 
 export interface TenantInvitation {
-  id: string;
+  id:
+    string;
 
-  tenancyId: string;
+  tenancyId:
+    string;
 
-  propertyId: string;
+  propertyId:
+    string;
 
-  propertyName: string;
+  propertyName:
+    string;
 
-  propertyAddress: string;
+  propertyAddress:
+    string;
 
-  propertyCity: string;
+  propertyCity:
+    string;
 
-  rentAmount: number;
+  rentAmount:
+    number;
 
-  currency: CurrencyCode;
+  currency:
+    CurrencyCode;
 
-  paymentDueDay: number;
+  paymentDueDay:
+    number;
 
-  startDate: string;
+  startDate:
+    string;
 
-  endDate?: string;
+  endDate?:
+    string;
 
-  depositAmount?: number;
+  depositAmount?:
+    number;
 
-  depositCurrency?: CurrencyCode;
+  depositCurrency?:
+    CurrencyCode;
 
-  status: InvitationStatus;
+  status:
+    InvitationStatus;
 
-  expiresAt: string;
+  expiresAt:
+    string;
 }
 
 
 export interface CreatedTenantInvitation {
-  tenancyId: string;
-  invitationId: string;
-  token: string;
-  expiresAt: string;
-  link: string;
+  tenancyId:
+    string;
+
+  invitationId:
+    string;
+
+  token:
+    string;
+
+  expiresAt:
+    string;
+
+  link:
+    string;
 }
 
 
 /*
  * ==========================================================
- * FINANCE
+ * REMINDERS
  * ==========================================================
  */
 
-export interface InvoiceLine {
-  id: string;
-
-  type:
-    | 'RENT'
-    | 'UTILITY'
-    | 'FIXED_CHARGE'
-    | 'CUSTOM_CHARGE';
-
-  label: string;
-
-  amount: number;
-
-  currency: CurrencyCode;
-
-  details?: string;
-}
-
-
-export interface Invoice {
-  id: string;
-
-  propertyId: string;
-
-  tenantName: string;
-
-  period: string;
-
-  issueDate: string;
-
-  dueDate: string;
-
-  status: InvoiceStatus;
-
-  lines: InvoiceLine[];
-}
-
-
-export interface Payment {
-  id: string;
-
-  propertyId: string;
-
-  tenantName: string;
-
-  amount: number;
-
-  currency: CurrencyCode;
-
-  date: string;
-
-  method: PaymentMethod;
-
-  allocated: boolean;
-
-  note?: string;
-}
-
-
 export interface Reminder {
-  id: string;
+  id:
+    string;
 
   type:
     | 'RENT_DUE'
     | 'METER_READINGS'
     | 'PAYMENT_OVERDUE';
 
-  propertyId: string;
+  propertyId:
+    string;
 
-  title: string;
+  title:
+    string;
 
-  dueText: string;
+  dueText:
+    string;
 
-  completed: boolean;
+  completed:
+    boolean;
 }
 
 
+/*
+ * ==========================================================
+ * GLOBAL APPLICATION STATE
+ * ==========================================================
+ *
+ * Finance does not belong in AppState.
+ *
+ * Invoices, payments, debt, advance and financial KPIs
+ * are loaded from Supabase through financeRepository.
+ */
+
 export interface AppState {
-  workspace: Workspace | null;
+  workspace:
+    Workspace | null;
 
-  settings: UserSettings;
+  settings:
+    UserSettings;
 
-  properties: Property[];
+  properties:
+    Property[];
 
-  meters: Meter[];
+  meters:
+    Meter[];
 
-  invoices: Invoice[];
-
-  payments: Payment[];
-
-  reminders: Reminder[];
+  reminders:
+    Reminder[];
 }

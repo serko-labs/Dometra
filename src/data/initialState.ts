@@ -27,13 +27,12 @@ export const initialState:
       true,
   },
 
-  properties: [],
+  properties:
+    [],
 
-  meters: [],
+  meters:
+    [],
 
-  invoices: [],
-
-  payments: [],
-
-  reminders: [],
+  reminders:
+    [],
 };

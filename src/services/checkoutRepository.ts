@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { requireSupabase } from '../lib/supabase';
 
 export type CheckoutTenancyStatus =
   | 'ACTIVE'
@@ -62,7 +62,7 @@ export async function getCheckoutContext(
     tenancyResult,
     metersResult,
   ] = await Promise.all([
-    supabase
+    requireSupabase()
       .from('properties')
       .select(
         'id,title,city,street',
@@ -73,7 +73,7 @@ export async function getCheckoutContext(
       )
       .single(),
 
-    supabase
+    requireSupabase()
       .from('tenancies')
       .select(
         `
@@ -105,7 +105,7 @@ export async function getCheckoutContext(
       .limit(1)
       .maybeSingle(),
 
-    supabase
+    requireSupabase()
       .from('meters')
       .select(
         `
@@ -183,7 +183,7 @@ export async function getCheckoutContext(
 
   if (meterIds.length > 0) {
     const registerResult =
-      await supabase
+      await requireSupabase()
         .from(
           'meter_registers',
         )
@@ -322,7 +322,7 @@ export async function checkoutTenancy(
     data,
     error,
   } =
-    await supabase.rpc(
+    await requireSupabase().rpc(
       'checkout_tenancy',
       {
         p_tenancy_id:

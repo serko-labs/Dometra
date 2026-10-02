@@ -1115,9 +1115,13 @@ export async function loadTenantApartments(): Promise<
     });
   }
 
-  return tenancies
-    .map(
-      tenancy => {
+return tenancies
+  .map<
+    TenantApartmentPortal | null
+  >(
+    (
+      tenancy,
+    ) => {
         const property =
           properties.find(
             item =>

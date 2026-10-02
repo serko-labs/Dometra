@@ -1805,8 +1805,23 @@ export async function getPropertyTenancy(
       }
 
       meterData =
-        data ??
-        [];
+  (
+    data ??
+    []
+  ).map(
+    row => ({
+      id:
+        String(
+          row.id,
+        ),
+
+      name:
+        String(
+          row.name ??
+          '',
+        ),
+    }),
+  );
     }
 
     openingReadings =

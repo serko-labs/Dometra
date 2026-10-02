@@ -181,3 +181,6 @@ export interface AppState {
 
   reminders: Reminder[];
 }
+
+export const AUTH_CALLBACK_URL =
+  'dometra://auth/callback';

@@ -25,11 +25,6 @@ import {
 import i18n from '../i18n';
 
 import {
-  getDeviceLanguage,
-  normalizeLanguageCode,
-} from '../i18n/language';
-
-import {
   isSupabaseConfigured,
   supabase,
 } from '../lib/supabase';
@@ -53,14 +48,10 @@ import {
 import {
   AppMode,
   AppState,
-  CurrencyCode,
-  Invoice,
   LanguageCode,
   Meter,
   MeterInput,
   MeterReadingInput,
-  Payment,
-  PaymentMethod,
   Property,
   PropertyInput,
 } from '../types';
@@ -74,23 +65,6 @@ export type AuthStatus =
 
 export type RegisterResult =
   'CONFIRM_EMAIL';
-
-interface AddPaymentInput {
-  propertyId:
-    string;
-
-  amount:
-    number;
-
-  currency:
-    CurrencyCode;
-
-  method:
-    PaymentMethod;
-
-  note?:
-    string;
-}
 
 interface AppContextValue {
   state:
@@ -141,16 +115,13 @@ interface AppContextValue {
   ) => Promise<Property>;
 
   editProperty: (
-    propertyId:
-      string,
-
+    propertyId: string,
     input:
       PropertyInput,
   ) => Promise<Property>;
 
   removeProperty: (
-    propertyId:
-      string,
+    propertyId: string,
   ) => Promise<void>;
 
   addMeter: (
@@ -159,57 +130,32 @@ interface AppContextValue {
   ) => Promise<Meter>;
 
   editMeter: (
-    meterId:
-      string,
-
+    meterId: string,
     input:
       MeterInput,
   ) => Promise<Meter>;
 
   removeMeter: (
-    meterId:
-      string,
+    meterId: string,
   ) => Promise<void>;
 
   saveReading: (
-    meterId:
-      string,
-
-    registerId:
-      string,
-
-    currentValue:
-      number,
-
-    photoUri?:
-      string,
+    meterId: string,
+    registerId: string,
+    currentValue: number,
+    photoUri?: string,
   ) => Promise<void>;
 
   saveMeterReadings: (
-    meterId:
-      string,
-
+    meterId: string,
     readings:
       MeterReadingInput[],
   ) => Promise<void>;
 
   saveVariableAmount: (
-    meterId:
-      string,
-
-    amount:
-      number,
+    meterId: string,
+    amount: number,
   ) => Promise<void>;
-
-  addPayment: (
-    input:
-      AddPaymentInput,
-  ) => Payment;
-
-  generateInvoice: (
-    propertyId:
-      string,
-  ) => Invoice;
 
   changeLanguage: (
     language:
@@ -225,12 +171,10 @@ interface AppContextValue {
 const AppContext =
   createContext<
     AppContextValue | undefined
-  >(
-    undefined,
-  );
+  >(undefined);
 
 function cloneInitialState():
-AppState {
+  AppState {
   return JSON.parse(
     JSON.stringify(
       initialState,
@@ -239,21 +183,16 @@ AppState {
 }
 
 function getAuthParams(
-  url:
-    string,
+  url: string,
 ) {
   const params =
     new URLSearchParams();
 
   const questionIndex =
-    url.indexOf(
-      '?',
-    );
+    url.indexOf('?');
 
   const hashIndex =
-    url.indexOf(
-      '#',
-    );
+    url.indexOf('#');
 
   if (
     questionIndex >=
@@ -269,7 +208,6 @@ function getAuthParams(
       url.slice(
         questionIndex +
           1,
-
         queryEnd,
       );
 
@@ -317,8 +255,7 @@ function getAuthParams(
 }
 
 async function createSessionFromAuthUrl(
-  url:
-    string,
+  url: string,
 ) {
   if (
     !supabase
@@ -388,14 +325,15 @@ async function createSessionFromAuthUrl(
       error:
         sessionError,
     } =
-      await supabase.auth
-        .setSession({
+      await supabase.auth.setSession(
+        {
           access_token:
             accessToken,
 
           refresh_token:
             refreshToken,
-        });
+        },
+      );
 
     if (
       sessionError
@@ -419,10 +357,9 @@ async function createSessionFromAuthUrl(
       error:
         exchangeError,
     } =
-      await supabase.auth
-        .exchangeCodeForSession(
-          code,
-        );
+      await supabase.auth.exchangeCodeForSession(
+        code,
+      );
 
     if (
       exchangeError
@@ -434,143 +371,6 @@ async function createSessionFromAuthUrl(
   }
 
   return null;
-}
-
-async function resolveLanguageForUser(
-  userId:
-    string,
-): Promise<LanguageCode> {
-  const detectedLanguage =
-    getDeviceLanguage();
-
-  if (
-    !supabase
-  ) {
-    return detectedLanguage;
-  }
-
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from(
-        'user_settings',
-      )
-      .select(
-        'language_code,language_initialized',
-      )
-      .eq(
-        'user_id',
-        userId,
-      )
-      .maybeSingle();
-
-  if (
-    error
-  ) {
-    throw error;
-  }
-
-  if (
-    data?.language_initialized
-  ) {
-    return normalizeLanguageCode(
-      data.language_code,
-    );
-  }
-
-  if (
-    data
-  ) {
-    const {
-      error:
-        updateError,
-    } =
-      await supabase
-        .from(
-          'user_settings',
-        )
-        .update({
-          language_code:
-            detectedLanguage,
-
-          language_initialized:
-            true,
-        })
-        .eq(
-          'user_id',
-          userId,
-        );
-
-    if (
-      updateError
-    ) {
-      throw updateError;
-    }
-
-    return detectedLanguage;
-  }
-
-  const {
-    error:
-      insertError,
-  } =
-    await supabase
-      .from(
-        'user_settings',
-      )
-      .insert({
-        user_id:
-          userId,
-
-        language_code:
-          detectedLanguage,
-
-        language_initialized:
-          true,
-      });
-
-  if (
-    insertError
-  ) {
-    throw insertError;
-  }
-
-  return detectedLanguage;
-}
-
-async function markLanguageInitialized(
-  userId:
-    string,
-) {
-  if (
-    !supabase
-  ) {
-    return;
-  }
-
-  const {
-    error,
-  } =
-    await supabase
-      .from(
-        'user_settings',
-      )
-      .update({
-        language_initialized:
-          true,
-      })
-      .eq(
-        'user_id',
-        userId,
-      );
-
-  if (
-    error
-  ) {
-    throw error;
-  }
 }
 
 export function AppProvider({
@@ -593,25 +393,19 @@ export function AppProvider({
   ] =
     useState<
       Session | null
-    >(
-      null,
-    );
+    >(null);
 
   const [
     hydrated,
     setHydrated,
   ] =
-    useState(
-      false,
-    );
+    useState(false);
 
   const [
     dataLoading,
     setDataLoading,
   ] =
-    useState(
-      false,
-    );
+    useState(false);
 
   const [
     authStatus,
@@ -650,20 +444,12 @@ export function AppProvider({
             userId,
           );
 
-        const language =
-          await resolveLanguageForUser(
-            userId,
-          );
-
         setState({
           workspace:
             core.workspace,
 
-          settings: {
-            ...core.settings,
-
-            language,
-          },
+          settings:
+            core.settings,
 
           properties:
             core.properties,
@@ -671,31 +457,12 @@ export function AppProvider({
           meters:
             core.meters,
 
-          invoices:
-            [],
-
-          payments:
-            [],
-
           reminders:
             [],
         });
 
-        try {
-          await syncRemoteTranslations(
-            language,
-          );
-        } catch (
-          error
-        ) {
-          console.warn(
-            '[Dometra] Remote translations sync failed:',
-            error,
-          );
-        }
-
         await i18n.changeLanguage(
-          language,
+          core.settings.language,
         );
       } finally {
         setDataLoading(
@@ -772,8 +539,7 @@ export function AppProvider({
           data,
           error,
         } =
-          await supabase.auth
-            .getSession();
+          await supabase.auth.getSession();
 
         if (
           error
@@ -831,228 +597,221 @@ export function AppProvider({
       }
     };
 
-  useEffect(
-    () => {
-      let mounted =
-        true;
+  useEffect(() => {
+    let mounted =
+      true;
 
-      const authSubscription =
-        supabase?.auth
-          .onAuthStateChange(
-            (
-              event,
-              nextSession,
-            ) => {
-              if (
-                !mounted
-              ) {
-                return;
-              }
-
-              if (
-                event ===
-                'SIGNED_OUT'
-              ) {
-                setSession(
-                  null,
-                );
-
-                setState(
-                  cloneInitialState(),
-                );
-
-                setAuthStatus(
-                  'unauthenticated',
-                );
-
-                setAuthError(
-                  null,
-                );
-
-                return;
-              }
-
-              if (
-                event ===
-                  'TOKEN_REFRESHED' &&
-                nextSession
-              ) {
-                setSession(
-                  nextSession,
-                );
-              }
-            },
-          )
-          .data
-          .subscription;
-
-      const linkSubscription =
-        Linking.addEventListener(
-          'url',
-          ({
-            url,
-          }) => {
-            void (
-              async () => {
-                try {
-                  const nextSession =
-                    await createSessionFromAuthUrl(
-                      url,
-                    );
-
-                  if (
-                    nextSession &&
-                    mounted
-                  ) {
-                    await acceptSession(
-                      nextSession,
-                    );
-                  }
-                } catch (
-                  error
-                ) {
-                  console.error(
-                    '[Dometra] Authentication callback failed:',
-                    error,
-                  );
-
-                  if (
-                    mounted
-                  ) {
-                    setSession(
-                      null,
-                    );
-
-                    setState(
-                      cloneInitialState(),
-                    );
-
-                    setAuthStatus(
-                      'unauthenticated',
-                    );
-
-                    setAuthError(
-                      error instanceof
-                      Error
-                        ? error.message
-                        : 'Authentication callback failed.',
-                    );
-                  }
-                }
-              }
-            )();
-          },
-        );
-
-      const initialize =
-        async () => {
+    const authSubscription =
+      supabase?.auth.onAuthStateChange(
+        (
+          event,
+          nextSession,
+        ) => {
           if (
-            !supabase
+            !mounted
           ) {
-            setAuthStatus(
-              'configuration-error',
+            return;
+          }
+
+          if (
+            event ===
+            'SIGNED_OUT'
+          ) {
+            setSession(
+              null,
             );
 
-            setHydrated(
-              true,
+            setState(
+              cloneInitialState(),
+            );
+
+            setAuthStatus(
+              'unauthenticated',
+            );
+
+            setAuthError(
+              null,
             );
 
             return;
           }
 
-          try {
-            const initialUrl =
-              await Linking.getInitialURL();
+          if (
+            event ===
+              'TOKEN_REFRESHED' &&
+            nextSession
+          ) {
+            setSession(
+              nextSession,
+            );
+          }
+        },
+      ).data.subscription;
 
-            if (
-              initialUrl?.startsWith(
-                AUTH_CALLBACK_URL,
-              )
-            ) {
-              const nextSession =
-                await createSessionFromAuthUrl(
-                  initialUrl,
-                );
+    const linkSubscription =
+      Linking.addEventListener(
+        'url',
+        ({
+          url,
+        }) => {
+          void (
+            async () => {
+              try {
+                const nextSession =
+                  await createSessionFromAuthUrl(
+                    url,
+                  );
 
-              if (
-                nextSession
+                if (
+                  nextSession &&
+                  mounted
+                ) {
+                  await acceptSession(
+                    nextSession,
+                  );
+                }
+              } catch (
+                error
               ) {
-                await acceptSession(
-                  nextSession,
+                console.error(
+                  '[Dometra] Authentication callback failed:',
+                  error,
                 );
 
                 if (
                   mounted
                 ) {
-                  setHydrated(
-                    true,
+                  setSession(
+                    null,
+                  );
+
+                  setState(
+                    cloneInitialState(),
+                  );
+
+                  setAuthStatus(
+                    'unauthenticated',
+                  );
+
+                  setAuthError(
+                    error instanceof
+                    Error
+                      ? error.message
+                      : 'Authentication callback failed.',
                   );
                 }
-
-                return;
               }
             }
+          )();
+        },
+      );
 
-            if (
-              mounted
-            ) {
-              await refreshAuth();
+    const initialize =
+      async () => {
+        if (
+          !supabase
+        ) {
+          setAuthStatus(
+            'configuration-error',
+          );
 
-              setHydrated(
-                true,
-              );
-            }
-          } catch (
-            error
+          setHydrated(
+            true,
+          );
+
+          return;
+        }
+
+        try {
+          const initialUrl =
+            await Linking.getInitialURL();
+
+          if (
+            initialUrl?.startsWith(
+              AUTH_CALLBACK_URL,
+            )
           ) {
-            console.error(
-              '[Dometra] Initialization failed:',
-              error,
-            );
+            const nextSession =
+              await createSessionFromAuthUrl(
+                initialUrl,
+              );
 
             if (
-              mounted
+              nextSession
             ) {
-              setSession(
-                null,
+              await acceptSession(
+                nextSession,
               );
 
-              setState(
-                cloneInitialState(),
-              );
+              if (
+                mounted
+              ) {
+                setHydrated(
+                  true,
+                );
+              }
 
-              setAuthStatus(
-                'connection-error',
-              );
-
-              setAuthError(
-                error instanceof
-                Error
-                  ? error.message
-                  : 'Initialization failed.',
-              );
-
-              setHydrated(
-                true,
-              );
+              return;
             }
           }
-        };
 
-      void initialize();
+          if (
+            mounted
+          ) {
+            await refreshAuth();
 
-      return () => {
-        mounted =
-          false;
+            setHydrated(
+              true,
+            );
+          }
+        } catch (
+          error
+        ) {
+          console.error(
+            '[Dometra] Initialization failed:',
+            error,
+          );
 
-        linkSubscription.remove();
+          if (
+            mounted
+          ) {
+            setSession(
+              null,
+            );
 
-        authSubscription
-          ?.unsubscribe();
+            setState(
+              cloneInitialState(),
+            );
+
+            setAuthStatus(
+              'connection-error',
+            );
+
+            setAuthError(
+              error instanceof
+              Error
+                ? error.message
+                : 'Initialization failed.',
+            );
+
+            setHydrated(
+              true,
+            );
+          }
+        }
       };
-    },
-    [],
-  );
+
+    void initialize();
+
+    return () => {
+      mounted =
+        false;
+
+      linkSubscription.remove();
+
+      authSubscription?.unsubscribe();
+    };
+  }, []);
 
   const requireUser =
     () => {
@@ -1198,6 +957,11 @@ export function AppProvider({
 
       await refreshData();
 
+      /*
+       * React state can still point to the previous render
+       * immediately after refreshData(), so we load the
+       * authoritative Supabase data before returning.
+       */
       const created =
         state.meters.find(
           meter =>
@@ -1473,29 +1237,16 @@ export function AppProvider({
       const user =
         requireUser();
 
+      await syncRemoteTranslations(
+        language,
+      );
+
       await updateUserSettings(
         user.id,
         {
           language,
         },
       );
-
-      await markLanguageInitialized(
-        user.id,
-      );
-
-      try {
-        await syncRemoteTranslations(
-          language,
-        );
-      } catch (
-        error
-      ) {
-        console.warn(
-          '[Dometra] Remote translations sync failed:',
-          error,
-        );
-      }
 
       await i18n.changeLanguage(
         language,
@@ -1544,26 +1295,6 @@ export function AppProvider({
       );
     };
 
-  const addPayment =
-    (
-      _input:
-        AddPaymentInput,
-    ): Payment => {
-      throw new Error(
-        'Payments are not connected to Supabase yet.',
-      );
-    };
-
-  const generateInvoice =
-    (
-      _propertyId:
-        string,
-    ): Invoice => {
-      throw new Error(
-        'Invoices are not connected to Supabase yet.',
-      );
-    };
-
   const login =
     async (
       email:
@@ -1584,15 +1315,16 @@ export function AppProvider({
         data,
         error,
       } =
-        await supabase.auth
-          .signInWithPassword({
+        await supabase.auth.signInWithPassword(
+          {
             email:
               email
                 .trim()
                 .toLowerCase(),
 
             password,
-          });
+          },
+        );
 
       if (
         error
@@ -1633,8 +1365,8 @@ export function AppProvider({
         data,
         error,
       } =
-        await supabase.auth
-          .signUp({
+        await supabase.auth.signUp(
+          {
             email:
               email
                 .trim()
@@ -1646,7 +1378,8 @@ export function AppProvider({
               emailRedirectTo:
                 AUTH_CALLBACK_URL,
             },
-          });
+          },
+        );
 
       if (
         error
@@ -1657,8 +1390,7 @@ export function AppProvider({
       if (
         data.session
       ) {
-        await supabase.auth
-          .signOut();
+        await supabase.auth.signOut();
 
         throw new Error(
           'Email confirmation is disabled in Supabase.',
@@ -1676,8 +1408,7 @@ export function AppProvider({
         const {
           error,
         } =
-          await supabase.auth
-            .signOut();
+          await supabase.auth.signOut();
 
         if (
           error
@@ -1709,29 +1440,49 @@ export function AppProvider({
     >(
       () => ({
         state,
+
         hydrated,
+
         dataLoading,
+
         session,
+
         authStatus,
+
         authError,
+
         login,
+
         register,
+
         logout,
+
         refreshAuth,
+
         refreshData,
+
         setMode,
+
         addProperty,
+
         editProperty,
+
         removeProperty,
+
         addMeter,
+
         editMeter,
+
         removeMeter,
+
         saveReading,
+
         saveMeterReadings,
+
         saveVariableAmount,
-        addPayment,
-        generateInvoice,
+
         changeLanguage,
+
         setPushEnabled,
       }),
       [
