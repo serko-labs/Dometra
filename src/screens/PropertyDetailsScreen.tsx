@@ -32,12 +32,22 @@ import {
 } from '../components/ui';
 
 import {
+  MeterSubmissionBadge,
+} from '../components/MeterSubmissionBadge';
+
+import {
   SwipeActions,
 } from '../components/SwipeActions';
 
 import {
   useApp,
 } from '../context/AppContext';
+
+import {
+  findMeterSubmissionStatus,
+  loadMeterSubmissionStatuses,
+  MeterSubmissionStatus,
+} from '../services/meterSubmissionStatus';
 
 import {
   loadPropertyHistory,
@@ -67,9 +77,16 @@ function formatDate(
     return '—';
   }
 
+  const normalized =
+    value.includes(
+      'T',
+    )
+      ? value
+      : `${value}T00:00:00`;
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      normalized,
     );
 
   if (
@@ -328,13 +345,14 @@ export function PropertyDetailsScreen() {
   ] =
     useState(false);
 
-  /*
-   * Reload tenancy + history whenever we return
-   * to the apartment screen.
-   *
-   * This means editing tenant information is
-   * reflected immediately after pressing Back.
-   */
+  const [
+    meterStatuses,
+    setMeterStatuses,
+  ] =
+    useState<
+      MeterSubmissionStatus[]
+    >([]);
+
   useFocusEffect(
     useCallback(
       () => {
@@ -361,6 +379,7 @@ export function PropertyDetailsScreen() {
               const [
                 tenancyData,
                 historyData,
+                meterStatusData,
               ] =
                 await Promise.all([
                   getPropertyTenancy(
@@ -370,6 +389,10 @@ export function PropertyDetailsScreen() {
                   loadPropertyHistory(
                     propertyId,
                     30,
+                  ),
+
+                  loadMeterSubmissionStatuses(
+                    propertyId,
                   ),
                 ]);
 
@@ -385,6 +408,10 @@ export function PropertyDetailsScreen() {
 
               setHistory(
                 historyData,
+              );
+
+              setMeterStatuses(
+                meterStatusData,
               );
             } catch (
               error
@@ -567,13 +594,6 @@ export function PropertyDetailsScreen() {
 
   return (
     <Screen>
-      {/*
-       * No separate "Apartment / City" card.
-       *
-       * Everything needed is already visible
-       * in the header.
-       */}
-
       <Header
         title={
           property.name
@@ -590,12 +610,6 @@ export function PropertyDetailsScreen() {
           />
         }
       />
-
-      {/*
-       * ======================================================
-       * TENANT
-       * ======================================================
-       */}
 
       <SectionTitle
         title="Tenant"
@@ -860,12 +874,6 @@ export function PropertyDetailsScreen() {
         </Pressable>
       ) : null}
 
-      {/*
-       * ======================================================
-       * METERS
-       * ======================================================
-       */}
-
       <SectionTitle
         title="Meters & services"
       />
@@ -889,6 +897,15 @@ export function PropertyDetailsScreen() {
             getLatestReading(
               meter,
             );
+
+          const meterStatus =
+            meter.billingMode ===
+            'METERED'
+              ? findMeterSubmissionStatus(
+                  meterStatuses,
+                  meter.id,
+                )
+              : undefined;
 
           return (
             <SwipeActions
@@ -925,15 +942,32 @@ export function PropertyDetailsScreen() {
                       styles.flex
                     }
                   >
-                    <Text
+                    <View
                       style={
-                        styles.value
+                        styles.meterTitleRow
                       }
                     >
-                      {
-                        meter.name
-                      }
-                    </Text>
+                      <Text
+                        style={
+                          styles.value
+                        }
+                      >
+                        {
+                          meter.name
+                        }
+                      </Text>
+
+                      {meter.billingMode ===
+                        'METERED' &&
+                      tenancy?.status ===
+                        'ACTIVE' ? (
+                        <MeterSubmissionBadge
+                          status={
+                            meterStatus
+                          }
+                        />
+                      ) : null}
+                    </View>
 
                     {meter.billingMode ===
                     'METERED' ? (
@@ -953,6 +987,22 @@ export function PropertyDetailsScreen() {
                             )}
                         </Text>
 
+                        {meterStatus
+                          ?.submittedAt ? (
+                          <Text
+                            style={
+                              styles.submissionInfo
+                            }
+                          >
+                            {meterStatus.submittedByTenant
+                              ? 'Tenant submitted'
+                              : 'Submitted'}{' '}
+                            {formatDate(
+                              meterStatus.submittedAt,
+                            )}
+                          </Text>
+                        ) : null}
+
                         {latestReading ? (
                           <View
                             style={
@@ -961,12 +1011,9 @@ export function PropertyDetailsScreen() {
                           >
                             <Badge
                               text={`Last ${formatDate(
-                                latestReading.date.slice(
-                                  0,
-                                  10,
-                                ),
+                                latestReading.date,
                               )}`}
-                              tone="success"
+                              tone="neutral"
                             />
 
                             <Text
@@ -1101,12 +1148,6 @@ export function PropertyDetailsScreen() {
         }
       />
 
-      {/*
-       * ======================================================
-       * HISTORY
-       * ======================================================
-       */}
-
       <SectionTitle
         title="History"
       />
@@ -1224,12 +1265,6 @@ export function PropertyDetailsScreen() {
           </View>
         ),
       )}
-
-      {/*
-       * ======================================================
-       * INVOICES
-       * ======================================================
-       */}
 
       <SectionTitle
         title={
@@ -1469,6 +1504,20 @@ const styles =
         spacing.md,
     },
 
+    meterTitleRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      flexWrap:
+        'wrap',
+
+      gap:
+        8,
+    },
+
     value: {
       color:
         colors.text,
@@ -1492,6 +1541,20 @@ const styles =
 
       lineHeight:
         18,
+    },
+
+    submissionInfo: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '600',
+
+      marginTop:
+        5,
     },
 
     lastReading: {

@@ -16,6 +16,10 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Badge,
   Card,
   Header,
@@ -23,6 +27,24 @@ import {
   SecondaryButton,
   SectionTitle,
 } from '../components/ui';
+
+import {
+  MeterSubmissionBadge,
+} from '../components/MeterSubmissionBadge';
+
+import {
+  getLocaleTag,
+} from '../i18n/language';
+
+import {
+  findMeterSubmissionStatus,
+  loadMeterSubmissionStatuses,
+  MeterSubmissionStatus,
+} from '../services/meterSubmissionStatus';
+
+import {
+  registerPushNotificationsForCurrentUser,
+} from '../services/notifications';
 
 import {
   loadTenantApartments,
@@ -35,17 +57,21 @@ import {
 } from '../theme';
 
 function formatDate(
-  value?: string,
+  value: string | undefined,
+  locale: string,
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return '—';
   }
 
+  const normalized =
+    value.includes('T')
+      ? value
+      : `${value}T00:00:00`;
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      normalized,
     );
 
   if (
@@ -57,7 +83,7 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    undefined,
+    locale,
     {
       day:
         '2-digit',
@@ -92,9 +118,7 @@ function latestMeterText(
             )
             .map(
               register =>
-                `${
-                  meter.name
-                }${
+                `${meter.name}${
                   meter.registers.length >
                   1
                     ? ` ${register.code}`
@@ -109,35 +133,21 @@ function latestMeterText(
   );
 }
 
-function apartmentStatus(
-  apartment:
-    TenantApartmentPortal,
-) {
-  if (
-    apartment.status ===
-    'CHECKOUT_PENDING'
-  ) {
-    return {
-      text:
-        'Checkout required',
-
-      tone:
-        'warning' as const,
-    };
-  }
-
-  return {
-    text:
-      'Active',
-
-    tone:
-      'success' as const,
-  };
-}
-
 export function TenantHomeScreen() {
   const navigation =
     useNavigation<any>();
+
+  const {
+    t,
+    i18n,
+  } =
+    useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
 
   const [
     apartments,
@@ -145,6 +155,14 @@ export function TenantHomeScreen() {
   ] =
     useState<
       TenantApartmentPortal[]
+    >([]);
+
+  const [
+    meterStatuses,
+    setMeterStatuses,
+  ] =
+    useState<
+      MeterSubmissionStatus[]
     >([]);
 
   const [
@@ -166,15 +184,43 @@ export function TenantHomeScreen() {
             );
 
             try {
-              const data =
-                await loadTenantApartments();
+              const [
+                apartmentData,
+                statusData,
+              ] =
+                await Promise.all([
+                  loadTenantApartments(),
+
+                  loadMeterSubmissionStatuses(),
+                ]);
 
               if (
-                active
+                !active
               ) {
-                setApartments(
-                  data,
-                );
+                return;
+              }
+
+              setApartments(
+                apartmentData,
+              );
+
+              setMeterStatuses(
+                statusData,
+              );
+
+              if (
+                apartmentData.length >
+                0
+              ) {
+                void registerPushNotificationsForCurrentUser()
+                  .catch(
+                    error => {
+                      console.warn(
+                        '[Dometra] Push registration failed:',
+                        error,
+                      );
+                    },
+                  );
               }
             } catch (
               error
@@ -183,11 +229,16 @@ export function TenantHomeScreen() {
                 active
               ) {
                 Alert.alert(
-                  'Tenant home',
+                  t(
+                    'tenantHomeTitle',
+                  ),
+
                   error instanceof
                   Error
                     ? error.message
-                    : 'Unable to load your apartments.',
+                    : t(
+                        'noActiveTenancyDescription',
+                      ),
                 );
               }
             } finally {
@@ -208,15 +259,26 @@ export function TenantHomeScreen() {
             false;
         };
       },
-      [],
+
+      [
+        t,
+      ],
     ),
   );
 
   return (
     <Screen>
       <Header
-        title="Home"
-        subtitle="Your rental apartments"
+        title={
+          t(
+            'tenantHomeTitle',
+          )
+        }
+        subtitle={
+          t(
+            'rentalApartments',
+          )
+        }
       />
 
       {loading ? (
@@ -226,7 +288,9 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            Loading apartments...
+            {t(
+              'loadingApartments',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -240,7 +304,9 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            No active tenancy
+            {t(
+              'noActiveTenancy',
+            )}
           </Text>
 
           <Text
@@ -248,7 +314,9 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            When you accept an apartment invitation, the rental will appear here.
+            {t(
+              'noActiveTenancyDescription',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -260,10 +328,26 @@ export function TenantHomeScreen() {
               apartment,
             );
 
-          const status =
-            apartmentStatus(
-              apartment,
+          const checkoutPending =
+            apartment.status ===
+            'CHECKOUT_PENDING';
+
+          const meteredMeters =
+            apartment.meters.filter(
+              meter =>
+                meter.billingMode ===
+                'METERED',
             );
+
+          const submittedCount =
+            meteredMeters.filter(
+              meter =>
+                findMeterSubmissionStatus(
+                  meterStatuses,
+                  meter.id,
+                )?.submitted ===
+                true,
+            ).length;
 
           return (
             <React.Fragment
@@ -299,7 +383,8 @@ export function TenantHomeScreen() {
                     >
                       {
                         apartment.propertyAddress
-                      },{' '}
+                      }
+                      ,{' '}
                       {
                         apartment.propertyCity
                       }
@@ -308,10 +393,18 @@ export function TenantHomeScreen() {
 
                   <Badge
                     text={
-                      status.text
+                      checkoutPending
+                        ? t(
+                            'checkoutRequired',
+                          )
+                        : t(
+                            'active',
+                          )
                     }
                     tone={
-                      status.tone
+                      checkoutPending
+                        ? 'warning'
+                        : 'success'
                     }
                   />
                 </View>
@@ -337,7 +430,9 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      Rent
+                      {t(
+                        'rent',
+                      )}
                     </Text>
 
                     <Text
@@ -364,7 +459,9 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      Payment due
+                      {t(
+                        'paymentDue',
+                      )}
                     </Text>
 
                     <Text
@@ -372,10 +469,14 @@ export function TenantHomeScreen() {
                         styles.value
                       }
                     >
-                      Day{' '}
-                      {
-                        apartment.paymentDueDay
-                      }
+                      {t(
+                        'dayNumber',
+
+                        {
+                          day:
+                            apartment.paymentDueDay,
+                        },
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -395,7 +496,9 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      Started
+                      {t(
+                        'started',
+                      )}
                     </Text>
 
                     <Text
@@ -405,6 +508,7 @@ export function TenantHomeScreen() {
                     >
                       {formatDate(
                         apartment.startDate,
+                        locale,
                       )}
                     </Text>
                   </View>
@@ -419,7 +523,9 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      End date
+                      {t(
+                        'endDate',
+                      )}
                     </Text>
 
                     <Text
@@ -430,8 +536,11 @@ export function TenantHomeScreen() {
                       {apartment.endDate
                         ? formatDate(
                             apartment.endDate,
+                            locale,
                           )
-                        : 'Open-ended'}
+                        : t(
+                            'openEnded',
+                          )}
                     </Text>
                   </View>
                 </View>
@@ -448,7 +557,9 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      Security deposit
+                      {t(
+                        'securityDeposit',
+                      )}
                     </Text>
 
                     <Text
@@ -466,9 +577,40 @@ export function TenantHomeScreen() {
                 ) : null}
               </Card>
 
-              <SectionTitle
-                title="Meters & services"
-              />
+              <View
+                style={
+                  styles.sectionHeader
+                }
+              >
+                <SectionTitle
+                  title={
+                    t(
+                      'metersAndServices',
+                    )
+                  }
+                />
+
+                {meteredMeters.length >
+                0 ? (
+                  <Text
+                    style={
+                      styles.sectionProgress
+                    }
+                  >
+                    {t(
+                      'submittedProgress',
+
+                      {
+                        submitted:
+                          submittedCount,
+
+                        total:
+                          meteredMeters.length,
+                      },
+                    )}
+                  </Text>
+                ) : null}
+              </View>
 
               {apartment.meters.length ===
               0 ? (
@@ -478,7 +620,9 @@ export function TenantHomeScreen() {
                       styles.muted
                     }
                   >
-                    No meters or services have been configured yet.
+                    {t(
+                      'noMetersOrServices',
+                    )}
                   </Text>
                 </Card>
               ) : (
@@ -487,93 +631,148 @@ export function TenantHomeScreen() {
                     (
                       meter,
                       index,
-                    ) => (
-                      <View
-                        key={
-                          meter.id
-                        }
-                      >
-                        {index >
-                        0 ? (
-                          <View
-                            style={
-                              styles.smallSeparator
-                            }
-                          />
-                        ) : null}
+                    ) => {
+                      const meterStatus =
+                        meter.billingMode ===
+                        'METERED'
+                          ? findMeterSubmissionStatus(
+                              meterStatuses,
+                              meter.id,
+                            )
+                          : undefined;
 
+                      return (
                         <View
-                          style={
-                            styles.meterRow
+                          key={
+                            meter.id
                           }
                         >
+                          {index >
+                          0 ? (
+                            <View
+                              style={
+                                styles.smallSeparator
+                              }
+                            />
+                          ) : null}
+
                           <View
                             style={
-                              styles.flex
+                              styles.meterRow
                             }
                           >
-                            <Text
+                            <View
                               style={
-                                styles.meterName
+                                styles.flex
                               }
                             >
-                              {
-                                meter.name
-                              }
-                            </Text>
-
-                            {meter.billingMode ===
-                            'FIXED' ? (
-                              <Text
+                              <View
                                 style={
-                                  styles.muted
+                                  styles.meterTitleRow
                                 }
                               >
-                                {
-                                  meter.fixedAmount
-                                }{' '}
-                                {
-                                  meter.billingCurrency
-                                }{' '}
-                                / month
-                              </Text>
-                            ) : null}
+                                <Text
+                                  style={
+                                    styles.meterName
+                                  }
+                                >
+                                  {
+                                    meter.name
+                                  }
+                                </Text>
 
-                            {meter.billingMode ===
-                              'VARIABLE' &&
-                            meter.lastAmount !==
-                              undefined ? (
-                              <Text
-                                style={
-                                  styles.muted
+                                {apartment.status ===
+                                  'ACTIVE' &&
+                                meter.billingMode ===
+                                  'METERED' ? (
+                                  <MeterSubmissionBadge
+                                    status={
+                                      meterStatus
+                                    }
+                                  />
+                                ) : null}
+                              </View>
+
+                              {meter.billingMode ===
+                                'METERED' &&
+                              apartment.status ===
+                                'ACTIVE' &&
+                              meterStatus &&
+                              !meterStatus.submitted ? (
+                                <Text
+                                  style={
+                                    styles.dueText
+                                  }
+                                >
+                                  {t(
+                                    'sendBeforeFifth',
+                                  )}
+                                </Text>
+                              ) : null}
+
+                              {meter.billingMode ===
+                              'FIXED' ? (
+                                <Text
+                                  style={
+                                    styles.muted
+                                  }
+                                >
+                                  {
+                                    meter.fixedAmount
+                                  }{' '}
+                                  {
+                                    meter.billingCurrency
+                                  }{' '}
+                                  {t(
+                                    'perMonth',
+                                  )}
+                                </Text>
+                              ) : null}
+
+                              {meter.billingMode ===
+                                'VARIABLE' &&
+                              meter.lastAmount !==
+                                undefined ? (
+                                <Text
+                                  style={
+                                    styles.muted
+                                  }
+                                >
+                                  {t(
+                                    'lastValue',
+
+                                    {
+                                      value:
+                                        meter.lastAmount,
+
+                                      currency:
+                                        meter.billingCurrency,
+                                    },
+                                  )}
+                                </Text>
+                              ) : null}
+                            </View>
+
+                            {meter.billingMode !==
+                            'METERED' ? (
+                              <Badge
+                                text={
+                                  meter.billingMode ===
+                                  'FIXED'
+                                    ? t(
+                                        'fixed',
+                                      )
+                                    : t(
+                                        'variable',
+                                      )
                                 }
-                              >
-                                Last value:{' '}
-                                {
-                                  meter.lastAmount
-                                }{' '}
-                                {
-                                  meter.billingCurrency
-                                }
-                              </Text>
+                                tone="neutral"
+                              />
                             ) : null}
                           </View>
-
-                          <Badge
-                            text={
-                              meter.billingMode ===
-                              'METERED'
-                                ? 'Meter'
-                                : meter.billingMode ===
-                                    'FIXED'
-                                  ? 'Fixed'
-                                  : 'Variable'
-                            }
-                            tone="neutral"
-                          />
                         </View>
-                      </View>
-                    ),
+                      );
+                    },
                   )}
                 </Card>
               )}
@@ -582,7 +781,11 @@ export function TenantHomeScreen() {
               0 ? (
                 <>
                   <SectionTitle
-                    title="Last readings"
+                    title={
+                      t(
+                        'lastReadings',
+                      )
+                    }
                   />
 
                   <Card>
@@ -606,7 +809,11 @@ export function TenantHomeScreen() {
               ) : null}
 
               <SecondaryButton
-                title="Open readings"
+                title={
+                  t(
+                    'openReadings',
+                  )
+                }
                 onPress={() =>
                   navigation.navigate(
                     'Readings',
@@ -752,6 +959,31 @@ const styles =
         2,
     },
 
+    sectionHeader: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
+    sectionProgress: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+    },
+
     meterRow: {
       flexDirection:
         'row',
@@ -763,6 +995,20 @@ const styles =
         spacing.md,
     },
 
+    meterTitleRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      flexWrap:
+        'wrap',
+
+      gap:
+        8,
+    },
+
     meterName: {
       color:
         colors.text,
@@ -772,6 +1018,20 @@ const styles =
 
       fontWeight:
         '700',
+    },
+
+    dueText: {
+      color:
+        '#B42318',
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        5,
     },
 
     lastReading: {

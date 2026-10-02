@@ -39,6 +39,28 @@ import {
   spacing,
 } from '../theme';
 
+import {
+  LanguageCode,
+} from '../types';
+
+const languageLabels:
+  Record<
+    LanguageCode,
+    string
+  > = {
+  uk:
+    'Українська',
+
+  ru:
+    'Русский',
+
+  en:
+    'English',
+
+  de:
+    'Deutsch',
+};
+
 export function SettingsScreen() {
   const {
     t,
@@ -59,16 +81,32 @@ export function SettingsScreen() {
 
   const testNotification =
     async () => {
-      const ok =
-        await scheduleTestReminder();
+      try {
+        const ok =
+          await scheduleTestReminder();
 
-      Alert.alert(
-        'Dometra',
-
-        ok
-          ? 'Notification scheduled in 3 seconds.'
-          : 'Notification permission denied.',
-      );
+        Alert.alert(
+          'Dometra',
+          ok
+            ? t(
+                'notificationScheduled',
+              )
+            : t(
+                'notificationPermissionDenied',
+              ),
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          'Dometra',
+          error instanceof Error
+            ? error.message
+            : t(
+                'notificationPermissionDenied',
+              ),
+        );
+      }
     };
 
   return (
@@ -103,7 +141,7 @@ export function SettingsScreen() {
           <SecondaryButton
             title={`${state.settings.activeMode === 'LANDLORD' ? '✓ ' : ''}${t('landlord')}`}
             onPress={() =>
-              setMode(
+              void setMode(
                 'LANDLORD',
               )
             }
@@ -112,7 +150,7 @@ export function SettingsScreen() {
           <SecondaryButton
             title={`${state.settings.activeMode === 'TENANT' ? '✓ ' : ''}${t('tenant')}`}
             onPress={() =>
-              setMode(
+              void setMode(
                 'TENANT',
               )
             }
@@ -134,7 +172,11 @@ export function SettingsScreen() {
             styles.rowBetween
           }
         >
-          <View>
+          <View
+            style={
+              styles.flex
+            }
+          >
             <Text
               style={
                 styles.title
@@ -150,7 +192,12 @@ export function SettingsScreen() {
                 styles.muted
               }
             >
-              {state.settings.language.toUpperCase()}
+              {
+                languageLabels[
+                  state.settings
+                    .language
+                ]
+              }
               {' • '}
               {state.settings.region}
             </Text>
@@ -159,7 +206,7 @@ export function SettingsScreen() {
           <TextButton
             title={
               t(
-                'language',
+                'change',
               )
             }
             onPress={() =>
@@ -195,7 +242,9 @@ export function SettingsScreen() {
                 styles.title
               }
             >
-              Push
+              {t(
+                'push',
+              )}
             </Text>
 
             <Text
@@ -203,9 +252,9 @@ export function SettingsScreen() {
                 styles.muted
               }
             >
-              Rent, meter
-              readings and overdue
-              reminders
+              {t(
+                'notificationDescription',
+              )}
             </Text>
           </View>
 
@@ -215,7 +264,10 @@ export function SettingsScreen() {
                 .pushEnabled
             }
             onValueChange={
-              setPushEnabled
+              value =>
+                void setPushEnabled(
+                  value,
+                )
             }
           />
         </View>
@@ -239,7 +291,11 @@ export function SettingsScreen() {
       </Card>
 
       <SectionTitle
-        title="Account"
+        title={
+          t(
+            'account',
+          )
+        }
       />
 
       <Card>
@@ -257,8 +313,9 @@ export function SettingsScreen() {
             styles.muted
           }
         >
-          Signed in with
-          Supabase
+          {t(
+            'signedInWithSupabase',
+          )}
         </Text>
       </Card>
 

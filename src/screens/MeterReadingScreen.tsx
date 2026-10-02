@@ -43,6 +43,10 @@ import {
 } from '../context/AppContext';
 
 import {
+  getLocaleTag,
+} from '../i18n/language';
+
+import {
   loadTenantMeterContext,
   saveTenantMeterReadings,
   TenantMeterContext,
@@ -58,11 +62,68 @@ import {
   spacing,
 } from '../theme';
 
+function formatSubmissionDate(
+  value:
+    string | undefined,
+
+  locale:
+    string,
+
+  neverLabel:
+    string,
+) {
+  if (!value) {
+    return neverLabel;
+  }
+
+  const normalized =
+    value.includes(
+      'T',
+    )
+      ? value
+      : `${value}T00:00:00`;
+
+  const date =
+    new Date(
+      normalized,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    locale,
+
+    {
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      year:
+        'numeric',
+    },
+  );
+}
+
 export function MeterReadingScreen() {
   const {
     t,
+    i18n,
   } =
     useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
 
   const route =
     useRoute<any>();
@@ -94,13 +155,13 @@ export function MeterReadingScreen() {
       'TENANT';
 
   const landlordMeter =
-    state.meters.find(
-      (
-        item,
-      ) =>
-        item.id ===
-        meterId,
-    );
+    tenantMode
+      ? undefined
+      : state.meters.find(
+          item =>
+            item.id ===
+            meterId,
+        );
 
   const [
     tenantContext,
@@ -115,14 +176,14 @@ export function MeterReadingScreen() {
     setLoadingMeter,
   ] =
     useState(
-      tenantMode &&
-      !landlordMeter,
+      tenantMode,
     );
 
   const meter:
     Meter | undefined =
-    landlordMeter ??
-    tenantContext?.meter;
+    tenantMode
+      ? tenantContext?.meter
+      : landlordMeter;
 
   const [
     cameraPermission,
@@ -143,12 +204,6 @@ export function MeterReadingScreen() {
       string | null
     >(null);
 
-  /*
-   * Every visit starts blank.
-   *
-   * Historical values stay in Supabase and
-   * are visible on Readings / History pages.
-   */
   const [
     draftValues,
     setDraftValues,
@@ -187,7 +242,6 @@ export function MeterReadingScreen() {
     () => {
       if (
         !tenantMode ||
-        landlordMeter ||
         !meterId
       ) {
         return;
@@ -222,11 +276,16 @@ export function MeterReadingScreen() {
               active
             ) {
               Alert.alert(
-                'Meter',
+                t(
+                  'meter',
+                ),
+
                 error instanceof
                 Error
                   ? error.message
-                  : 'Unable to load meter.',
+                  : t(
+                      'meterUnavailable',
+                    ),
               );
             }
           } finally {
@@ -247,10 +306,11 @@ export function MeterReadingScreen() {
           false;
       };
     },
+
     [
-      tenantMode,
-      landlordMeter,
       meterId,
+      t,
+      tenantMode,
     ],
   );
 
@@ -260,8 +320,16 @@ export function MeterReadingScreen() {
     return (
       <Screen>
         <Header
-          title="Meter reading"
-          subtitle="Loading meter..."
+          title={
+            t(
+              'meterReading',
+            )
+          }
+          subtitle={
+            t(
+              'meterReadingLoading',
+            )
+          }
         />
       </Screen>
     );
@@ -273,8 +341,16 @@ export function MeterReadingScreen() {
     return (
       <Screen>
         <Header
-          title="Meter reading"
-          subtitle="Meter not found"
+          title={
+            t(
+              'meterReading',
+            )
+          }
+          subtitle={
+            t(
+              'meterNotFound',
+            )
+          }
         />
 
         <Card>
@@ -283,7 +359,9 @@ export function MeterReadingScreen() {
               styles.muted
             }
           >
-            This meter is not available for the current account.
+            {t(
+              'meterUnavailable',
+            )}
           </Text>
         </Card>
       </Screen>
@@ -318,12 +396,6 @@ export function MeterReadingScreen() {
       );
     };
 
-  /*
-   * ----------------------------------------------------------
-   * FIXED SERVICE
-   * ----------------------------------------------------------
-   */
-
   if (
     meter.billingMode ===
     'FIXED'
@@ -334,7 +406,11 @@ export function MeterReadingScreen() {
           title={
             meter.name
           }
-          subtitle="Fixed monthly service"
+          subtitle={
+            t(
+              'fixedMonthlyService',
+            )
+          }
         />
 
         <Card>
@@ -343,7 +419,9 @@ export function MeterReadingScreen() {
               styles.title
             }
           >
-            Fixed amount
+            {t(
+              'fixedAmount',
+            )}
           </Text>
 
           <Text
@@ -364,18 +442,14 @@ export function MeterReadingScreen() {
               styles.muted
             }
           >
-            No meter reading is required for this service.
+            {t(
+              'noMeterReadingRequired',
+            )}
           </Text>
         </Card>
       </Screen>
     );
   }
-
-  /*
-   * ----------------------------------------------------------
-   * VARIABLE SERVICE
-   * ----------------------------------------------------------
-   */
 
   if (
     meter.billingMode ===
@@ -390,7 +464,11 @@ export function MeterReadingScreen() {
             title={
               meter.name
             }
-            subtitle="Variable service"
+            subtitle={
+              t(
+                'variableService',
+              )
+            }
           />
 
           <Card>
@@ -399,7 +477,9 @@ export function MeterReadingScreen() {
                 styles.title
               }
             >
-              Landlord-managed service
+              {t(
+                'landlordManagedService',
+              )}
             </Text>
 
             <Text
@@ -407,7 +487,9 @@ export function MeterReadingScreen() {
                 styles.muted
               }
             >
-              Variable service charges are currently entered by the landlord.
+              {t(
+                'landlordManagedServiceDescription',
+              )}
             </Text>
           </Card>
         </Screen>
@@ -428,7 +510,8 @@ export function MeterReadingScreen() {
       Number.isFinite(
         amount,
       ) &&
-      amount >= 0;
+      amount >=
+        0;
 
     const saveVariable =
       async () => {
@@ -449,8 +532,14 @@ export function MeterReadingScreen() {
           );
 
           Alert.alert(
-            'Saved',
-            'The value has been saved.',
+            t(
+              'saved',
+            ),
+
+            t(
+              'valueSaved',
+            ),
+
             [
               {
                 text:
@@ -465,11 +554,16 @@ export function MeterReadingScreen() {
           error
         ) {
           Alert.alert(
-            'Unable to save',
+            t(
+              'unableToSave',
+            ),
+
             error instanceof
             Error
               ? error.message
-              : 'Unknown error.',
+              : t(
+                  'unableToSave',
+                ),
           );
         } finally {
           setBusy(
@@ -484,12 +578,16 @@ export function MeterReadingScreen() {
           title={
             meter.name
           }
-          subtitle="Variable monthly service"
+          subtitle={
+            t(
+              'variableMonthlyService',
+            )
+          }
         />
 
         <Card>
           <Field
-            label={`Amount (${meter.billingCurrency ?? 'UAH'})`}
+            label={`${t('amount')} (${meter.billingCurrency ?? 'UAH'})`}
             value={
               variableAmount
             }
@@ -506,8 +604,12 @@ export function MeterReadingScreen() {
           <PrimaryButton
             title={
               busy
-                ? 'Saving...'
-                : 'Save'
+                ? t(
+                    'saving',
+                  )
+                : t(
+                    'save',
+                  )
             }
             disabled={
               !valid ||
@@ -522,30 +624,24 @@ export function MeterReadingScreen() {
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * CAMERA
-   * ----------------------------------------------------------
-   */
-
   const capturePhoto =
     async () => {
       try {
         const photo =
           await cameraRef.current
-            ?.takePictureAsync({
-              quality:
-                0.75,
-            });
+            ?.takePictureAsync(
+              {
+                quality:
+                  0.75,
+              },
+            );
 
         if (
           photo?.uri &&
           cameraRegisterId
         ) {
           setDraftPhotos(
-            (
-              current,
-            ) => ({
+            current => ({
               ...current,
 
               [cameraRegisterId]:
@@ -562,21 +658,19 @@ export function MeterReadingScreen() {
       ) {
         console.error(
           '[Dometra] Camera capture failed:',
+
           error,
         );
 
         Alert.alert(
           'Dometra',
-          'Unable to take photo.',
+
+          t(
+            'unableToTakePhoto',
+          ),
         );
       }
     };
-
-  /*
-   * ----------------------------------------------------------
-   * GALLERY
-   * ----------------------------------------------------------
-   */
 
   const selectFromGallery =
     async (
@@ -585,22 +679,23 @@ export function MeterReadingScreen() {
     ) => {
       try {
         const result =
-          await ImagePicker.launchImageLibraryAsync(
-            {
-              mediaTypes: [
-                'images',
-              ],
+          await ImagePicker
+            .launchImageLibraryAsync(
+              {
+                mediaTypes: [
+                  'images',
+                ],
 
-              allowsEditing:
-                false,
+                allowsEditing:
+                  false,
 
-              quality:
-                0.8,
+                quality:
+                  0.8,
 
-              selectionLimit:
-                1,
-            },
-          );
+                selectionLimit:
+                  1,
+              },
+            );
 
         if (
           result.canceled
@@ -615,9 +710,7 @@ export function MeterReadingScreen() {
           selected?.uri
         ) {
           setDraftPhotos(
-            (
-              current,
-            ) => ({
+            current => ({
               ...current,
 
               [registerId]:
@@ -630,28 +723,23 @@ export function MeterReadingScreen() {
       ) {
         Alert.alert(
           'Dometra',
+
           error instanceof
           Error
             ? error.message
-            : 'Unable to select photo.',
+            : t(
+                'unableToSelectPhoto',
+              ),
         );
       }
     };
-
-  /*
-   * ----------------------------------------------------------
-   * SAVE
-   * ----------------------------------------------------------
-   */
 
   const saveAll =
     async () => {
       try {
         const readings =
           meter.registers.map(
-            (
-              register,
-            ) => {
+            register => {
               const value =
                 draftValues[
                   register.id
@@ -680,7 +768,14 @@ export function MeterReadingScreen() {
                 )
               ) {
                 throw new Error(
-                  `Enter a valid value for ${register.code}.`,
+                  t(
+                    'enterValidValueForRegister',
+
+                    {
+                      register:
+                        register.code,
+                    },
+                  ),
                 );
               }
 
@@ -689,7 +784,14 @@ export function MeterReadingScreen() {
                 register.previousValue
               ) {
                 throw new Error(
-                  `${register.code} cannot be lower than the last valid reading.`,
+                  t(
+                    'readingCannotBeLower',
+
+                    {
+                      register:
+                        register.code,
+                    },
+                  ),
                 );
               }
 
@@ -697,7 +799,14 @@ export function MeterReadingScreen() {
                 !photoUri
               ) {
                 throw new Error(
-                  `Add a new photo for ${register.code}.`,
+                  t(
+                    'addNewPhotoForRegister',
+
+                    {
+                      register:
+                        register.code,
+                    },
+                  ),
                 );
               }
 
@@ -724,7 +833,9 @@ export function MeterReadingScreen() {
             !tenantContext
           ) {
             throw new Error(
-              'Tenant meter context is not available.',
+              t(
+                'meterUnavailable',
+              ),
             );
           }
 
@@ -740,10 +851,18 @@ export function MeterReadingScreen() {
         }
 
         Alert.alert(
-          'Reading saved',
+          t(
+            'readingSavedTitle',
+          ),
+
           tenantMode
-            ? 'Your meter reading has been sent successfully.'
-            : 'The new meter reading has been saved.',
+            ? t(
+                'tenantReadingSavedMessage',
+              )
+            : t(
+                'landlordReadingSavedMessage',
+              ),
+
           [
             {
               text:
@@ -758,11 +877,16 @@ export function MeterReadingScreen() {
         error
       ) {
         Alert.alert(
-          'Unable to save reading',
+          t(
+            'unableToSaveReading',
+          ),
+
           error instanceof
           Error
             ? error.message
-            : 'Unknown error.',
+            : t(
+                'unableToSaveReading',
+              ),
         );
       } finally {
         setBusy(
@@ -770,12 +894,6 @@ export function MeterReadingScreen() {
         );
       }
     };
-
-  /*
-   * ----------------------------------------------------------
-   * CAMERA SCREEN
-   * ----------------------------------------------------------
-   */
 
   if (
     cameraRegisterId
@@ -808,7 +926,9 @@ export function MeterReadingScreen() {
               styles.muted
             }
           >
-            Dometra needs camera access to photograph the meter.
+            {t(
+              'cameraAccessDescription',
+            )}
           </Text>
 
           <PrimaryButton
@@ -823,7 +943,11 @@ export function MeterReadingScreen() {
           />
 
           <SecondaryButton
-            title="Cancel"
+            title={
+              t(
+                'cancel',
+              )
+            }
             onPress={() =>
               setCameraRegisterId(
                 null,
@@ -864,9 +988,7 @@ export function MeterReadingScreen() {
             {' • '}
             {
               meter.registers.find(
-                (
-                  register,
-                ) =>
+                register =>
                   register.id ===
                   cameraRegisterId,
               )?.code
@@ -879,14 +1001,22 @@ export function MeterReadingScreen() {
             }
           >
             <PrimaryButton
-              title="Take photo"
+              title={
+                t(
+                  'takePhoto',
+                )
+              }
               onPress={() =>
                 void capturePhoto()
               }
             />
 
             <SecondaryButton
-              title="Cancel"
+              title={
+                t(
+                  'cancel',
+                )
+              }
               onPress={() =>
                 setCameraRegisterId(
                   null,
@@ -899,16 +1029,14 @@ export function MeterReadingScreen() {
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * NEW READING
-   * ----------------------------------------------------------
-   */
-
   return (
     <Screen>
       <Header
-        title="Meter reading"
+        title={
+          t(
+            'meterReading',
+          )
+        }
         subtitle={
           tenantContext
             ?.propertyName ??
@@ -924,10 +1052,20 @@ export function MeterReadingScreen() {
         {meter.name}
       </Text>
 
+      {tenantMode ? (
+        <Text
+          style={
+            styles.tenantHint
+          }
+        >
+          {t(
+            'sendMeterValuesBeforeFifth',
+          )}
+        </Text>
+      ) : null}
+
       {meter.registers.map(
-        (
-          register,
-        ) => {
+        register => {
           const value =
             draftValues[
               register.id
@@ -948,6 +1086,10 @@ export function MeterReadingScreen() {
                   '.',
                 ),
             );
+
+          const previousValue =
+            register.lastValue ??
+            register.previousValue;
 
           const valid =
             value.trim() !==
@@ -1000,6 +1142,69 @@ export function MeterReadingScreen() {
                 />
               </View>
 
+              <View
+                style={
+                  styles.previousBox
+                }
+              >
+                <View
+                  style={
+                    styles.previousColumn
+                  }
+                >
+                  <Text
+                    style={
+                      styles.previousLabel
+                    }
+                  >
+                    {t(
+                      'previousValue',
+                    )}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.previousValue
+                    }
+                  >
+                    {previousValue}{' '}
+                    {register.unit}
+                  </Text>
+                </View>
+
+                <View
+                  style={
+                    styles.previousColumn
+                  }
+                >
+                  <Text
+                    style={
+                      styles.previousLabel
+                    }
+                  >
+                    {t(
+                      'lastSubmittedLabel',
+                    )}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.previousDate
+                    }
+                  >
+                    {formatSubmissionDate(
+                      register.lastReadingAt,
+
+                      locale,
+
+                      t(
+                        'never',
+                      ),
+                    )}
+                  </Text>
+                </View>
+              </View>
+
               {photo ? (
                 <Image
                   source={{
@@ -1030,7 +1235,9 @@ export function MeterReadingScreen() {
                       styles.emptyPhotoText
                     }
                   >
-                    Add a new meter photo
+                    {t(
+                      'addNewMeterPhoto',
+                    )}
                   </Text>
                 </View>
               )}
@@ -1048,8 +1255,12 @@ export function MeterReadingScreen() {
                   <SecondaryButton
                     title={
                       photo
-                        ? 'Retake'
-                        : 'Take photo'
+                        ? t(
+                            'retakePhoto',
+                          )
+                        : t(
+                            'takePhoto',
+                          )
                     }
                     onPress={() =>
                       setCameraRegisterId(
@@ -1065,7 +1276,11 @@ export function MeterReadingScreen() {
                   }
                 >
                   <SecondaryButton
-                    title="Gallery"
+                    title={
+                      t(
+                        'gallery',
+                      )
+                    }
                     onPress={() =>
                       void selectFromGallery(
                         register.id,
@@ -1076,26 +1291,31 @@ export function MeterReadingScreen() {
               </View>
 
               <Field
-                label="Current reading"
+                label={
+                  t(
+                    'currentReading',
+                  )
+                }
                 value={
                   value
                 }
-                onChangeText={(
-                  text,
-                ) =>
-                  setDraftValues(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                onChangeText={
+                  text =>
+                    setDraftValues(
+                      currentValues => ({
+                        ...currentValues,
 
-                      [register.id]:
-                        text,
-                    }),
-                  )
+                        [register.id]:
+                          text,
+                      }),
+                    )
                 }
                 keyboardType="decimal-pad"
-                placeholder="Enter reading"
+                placeholder={
+                  t(
+                    'currentReadingPlaceholder',
+                  )
+                }
                 editable={
                   !busy
                 }
@@ -1111,7 +1331,9 @@ export function MeterReadingScreen() {
                     styles.muted
                   }
                 >
-                  Consumption
+                  {t(
+                    'consumption',
+                  )}
                 </Text>
 
                 <Text
@@ -1134,8 +1356,12 @@ export function MeterReadingScreen() {
       <PrimaryButton
         title={
           busy
-            ? 'Saving...'
-            : 'Save'
+            ? t(
+                'saving',
+              )
+            : t(
+                'save',
+              )
         }
         disabled={
           busy
@@ -1164,6 +1390,23 @@ const styles =
 
       fontWeight:
         '800',
+    },
+
+    tenantHint: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      marginTop:
+        4,
+
+      marginBottom:
+        spacing.sm,
     },
 
     rowBetween: {
@@ -1220,6 +1463,76 @@ const styles =
 
       marginBottom:
         spacing.sm,
+    },
+
+    previousBox: {
+      flexDirection:
+        'row',
+
+      gap:
+        spacing.md,
+
+      padding:
+        spacing.sm,
+
+      marginTop:
+        spacing.md,
+
+      borderWidth:
+        1,
+
+      borderColor:
+        colors.border,
+
+      borderRadius:
+        radius.sm,
+    },
+
+    previousColumn: {
+      flex:
+        1,
+    },
+
+    previousLabel: {
+      color:
+        colors.muted,
+
+      fontSize:
+        10,
+
+      fontWeight:
+        '700',
+
+      textTransform:
+        'uppercase',
+    },
+
+    previousValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '800',
+
+      marginTop:
+        4,
+    },
+
+    previousDate: {
+      color:
+        colors.text,
+
+      fontSize:
+        13,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        4,
     },
 
     photo: {

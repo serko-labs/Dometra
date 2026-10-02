@@ -16,6 +16,10 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Badge,
   Card,
   Header,
@@ -23,6 +27,20 @@ import {
   SecondaryButton,
   SectionTitle,
 } from '../components/ui';
+
+import {
+  MeterSubmissionBadge,
+} from '../components/MeterSubmissionBadge';
+
+import {
+  getLocaleTag,
+} from '../i18n/language';
+
+import {
+  findMeterSubmissionStatus,
+  loadMeterSubmissionStatuses,
+  MeterSubmissionStatus,
+} from '../services/meterSubmissionStatus';
 
 import {
   loadTenantApartments,
@@ -39,17 +57,21 @@ import {
 } from '../theme';
 
 function formatDate(
-  value?: string,
+  value: string | undefined,
+  locale: string,
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return '';
   }
 
+  const normalized =
+    value.includes('T')
+      ? value
+      : `${value}T00:00:00`;
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      normalized,
     );
 
   if (
@@ -61,7 +83,7 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    undefined,
+    locale,
     {
       day:
         '2-digit',
@@ -113,7 +135,9 @@ function lastReadingDate(
         (
           value,
         ): value is string =>
-          Boolean(value),
+          Boolean(
+            value,
+          ),
       );
 
   if (
@@ -132,12 +156,32 @@ export function ReadingsScreen() {
   const navigation =
     useNavigation<any>();
 
+  const {
+    t,
+    i18n,
+  } =
+    useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
+
   const [
     apartments,
     setApartments,
   ] =
     useState<
       TenantApartmentPortal[]
+    >([]);
+
+  const [
+    meterStatuses,
+    setMeterStatuses,
+  ] =
+    useState<
+      MeterSubmissionStatus[]
     >([]);
 
   const [
@@ -159,16 +203,29 @@ export function ReadingsScreen() {
             );
 
             try {
-              const data =
-                await loadTenantApartments();
+              const [
+                apartmentData,
+                statusData,
+              ] =
+                await Promise.all([
+                  loadTenantApartments(),
+
+                  loadMeterSubmissionStatuses(),
+                ]);
 
               if (
-                active
+                !active
               ) {
-                setApartments(
-                  data,
-                );
+                return;
               }
+
+              setApartments(
+                apartmentData,
+              );
+
+              setMeterStatuses(
+                statusData,
+              );
             } catch (
               error
             ) {
@@ -176,11 +233,16 @@ export function ReadingsScreen() {
                 active
               ) {
                 Alert.alert(
-                  'Readings',
+                  t(
+                    'readings',
+                  ),
+
                   error instanceof
                   Error
                     ? error.message
-                    : 'Unable to load meters.',
+                    : t(
+                        'loadingMeters',
+                      ),
                 );
               }
             } finally {
@@ -201,7 +263,10 @@ export function ReadingsScreen() {
             false;
         };
       },
-      [],
+
+      [
+        t,
+      ],
     ),
   );
 
@@ -214,6 +279,7 @@ export function ReadingsScreen() {
         .getParent()
         ?.navigate(
           'MeterReading',
+
           {
             meterId,
 
@@ -226,8 +292,16 @@ export function ReadingsScreen() {
   return (
     <Screen>
       <Header
-        title="Readings"
-        subtitle="Submit utility meter values"
+        title={
+          t(
+            'readings',
+          )
+        }
+        subtitle={
+          t(
+            'readingsSubtitle',
+          )
+        }
       />
 
       {loading ? (
@@ -237,7 +311,9 @@ export function ReadingsScreen() {
               styles.muted
             }
           >
-            Loading meters...
+            {t(
+              'loadingMeters',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -251,7 +327,9 @@ export function ReadingsScreen() {
               styles.title
             }
           >
-            No active tenancy
+            {t(
+              'noActiveTenancy',
+            )}
           </Text>
 
           <Text
@@ -259,7 +337,9 @@ export function ReadingsScreen() {
               styles.muted
             }
           >
-            Meter readings become available after you join an apartment.
+            {t(
+              'readingsAvailableAfterJoin',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -277,17 +357,55 @@ export function ReadingsScreen() {
             apartment.status ===
             'CHECKOUT_PENDING';
 
+          const submittedCount =
+            meters.filter(
+              meter =>
+                findMeterSubmissionStatus(
+                  meterStatuses,
+                  meter.id,
+                )?.submitted ===
+                true,
+            ).length;
+
           return (
             <View
               key={
                 apartment.tenancyId
               }
             >
-              <SectionTitle
-                title={
-                  apartment.propertyName
+              <View
+                style={
+                  styles.apartmentTitleRow
                 }
-              />
+              >
+                <SectionTitle
+                  title={
+                    apartment.propertyName
+                  }
+                />
+
+                {!checkoutPending &&
+                meters.length >
+                  0 ? (
+                  <Text
+                    style={
+                      styles.progress
+                    }
+                  >
+                    {t(
+                      'submittedProgress',
+
+                      {
+                        submitted:
+                          submittedCount,
+
+                        total:
+                          meters.length,
+                      },
+                    )}
+                  </Text>
+                ) : null}
+              </View>
 
               <Text
                 style={
@@ -296,7 +414,8 @@ export function ReadingsScreen() {
               >
                 {
                   apartment.propertyAddress
-                },{' '}
+                }
+                ,{' '}
                 {
                   apartment.propertyCity
                 }
@@ -319,7 +438,9 @@ export function ReadingsScreen() {
                           styles.title
                         }
                       >
-                        Checkout required
+                        {t(
+                          'checkoutRequired',
+                        )}
                       </Text>
 
                       <Text
@@ -327,12 +448,18 @@ export function ReadingsScreen() {
                           styles.muted
                         }
                       >
-                        This rental is waiting for checkout. Regular monthly readings are disabled.
+                        {t(
+                          'checkoutRegularReadingsDisabled',
+                        )}
                       </Text>
                     </View>
 
                     <Badge
-                      text="Pending"
+                      text={
+                        t(
+                          'pending',
+                        )
+                      }
                       tone="warning"
                     />
                   </View>
@@ -347,7 +474,9 @@ export function ReadingsScreen() {
                       styles.muted
                     }
                   >
-                    No utility meters are configured for this apartment.
+                    {t(
+                      'noUtilityMeters',
+                    )}
                   </Text>
                 </Card>
               ) : null}
@@ -362,6 +491,12 @@ export function ReadingsScreen() {
                   const date =
                     lastReadingDate(
                       meter,
+                    );
+
+                  const status =
+                    findMeterSubmissionStatus(
+                      meterStatuses,
+                      meter.id,
                     );
 
                   return (
@@ -406,16 +541,28 @@ export function ReadingsScreen() {
                           </Text>
                         </View>
 
-                        <Badge
-                          text={
-                            meter.registers.length >
-                            1
-                              ? `${meter.registers.length} tariffs`
-                              : 'Meter'
-                          }
-                          tone="neutral"
-                        />
+                        {!checkoutPending ? (
+                          <MeterSubmissionBadge
+                            status={
+                              status
+                            }
+                          />
+                        ) : null}
                       </View>
+
+                      {!checkoutPending &&
+                      status &&
+                      !status.submitted ? (
+                        <Text
+                          style={
+                            styles.dueText
+                          }
+                        >
+                          {t(
+                            'sendBeforeFifth',
+                          )}
+                        </Text>
+                      ) : null}
 
                       <View
                         style={
@@ -430,7 +577,9 @@ export function ReadingsScreen() {
                               styles.label
                             }
                           >
-                            Last reading
+                            {t(
+                              'previousValue',
+                            )}
                           </Text>
 
                           <Text
@@ -447,8 +596,16 @@ export function ReadingsScreen() {
                                 styles.muted
                               }
                             >
-                              {formatDate(
-                                date,
+                              {t(
+                                'lastSubmitted',
+
+                                {
+                                  date:
+                                    formatDate(
+                                      date,
+                                      locale,
+                                    ),
+                                },
                               )}
                             </Text>
                           ) : null}
@@ -459,7 +616,9 @@ export function ReadingsScreen() {
                             styles.muted
                           }
                         >
-                          No readings yet.
+                          {t(
+                            'noReadingsYet',
+                          )}
                         </Text>
                       )}
 
@@ -470,7 +629,15 @@ export function ReadingsScreen() {
                           }
                         >
                           <SecondaryButton
-                            title="Add reading"
+                            title={
+                              status?.submitted
+                                ? t(
+                                    'updateReading',
+                                  )
+                                : t(
+                                    'addReading',
+                                  )
+                            }
                             onPress={() =>
                               openReading(
                                 meter.id,
@@ -496,6 +663,31 @@ const styles =
     flex: {
       flex:
         1,
+    },
+
+    apartmentTitleRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
+    progress: {
+      color:
+        colors.muted,
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
     },
 
     rowBetween: {
@@ -549,6 +741,20 @@ const styles =
 
       marginTop:
         4,
+    },
+
+    dueText: {
+      color:
+        '#B42318',
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        8,
     },
 
     label: {
