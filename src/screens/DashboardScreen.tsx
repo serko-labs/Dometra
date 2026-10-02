@@ -1,10 +1,10 @@
 import React, {
   useCallback,
+  useMemo,
   useState,
 } from 'react';
 
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -24,7 +24,6 @@ import {
   Badge,
   Card,
   Header,
-  Money,
   Screen,
   SectionTitle,
   StatCard,
@@ -32,84 +31,51 @@ import {
 } from '../components/ui';
 
 import {
-  SwipeActions,
-} from '../components/SwipeActions';
-
-import {
   useApp,
 } from '../context/AppContext';
 
 import {
-  loadPropertyOccupancy,
-  PropertyOccupancySummary,
-} from '../services/propertyOccupancyRepository';
+  LandlordFinanceOverview,
+  loadLandlordFinanceOverview,
+} from '../services/financeRepository';
 
 import {
   colors,
   spacing,
 } from '../theme';
 
-function toBase(
-  amount: number,
-  currency: string,
+import {
+  CurrencyCode,
+} from '../types';
+
+function formatMoney(
+  amount:
+    number,
+
+  currency:
+    CurrencyCode,
 ) {
-  if (
-    currency === 'USD'
-  ) {
-    return amount *
-      42;
+  try {
+    return new Intl.NumberFormat(
+      undefined,
+
+      {
+        style:
+          'currency',
+
+        currency,
+
+        maximumFractionDigits:
+          0,
+      },
+    ).format(
+      amount,
+    );
+  } catch {
+    return `${Math.round(
+      amount,
+    ).toLocaleString()} ${currency}`;
   }
-
-  if (
-    currency === 'EUR'
-  ) {
-    return amount *
-      49;
-  }
-
-  return amount;
-}
-
-function badgeText(
-  occupancy:
-    PropertyOccupancySummary | undefined,
-) {
-  if (
-    occupancy?.state ===
-    'OCCUPIED'
-  ) {
-    return 'Occupied';
-  }
-
-  if (
-    occupancy?.state ===
-    'PENDING'
-  ) {
-    return 'Invitation pending';
-  }
-
-  return 'Available';
-}
-
-function badgeTone(
-  occupancy:
-    PropertyOccupancySummary | undefined,
-) {
-  if (
-    occupancy?.state ===
-    'OCCUPIED'
-  ) {
-    return 'success' as const;
-  }
-
-  if (
-    occupancy?.state ===
-    'PENDING'
-  ) {
-    return 'warning' as const;
-  }
-
-  return 'neutral' as const;
 }
 
 export function DashboardScreen() {
@@ -124,208 +90,194 @@ export function DashboardScreen() {
   const {
     state,
     setMode,
-    removeProperty,
   } =
     useApp();
 
   const [
-    occupancy,
-    setOccupancy,
+    finance,
+    setFinance,
   ] =
     useState<
-      Record<
-        string,
-        PropertyOccupancySummary
-      >
-    >({});
-
-  const active =
-    state.properties.filter(
-      (
-        property,
-      ) =>
-        property.status ===
-        'ACTIVE',
+      LandlordFinanceOverview | null
+    >(
+      null,
     );
 
-  /*
-   * Reload directly from Supabase whenever the
-   * Dashboard becomes visible.
-   *
-   * This means:
-   *
-   * Apartment
-   * → Add tenant
-   * → Save
-   * → Back
-   * → Dashboard
-   *
-   * immediately shows Occupied.
-   */
+  const [
+    financeLoading,
+    setFinanceLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    financeError,
+    setFinanceError,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+  const activeProperties =
+    useMemo(
+      () =>
+        state.properties.filter(
+          property =>
+            property.status ===
+            'ACTIVE',
+        ),
+
+      [
+        state.properties,
+      ],
+    );
+
   useFocusEffect(
     useCallback(
       () => {
-        let activeRequest =
+        let active =
           true;
 
         const load =
           async () => {
+            if (
+              !state.workspace
+            ) {
+              if (
+                active
+              ) {
+                setFinance(
+                  null,
+                );
+
+                setFinanceLoading(
+                  false,
+                );
+              }
+
+              return;
+            }
+
+            setFinanceLoading(
+              true,
+            );
+
+            setFinanceError(
+              null,
+            );
+
             try {
-              const data =
-                await loadPropertyOccupancy(
-                  active.map(
-                    (
-                      property,
-                    ) =>
+              const result =
+                await loadLandlordFinanceOverview(
+                  state.workspace.id,
+
+                  activeProperties.map(
+                    property =>
                       property.id,
                   ),
+
+                  state.workspace.baseCurrency,
+
+                  state.workspace.timezone,
                 );
 
               if (
-                activeRequest
+                active
               ) {
-                setOccupancy(
-                  data,
+                setFinance(
+                  result,
                 );
               }
             } catch (
               error
             ) {
-              console.error(
-                '[Dometra] Unable to load property occupancy:',
-                error,
-              );
+              if (
+                active
+              ) {
+                setFinanceError(
+                  error instanceof
+                  Error
+                    ? error.message
+                    : 'Unable to load finance overview.',
+                );
+              }
+            } finally {
+              if (
+                active
+              ) {
+                setFinanceLoading(
+                  false,
+                );
+              }
             }
           };
 
         void load();
 
         return () => {
-          activeRequest =
+          active =
             false;
         };
       },
+
       [
-        state.properties,
+        state.workspace?.id,
+        state.workspace?.baseCurrency,
+        state.workspace?.timezone,
+        activeProperties,
       ],
     ),
   );
 
-  const issued =
-    state.invoices.filter(
-      (
-        invoice,
-      ) =>
-        invoice.status !==
-        'PAID',
-    );
+  const currency =
+    finance?.currency ??
+    state.workspace
+      ?.baseCurrency ??
+    'UAH';
 
   const expected =
-    issued.reduce(
-      (
-        sum,
-        invoice,
-      ) =>
-        sum +
-        invoice.lines.reduce(
-          (
-            lineSum,
-            line,
-          ) =>
-            lineSum +
-            toBase(
-              line.amount,
-              line.currency,
-            ),
-          0,
-        ),
-      0,
-    );
+    finance?.expectedThisMonth ??
+    0;
 
   const received =
-    state.payments.reduce(
-      (
-        sum,
-        payment,
-      ) =>
-        sum +
-        toBase(
-          payment.amount,
-          payment.currency,
-        ),
-      0,
-    );
+    finance?.receivedThisMonth ??
+    0;
 
   const outstanding =
-    Math.max(
-      0,
-      expected -
-        received,
-    );
+    finance?.outstanding ??
+    0;
 
   const advance =
-    Math.max(
-      0,
-      received -
-        expected,
-    );
+    finance?.advance ??
+    0;
 
-  const rate =
-    expected >
-    0
-      ? Math.min(
-          100,
-          (
-            received /
-            expected
-          ) *
-            100,
-        )
-      : 0;
+  const collectionRate =
+    finance?.collectionRate ??
+    0;
 
-  const confirmRemove =
-    (
-      propertyId:
-        string,
-
-      propertyName:
-        string,
-    ) => {
-      Alert.alert(
-        'Remove apartment?',
-        `Are you sure you want to remove "${propertyName}"?`,
-        [
-          {
-            text:
-              'Cancel',
-
-            style:
-              'cancel',
-          },
-
-          {
-            text:
-              'Remove',
-
-            style:
-              'destructive',
-
-            onPress:
-              () => {
-                void removeProperty(
-                  propertyId,
-                );
-              },
-          },
-        ],
-      );
-    };
+  const forecast =
+    finance
+      ?.forecastByCurrency
+      .map(
+        item =>
+          formatMoney(
+            item.amount,
+            item.currency,
+          ),
+      )
+      .join(
+        ' + ',
+      ) ||
+    '—';
 
   return (
     <Screen>
       <Header
         title="Dometra"
-        subtitle={`${active.length} / 4 ${t(
+        subtitle={`${activeProperties.length} / 4 ${t(
           'activeProperties',
         ).toLowerCase()}`}
         right={
@@ -355,11 +307,14 @@ export function DashboardScreen() {
               'expected',
             )
           }
-          value={`₴${Math.round(
-            expected,
-          ).toLocaleString(
-            'uk-UA',
-          )}`}
+          value={
+            financeLoading
+              ? '…'
+              : formatMoney(
+                  expected,
+                  currency,
+                )
+          }
         />
 
         <StatCard
@@ -368,20 +323,22 @@ export function DashboardScreen() {
               'received',
             )
           }
-          value={`₴${Math.round(
-            received,
-          ).toLocaleString(
-            'uk-UA',
-          )}`}
+          value={
+            financeLoading
+              ? '…'
+              : formatMoney(
+                  received,
+                  currency,
+                )
+          }
           hint={
-            expected >
-            0
-              ? `${rate.toFixed(
+            financeLoading
+              ? undefined
+              : `${collectionRate.toFixed(
                   0,
                 )}% ${t(
                   'collectionRate',
                 ).toLowerCase()}`
-              : '—'
           }
         />
 
@@ -391,11 +348,29 @@ export function DashboardScreen() {
               'outstanding',
             )
           }
-          value={`₴${Math.round(
-            outstanding,
-          ).toLocaleString(
-            'uk-UA',
-          )}`}
+          value={
+            financeLoading
+              ? '…'
+              : formatMoney(
+                  outstanding,
+                  currency,
+                )
+          }
+          hint={
+            !financeLoading &&
+            (
+              finance?.debtTenancies ??
+              0
+            ) >
+              0
+              ? `${finance?.debtTenancies} tenant${
+                  finance?.debtTenancies ===
+                  1
+                    ? ''
+                    : 's'
+                }`
+              : undefined
+          }
         />
 
         <StatCard
@@ -404,90 +379,164 @@ export function DashboardScreen() {
               'advance',
             )
           }
-          value={`₴${Math.round(
-            advance,
-          ).toLocaleString(
-            'uk-UA',
-          )}`}
+          value={
+            financeLoading
+              ? '…'
+              : formatMoney(
+                  advance,
+                  currency,
+                )
+          }
         />
       </View>
 
       <SectionTitle
-        title={
-          t(
-            'reminders',
-          )
-        }
+        title="Rent forecast"
       />
 
-      {state.reminders
-        .filter(
-          (
-            reminder,
-          ) =>
-            !reminder.completed,
-        )
-        .map(
-          (
-            reminder,
-          ) => {
-            const property =
-              state.properties.find(
-                (
-                  item,
-                ) =>
-                  item.id ===
-                  reminder.propertyId,
-              );
+      <Card>
+        <Text
+          style={
+            styles.forecastValue
+          }
+        >
+          {financeLoading
+            ? '…'
+            : forecast}
+        </Text>
 
-            return (
-              <Card
-                key={
-                  reminder.id
-                }
-              >
-                <View
-                  style={
-                    styles.rowBetween
-                  }
-                >
-                  <View
-                    style={
-                      styles.flex
+        <Text
+          style={
+            styles.muted
+          }
+        >
+          Monthly recurring rent from active rental agreements.
+        </Text>
+      </Card>
+
+      {financeError ? (
+        <Card>
+          <Text
+            style={
+              styles.errorTitle
+            }
+          >
+            Finance data
+          </Text>
+
+          <Text
+            style={
+              styles.errorText
+            }
+          >
+            {
+              financeError
+            }
+          </Text>
+        </Card>
+      ) : null}
+
+      {!financeLoading &&
+      finance &&
+      !finance.financeAvailable ? (
+        <Card>
+          <Text
+            style={
+              styles.warningTitle
+            }
+          >
+            Finance module is not fully connected yet
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Rent forecast is already calculated from active rental agreements.
+            Received, debt and advance will start filling from Supabase invoices
+            and payments.
+          </Text>
+        </Card>
+      ) : null}
+
+      {state.reminders.some(
+        reminder =>
+          !reminder.completed,
+      ) ? (
+        <>
+          <SectionTitle
+            title={
+              t(
+                'reminders',
+              )
+            }
+          />
+
+          {state.reminders
+            .filter(
+              reminder =>
+                !reminder.completed,
+            )
+            .map(
+              reminder => {
+                const property =
+                  state.properties.find(
+                    item =>
+                      item.id ===
+                      reminder.propertyId,
+                  );
+
+                return (
+                  <Card
+                    key={
+                      reminder.id
                     }
                   >
-                    <Text
+                    <View
                       style={
-                        styles.cardTitle
+                        styles.rowBetween
                       }
                     >
-                      {
-                        reminder.title
-                      }
-                    </Text>
+                      <View
+                        style={
+                          styles.flex
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.cardTitle
+                          }
+                        >
+                          {
+                            reminder.title
+                          }
+                        </Text>
 
-                    <Text
-                      style={
-                        styles.muted
-                      }
-                    >
-                      {
-                        property?.name
-                      }
-                    </Text>
-                  </View>
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          {
+                            property?.name
+                          }
+                        </Text>
+                      </View>
 
-                  <Badge
-                    text={
-                      reminder.dueText
-                    }
-                    tone="warning"
-                  />
-                </View>
-              </Card>
-            );
-          },
-        )}
+                      <Badge
+                        text={
+                          reminder.dueText
+                        }
+                        tone="warning"
+                      />
+                    </View>
+                  </Card>
+                );
+              },
+            )}
+        </>
+      ) : null}
 
       <SectionTitle
         title={
@@ -509,174 +558,97 @@ export function DashboardScreen() {
         }
       />
 
-      {active
+      {activeProperties.length ===
+      0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            No active apartments yet.
+          </Text>
+        </Card>
+      ) : null}
+
+      {activeProperties
         .slice(
           0,
-          3,
+          4,
         )
         .map(
-          (
-            property,
-          ) => {
-            const currentOccupancy =
-              occupancy[
-                property.id
-              ];
-
-            const rentAmount =
-              currentOccupancy
-                ?.rentAmount ??
-              property.rentAmount;
-
-            const rentCurrency =
-              currentOccupancy
-                ?.rentCurrency ??
-              property.rentCurrency;
+          property => {
+            const meterCount =
+              state.meters.filter(
+                meter =>
+                  meter.propertyId ===
+                  property.id,
+              ).length;
 
             return (
-              <SwipeActions
+              <Pressable
                 key={
                   property.id
                 }
-                onEdit={() =>
+                onPress={() =>
                   navigation.navigate(
-                    'AddProperty',
+                    'PropertyDetails',
+
                     {
                       propertyId:
                         property.id,
                     },
                   )
                 }
-                onRemove={() =>
-                  confirmRemove(
-                    property.id,
-                    property.name,
-                  )
-                }
               >
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate(
-                      'PropertyDetails',
-                      {
-                        propertyId:
-                          property.id,
-                      },
-                    )
-                  }
-                >
-                  <Card>
+                <Card>
+                  <View
+                    style={
+                      styles.rowBetween
+                    }
+                  >
                     <View
                       style={
-                        styles.rowBetween
+                        styles.flex
                       }
                     >
-                      <View
+                      <Text
                         style={
-                          styles.flex
+                          styles.cardTitle
                         }
                       >
-                        <View
-                          style={
-                            styles.propertyTitleRow
-                          }
-                        >
-                          <Text
-                            style={
-                              styles.cardTitle
-                            }
-                          >
-                            {
-                              property.name
-                            }
-                          </Text>
+                        {
+                          property.name
+                        }
+                      </Text>
 
-                          <Badge
-                            text={
-                              badgeText(
-                                currentOccupancy,
-                              )
-                            }
-                            tone={
-                              badgeTone(
-                                currentOccupancy,
-                              )
-                            }
-                          />
-                        </View>
-
-                        <Text
-                          style={
-                            styles.muted
-                          }
-                        >
-                          {
-                            property.address
-                          },{' '}
-                          {
-                            property.city
-                          }
-                        </Text>
-
-                        {currentOccupancy
-                          ?.state ===
-                          'OCCUPIED' &&
-                        currentOccupancy
-                          .tenantName ? (
-                          <Text
-                            style={
-                              styles.tenantName
-                            }
-                          >
-                            {
-                              currentOccupancy.tenantName
-                            }
-                          </Text>
-                        ) : null}
-
-                        {currentOccupancy
-                          ?.state ===
-                        'PENDING' ? (
-                          <Text
-                            style={
-                              styles.pendingText
-                            }
-                          >
-                            Waiting for tenant to accept invitation
-                          </Text>
-                        ) : null}
-
-                        {property.areaM2 >
-                        0 ? (
-                          <Text
-                            style={
-                              styles.area
-                            }
-                          >
-                            {
-                              property.areaM2
-                            }{' '}
-                            m²
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      {rentAmount >
-                      0 ? (
-                        <Money
-                          amount={
-                            rentAmount
-                          }
-                          currency={
-                            rentCurrency
-                          }
-                          strong
-                        />
-                      ) : null}
+                      <Text
+                        style={
+                          styles.muted
+                        }
+                      >
+                        {
+                          property.address
+                        }
+                        ,{' '}
+                        {
+                          property.city
+                        }
+                      </Text>
                     </View>
-                  </Card>
-                </Pressable>
-              </SwipeActions>
+
+                    <Badge
+                      text={`${meterCount} ${
+                        meterCount ===
+                        1
+                          ? 'meter'
+                          : 'meters'
+                      }`}
+                      tone="neutral"
+                    />
+                  </View>
+                </Card>
+              </Pressable>
             );
           },
         )}
@@ -714,20 +686,6 @@ const styles =
         spacing.md,
     },
 
-    propertyTitleRow: {
-      flexDirection:
-        'row',
-
-      flexWrap:
-        'wrap',
-
-      alignItems:
-        'center',
-
-      gap:
-        8,
-    },
-
     flex: {
       flex:
         1,
@@ -751,43 +709,58 @@ const styles =
       fontSize:
         13,
 
+      lineHeight:
+        19,
+
       marginTop:
         4,
     },
 
-    tenantName: {
+    forecastValue: {
       color:
         colors.text,
 
       fontSize:
-        12,
+        24,
 
       fontWeight:
-        '700',
-
-      marginTop:
-        8,
+        '800',
     },
 
-    pendingText: {
+    errorTitle: {
+      color:
+        colors.danger ??
+        '#B42318',
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '800',
+    },
+
+    errorText: {
       color:
         colors.muted,
 
       fontSize:
         12,
 
+      lineHeight:
+        18,
+
       marginTop:
-        8,
+        5,
     },
 
-    area: {
+    warningTitle: {
       color:
-        colors.muted,
+        colors.text,
 
       fontSize:
-        12,
+        14,
 
-      marginTop:
-        7,
+      fontWeight:
+        '800',
     },
   });

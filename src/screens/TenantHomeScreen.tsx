@@ -1,5 +1,6 @@
 import React, {
   useCallback,
+  useMemo,
   useState,
 } from 'react';
 
@@ -37,6 +38,11 @@ import {
 } from '../i18n/language';
 
 import {
+  loadTenantFinanceBalances,
+  TenantFinanceBalance,
+} from '../services/financeRepository';
+
+import {
   findMeterSubmissionStatus,
   loadMeterSubmissionStatuses,
   MeterSubmissionStatus,
@@ -56,16 +62,28 @@ import {
   spacing,
 } from '../theme';
 
+import {
+  CurrencyCode,
+} from '../types';
+
 function formatDate(
-  value: string | undefined,
-  locale: string,
+  value:
+    string |
+    undefined,
+
+  locale:
+    string,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return '—';
   }
 
   const normalized =
-    value.includes('T')
+    value.includes(
+      'T',
+    )
       ? value
       : `${value}T00:00:00`;
 
@@ -84,6 +102,7 @@ function formatDate(
 
   return date.toLocaleDateString(
     locale,
+
     {
       day:
         '2-digit',
@@ -95,6 +114,36 @@ function formatDate(
         'numeric',
     },
   );
+}
+
+function formatMoney(
+  amount:
+    number,
+
+  currency:
+    CurrencyCode,
+) {
+  try {
+    return new Intl.NumberFormat(
+      undefined,
+
+      {
+        style:
+          'currency',
+
+        currency,
+
+        maximumFractionDigits:
+          0,
+      },
+    ).format(
+      amount,
+    );
+  } catch {
+    return `${Math.round(
+      amount,
+    ).toLocaleString()} ${currency}`;
+  }
 }
 
 function latestMeterText(
@@ -166,10 +215,20 @@ export function TenantHomeScreen() {
     >([]);
 
   const [
+    financeBalances,
+    setFinanceBalances,
+  ] =
+    useState<
+      TenantFinanceBalance[]
+    >([]);
+
+  const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   useFocusEffect(
     useCallback(
@@ -184,14 +243,22 @@ export function TenantHomeScreen() {
             );
 
             try {
+              const apartmentData =
+                await loadTenantApartments();
+
               const [
-                apartmentData,
                 statusData,
+                balanceData,
               ] =
                 await Promise.all([
-                  loadTenantApartments(),
-
                   loadMeterSubmissionStatuses(),
+
+                  loadTenantFinanceBalances(
+                    apartmentData.map(
+                      apartment =>
+                        apartment.tenancyId,
+                    ),
+                  ),
                 ]);
 
               if (
@@ -206,6 +273,10 @@ export function TenantHomeScreen() {
 
               setMeterStatuses(
                 statusData,
+              );
+
+              setFinanceBalances(
+                balanceData,
               );
 
               if (
@@ -236,9 +307,7 @@ export function TenantHomeScreen() {
                   error instanceof
                   Error
                     ? error.message
-                    : t(
-                        'noActiveTenancyDescription',
-                      ),
+                    : 'Unable to load your apartments.',
                 );
               }
             } finally {
@@ -265,6 +334,104 @@ export function TenantHomeScreen() {
       ],
     ),
   );
+
+  const financeByTenancy =
+    useMemo(
+      () => {
+        const map =
+          new Map<
+            string,
+            TenantFinanceBalance
+          >();
+
+        for (
+          const balance
+          of financeBalances
+        ) {
+          map.set(
+            balance.tenancyId,
+            balance,
+          );
+        }
+
+        return map;
+      },
+
+      [
+        financeBalances,
+      ],
+    );
+
+  const totalDebt =
+    useMemo(
+      () => {
+        const totals =
+          new Map<
+            CurrencyCode,
+            number
+          >();
+
+        for (
+          const balance
+          of financeBalances
+        ) {
+          if (
+            balance.outstanding <=
+            0
+          ) {
+            continue;
+          }
+
+          const currency =
+            balance.currency ??
+            'UAH';
+
+          totals.set(
+            currency,
+
+            (
+              totals.get(
+                currency,
+              ) ??
+              0
+            ) +
+              balance.outstanding,
+          );
+        }
+
+        return Array.from(
+          totals.entries(),
+        ).map(
+          ([
+            currency,
+            amount,
+          ]) => ({
+            currency,
+            amount,
+          }),
+        );
+      },
+
+      [
+        financeBalances,
+      ],
+    );
+
+  const totalDebtText =
+    totalDebt.length >
+    0
+      ? totalDebt
+          .map(
+            item =>
+              formatMoney(
+                item.amount,
+                item.currency,
+              ),
+          )
+          .join(
+            ' + ',
+          )
+      : '0';
 
   return (
     <Screen>
@@ -293,6 +460,44 @@ export function TenantHomeScreen() {
             )}
           </Text>
         </Card>
+      ) : null}
+
+      {!loading &&
+      apartments.length >
+        0 ? (
+        <>
+          <SectionTitle
+            title={
+              t(
+                'outstanding',
+              )
+            }
+          />
+
+          <Card>
+            <Text
+              style={
+                styles.totalDebtLabel
+              }
+            >
+              Total debt
+            </Text>
+
+            <Text
+              style={[
+                styles.totalDebtValue,
+
+                totalDebt.length >
+                  0 &&
+                  styles.debtText,
+              ]}
+            >
+              {
+                totalDebtText
+              }
+            </Text>
+          </Card>
+        </>
       ) : null}
 
       {!loading &&
@@ -328,9 +533,22 @@ export function TenantHomeScreen() {
               apartment,
             );
 
-          const checkoutPending =
-            apartment.status ===
-            'CHECKOUT_PENDING';
+          const finance =
+            financeByTenancy.get(
+              apartment.tenancyId,
+            );
+
+          const debtCurrency =
+            finance?.currency ??
+            apartment.currency;
+
+          const debt =
+            finance?.outstanding ??
+            0;
+
+          const advance =
+            finance?.advance ??
+            0;
 
           const meteredMeters =
             apartment.meters.filter(
@@ -393,19 +611,11 @@ export function TenantHomeScreen() {
 
                   <Badge
                     text={
-                      checkoutPending
-                        ? t(
-                            'checkoutRequired',
-                          )
-                        : t(
-                            'active',
-                          )
+                      t(
+                        'active',
+                      )
                     }
-                    tone={
-                      checkoutPending
-                        ? 'warning'
-                        : 'success'
-                    }
+                    tone="success"
                   />
                 </View>
 
@@ -476,6 +686,74 @@ export function TenantHomeScreen() {
                           day:
                             apartment.paymentDueDay,
                         },
+                      )}
+                    </Text>
+                  </View>
+                </View>
+
+                <View
+                  style={
+                    styles.financeGrid
+                  }
+                >
+                  <View
+                    style={
+                      styles.financeCell
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.label
+                      }
+                    >
+                      {t(
+                        'outstanding',
+                      )}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.financeValue,
+
+                        debt >
+                          0 &&
+                          styles.debtText,
+                      ]}
+                    >
+                      {formatMoney(
+                        debt,
+                        debtCurrency,
+                      )}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.financeCell
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.label
+                      }
+                    >
+                      {t(
+                        'advance',
+                      )}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.financeValue,
+
+                        advance >
+                          0 &&
+                          styles.advanceText,
+                      ]}
+                    >
+                      {formatMoney(
+                        advance,
+                        debtCurrency,
                       )}
                     </Text>
                   </View>
@@ -681,10 +959,8 @@ export function TenantHomeScreen() {
                                   }
                                 </Text>
 
-                                {apartment.status ===
-                                  'ACTIVE' &&
-                                meter.billingMode ===
-                                  'METERED' ? (
+                                {meter.billingMode ===
+                                'METERED' ? (
                                   <MeterSubmissionBadge
                                     status={
                                       meterStatus
@@ -695,8 +971,6 @@ export function TenantHomeScreen() {
 
                               {meter.billingMode ===
                                 'METERED' &&
-                              apartment.status ===
-                                'ACTIVE' &&
                               meterStatus &&
                               !meterStatus.submitted ? (
                                 <Text
@@ -752,23 +1026,6 @@ export function TenantHomeScreen() {
                                 </Text>
                               ) : null}
                             </View>
-
-                            {meter.billingMode !==
-                            'METERED' ? (
-                              <Badge
-                                text={
-                                  meter.billingMode ===
-                                  'FIXED'
-                                    ? t(
-                                        'fixed',
-                                      )
-                                    : t(
-                                        'variable',
-                                      )
-                                }
-                                tone="neutral"
-                              />
-                            ) : null}
                           </View>
                         </View>
                       );
@@ -910,6 +1167,83 @@ const styles =
     infoCell: {
       flex:
         1,
+    },
+
+    financeGrid: {
+      flexDirection:
+        'row',
+
+      gap:
+        spacing.md,
+
+      paddingVertical:
+        spacing.md,
+
+      marginBottom:
+        spacing.md,
+
+      borderTopWidth:
+        StyleSheet.hairlineWidth,
+
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+
+      borderColor:
+        colors.border,
+    },
+
+    financeCell: {
+      flex:
+        1,
+    },
+
+    financeValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        17,
+
+      fontWeight:
+        '800',
+
+      marginTop:
+        5,
+    },
+
+    debtText: {
+      color:
+        '#B42318',
+    },
+
+    advanceText: {
+      color:
+        '#067647',
+    },
+
+    totalDebtLabel: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      fontWeight:
+        '700',
+    },
+
+    totalDebtValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        28,
+
+      fontWeight:
+        '800',
+
+      marginTop:
+        6,
     },
 
     label: {
