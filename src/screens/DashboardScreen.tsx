@@ -5,6 +5,7 @@ import React, {
 } from 'react';
 
 import {
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -15,10 +16,6 @@ import {
   useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
-
-import {
-  useTranslation,
-} from 'react-i18next';
 
 import {
   Badge,
@@ -40,50 +37,59 @@ import {
 } from '../services/financeRepository';
 
 import {
-  colors,
-  spacing,
-} from '../theme';
+  getPropertyTenancy,
+  PropertyTenancySummary,
+} from '../services/tenantRepository';
 
 import {
   CurrencyCode,
 } from '../types';
 
-function formatMoney(
-  amount:
-    number,
+import {
+  colors,
+  spacing,
+} from '../theme';
 
-  currency:
-    CurrencyCode,
+function moneyText(
+  amount: number,
+  currency: CurrencyCode,
 ) {
-  try {
-    return new Intl.NumberFormat(
-      undefined,
+  return `${Math.round(
+    amount,
+  ).toLocaleString()} ${currency}`;
+}
 
-      {
-        style:
-          'currency',
-
-        currency,
-
-        maximumFractionDigits:
-          0,
-      },
-    ).format(
-      amount,
-    );
-  } catch {
-    return `${Math.round(
-      amount,
-    ).toLocaleString()} ${currency}`;
+function tenancyName(
+  tenancy?:
+    PropertyTenancySummary | null,
+) {
+  if (!tenancy) {
+    return 'Available';
   }
+
+  if (
+    tenancy.status ===
+    'PENDING'
+  ) {
+    return 'Invitation pending';
+  }
+
+  if (tenancy.tenant) {
+    const value =
+      `${tenancy.tenant.firstName} ${tenancy.tenant.lastName}`.trim();
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return tenancy.status ===
+    'CHECKOUT_PENDING'
+    ? 'Checkout required'
+    : 'Occupied';
 }
 
 export function DashboardScreen() {
-  const {
-    t,
-  } =
-    useTranslation();
-
   const navigation =
     useNavigation<any>();
 
@@ -93,34 +99,6 @@ export function DashboardScreen() {
   } =
     useApp();
 
-  const [
-    finance,
-    setFinance,
-  ] =
-    useState<
-      LandlordFinanceOverview | null
-    >(
-      null,
-    );
-
-  const [
-    financeLoading,
-    setFinanceLoading,
-  ] =
-    useState(
-      true,
-    );
-
-  const [
-    financeError,
-    setFinanceError,
-  ] =
-    useState<
-      string | null
-    >(
-      null,
-    );
-
   const activeProperties =
     useMemo(
       () =>
@@ -129,11 +107,35 @@ export function DashboardScreen() {
             property.status ===
             'ACTIVE',
         ),
-
       [
         state.properties,
       ],
     );
+
+  const [
+    finance,
+    setFinance,
+  ] =
+    useState<
+      LandlordFinanceOverview | null
+    >(null);
+
+  const [
+    tenancies,
+    setTenancies,
+  ] =
+    useState<
+      Record<
+        string,
+        PropertyTenancySummary | null
+      >
+    >({});
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
 
   useFocusEffect(
     useCallback(
@@ -143,17 +145,20 @@ export function DashboardScreen() {
 
         const load =
           async () => {
-            if (
-              !state.workspace
-            ) {
-              if (
-                active
-              ) {
+            const workspaceId =
+              state.workspace?.id;
+
+            if (!workspaceId) {
+              if (active) {
                 setFinance(
                   null,
                 );
 
-                setFinanceLoading(
+                setTenancies(
+                  {},
+                );
+
+                setLoading(
                   false,
                 );
               }
@@ -161,54 +166,81 @@ export function DashboardScreen() {
               return;
             }
 
-            setFinanceLoading(
+            setLoading(
               true,
             );
 
-            setFinanceError(
-              null,
-            );
-
             try {
-              const result =
-                await loadLandlordFinanceOverview(
-                  state.workspace.id,
+              const workspace =
+                state.workspace as any;
 
-                  activeProperties.map(
-                    property =>
-                      property.id,
+              const baseCurrency =
+                (
+                  workspace?.baseCurrency ??
+                  state.settings.displayCurrency ??
+                  'UAH'
+                ) as CurrencyCode;
+
+              const [
+                financeData,
+                tenancyRows,
+              ] =
+                await Promise.all([
+                  loadLandlordFinanceOverview(
+                    workspaceId,
+                    activeProperties.map(
+                      property =>
+                        property.id,
+                    ),
+                    baseCurrency,
+                    state.settings.timezone,
                   ),
 
-                  state.workspace.baseCurrency,
+                  Promise.all(
+                    activeProperties.map(
+                      async property => ({
+                        propertyId:
+                          property.id,
 
-                  state.workspace.timezone,
-                );
+                        tenancy:
+                          await getPropertyTenancy(
+                            property.id,
+                          ),
+                      }),
+                    ),
+                  ),
+                ]);
 
-              if (
-                active
-              ) {
-                setFinance(
-                  result,
-                );
+              if (!active) {
+                return;
               }
-            } catch (
-              error
-            ) {
-              if (
-                active
-              ) {
-                setFinanceError(
-                  error instanceof
-                  Error
+
+              setFinance(
+                financeData,
+              );
+
+              setTenancies(
+                Object.fromEntries(
+                  tenancyRows.map(
+                    row => [
+                      row.propertyId,
+                      row.tenancy,
+                    ],
+                  ),
+                ),
+              );
+            } catch (error) {
+              if (active) {
+                Alert.alert(
+                  'Dashboard',
+                  error instanceof Error
                     ? error.message
-                    : 'Unable to load finance overview.',
+                    : 'Unable to load financial overview.',
                 );
               }
             } finally {
-              if (
-                active
-              ) {
-                setFinanceLoading(
+              if (active) {
+                setLoading(
                   false,
                 );
               }
@@ -222,21 +254,18 @@ export function DashboardScreen() {
             false;
         };
       },
-
       [
         state.workspace?.id,
-        state.workspace?.baseCurrency,
-        state.workspace?.timezone,
-        activeProperties,
+        state.settings.displayCurrency,
+        state.settings.timezone,
+        state.properties,
       ],
     ),
   );
 
   const currency =
     finance?.currency ??
-    state.workspace
-      ?.baseCurrency ??
-    'UAH';
+    state.settings.displayCurrency;
 
   const expected =
     finance?.expectedThisMonth ??
@@ -254,39 +283,18 @@ export function DashboardScreen() {
     finance?.advance ??
     0;
 
-  const collectionRate =
+  const rate =
     finance?.collectionRate ??
     0;
-
-  const forecast =
-    finance
-      ?.forecastByCurrency
-      .map(
-        item =>
-          formatMoney(
-            item.amount,
-            item.currency,
-          ),
-      )
-      .join(
-        ' + ',
-      ) ||
-    '—';
 
   return (
     <Screen>
       <Header
         title="Dometra"
-        subtitle={`${activeProperties.length} / 4 ${t(
-          'activeProperties',
-        ).toLowerCase()}`}
+        subtitle={`${activeProperties.length} / 4 active properties`}
         right={
           <TextButton
-            title={
-              t(
-                'tenant',
-              )
-            }
+            title="Tenant"
             onPress={() =>
               void setMode(
                 'TENANT',
@@ -302,150 +310,82 @@ export function DashboardScreen() {
         }
       >
         <StatCard
-          label={
-            t(
-              'expected',
+          label="Expected this month"
+          value={
+            moneyText(
+              expected,
+              currency,
             )
           }
-          value={
-            financeLoading
-              ? '…'
-              : formatMoney(
-                  expected,
-                  currency,
-                )
-          }
+          hint="Issued invoices"
         />
 
         <StatCard
-          label={
-            t(
-              'received',
+          label="Received this month"
+          value={
+            moneyText(
+              received,
+              currency,
             )
           }
-          value={
-            financeLoading
-              ? '…'
-              : formatMoney(
-                  received,
-                  currency,
-                )
-          }
-          hint={
-            financeLoading
-              ? undefined
-              : `${collectionRate.toFixed(
-                  0,
-                )}% ${t(
-                  'collectionRate',
-                ).toLowerCase()}`
-          }
+          hint={`${rate.toFixed(
+            0,
+          )}% collection rate`}
         />
 
         <StatCard
-          label={
-            t(
-              'outstanding',
+          label="Outstanding debt"
+          value={
+            moneyText(
+              outstanding,
+              currency,
             )
           }
-          value={
-            financeLoading
-              ? '…'
-              : formatMoney(
-                  outstanding,
-                  currency,
-                )
-          }
           hint={
-            !financeLoading &&
-            (
-              finance?.debtTenancies ??
-              0
-            ) >
-              0
-              ? `${finance?.debtTenancies} tenant${
-                  finance?.debtTenancies ===
-                  1
+            finance
+              ? `${finance.debtTenancies} tenant${
+                  finance.debtTenancies === 1
                     ? ''
                     : 's'
-                }`
+                } with debt`
               : undefined
           }
         />
 
         <StatCard
-          label={
-            t(
-              'advance',
+          label="Advance"
+          value={
+            moneyText(
+              advance,
+              currency,
             )
           }
-          value={
-            financeLoading
-              ? '…'
-              : formatMoney(
-                  advance,
-                  currency,
-                )
-          }
+          hint="Unallocated tenant credit"
         />
       </View>
 
-      <SectionTitle
-        title="Rent forecast"
-      />
-
-      <Card>
-        <Text
-          style={
-            styles.forecastValue
-          }
-        >
-          {financeLoading
-            ? '…'
-            : forecast}
-        </Text>
-
-        <Text
-          style={
-            styles.muted
-          }
-        >
-          Monthly recurring rent from active rental agreements.
-        </Text>
-      </Card>
-
-      {financeError ? (
+      {loading ? (
         <Card>
           <Text
             style={
-              styles.errorTitle
+              styles.muted
             }
           >
-            Finance data
-          </Text>
-
-          <Text
-            style={
-              styles.errorText
-            }
-          >
-            {
-              financeError
-            }
+            Loading financial overview...
           </Text>
         </Card>
       ) : null}
 
-      {!financeLoading &&
+      {!loading &&
       finance &&
       !finance.financeAvailable ? (
         <Card>
           <Text
             style={
-              styles.warningTitle
+              styles.cardTitle
             }
           >
-            Finance module is not fully connected yet
+            Finance module is not ready
           </Text>
 
           <Text
@@ -453,102 +393,130 @@ export function DashboardScreen() {
               styles.muted
             }
           >
-            Rent forecast is already calculated from active rental agreements.
-            Received, debt and advance will start filling from Supabase invoices
-            and payments.
+            Apply the finance migration before invoices,
+            payments and debt can be displayed.
           </Text>
         </Card>
       ) : null}
 
-      {state.reminders.some(
-        reminder =>
-          !reminder.completed,
-      ) ? (
-        <>
-          <SectionTitle
-            title={
-              t(
-                'reminders',
-              )
+      <SectionTitle
+        title="Monthly rent forecast"
+      />
+
+      {finance &&
+      finance.forecastByCurrency.length >
+        0 ? (
+        <Card>
+          {finance.forecastByCurrency.map(
+            forecast => (
+              <View
+                key={
+                  forecast.currency
+                }
+                style={
+                  styles.forecastRow
+                }
+              >
+                <Text
+                  style={
+                    styles.forecastLabel
+                  }
+                >
+                  {forecast.currency}
+                </Text>
+
+                <Text
+                  style={
+                    styles.forecastValue
+                  }
+                >
+                  {forecast.amount.toLocaleString()}{' '}
+                  {forecast.currency}
+                </Text>
+              </View>
+            ),
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <Text
+            style={
+              styles.muted
             }
-          />
-
-          {state.reminders
-            .filter(
-              reminder =>
-                !reminder.completed,
-            )
-            .map(
-              reminder => {
-                const property =
-                  state.properties.find(
-                    item =>
-                      item.id ===
-                      reminder.propertyId,
-                  );
-
-                return (
-                  <Card
-                    key={
-                      reminder.id
-                    }
-                  >
-                    <View
-                      style={
-                        styles.rowBetween
-                      }
-                    >
-                      <View
-                        style={
-                          styles.flex
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.cardTitle
-                          }
-                        >
-                          {
-                            reminder.title
-                          }
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.muted
-                          }
-                        >
-                          {
-                            property?.name
-                          }
-                        </Text>
-                      </View>
-
-                      <Badge
-                        text={
-                          reminder.dueText
-                        }
-                        tone="warning"
-                      />
-                    </View>
-                  </Card>
-                );
-              },
-            )}
-        </>
-      ) : null}
+          >
+            No active rent forecast yet.
+          </Text>
+        </Card>
+      )}
 
       <SectionTitle
-        title={
-          t(
-            'activeProperties',
-          )
-        }
+        title="Reminders"
+      />
+
+      {state.reminders
+        .filter(
+          reminder =>
+            !reminder.completed,
+        )
+        .map(
+          reminder => {
+            const property =
+              state.properties.find(
+                item =>
+                  item.id ===
+                  reminder.propertyId,
+              );
+
+            return (
+              <Card
+                key={
+                  reminder.id
+                }
+              >
+                <View
+                  style={
+                    styles.rowBetween
+                  }
+                >
+                  <View
+                    style={
+                      styles.flex
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.cardTitle
+                      }
+                    >
+                      {reminder.title}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.muted
+                      }
+                    >
+                      {property?.name}
+                    </Text>
+                  </View>
+
+                  <Badge
+                    text={
+                      reminder.dueText
+                    }
+                    tone="warning"
+                  />
+                </View>
+              </Card>
+            );
+          },
+        )}
+
+      <SectionTitle
+        title="Active properties"
         action={
           <TextButton
-            title={`+ ${t(
-              'addProperty',
-            )}`}
+            title="+ Add apartment"
             onPress={() =>
               navigation.navigate(
                 'AddProperty',
@@ -558,19 +526,6 @@ export function DashboardScreen() {
         }
       />
 
-      {activeProperties.length ===
-      0 ? (
-        <Card>
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            No active apartments yet.
-          </Text>
-        </Card>
-      ) : null}
-
       {activeProperties
         .slice(
           0,
@@ -578,12 +533,10 @@ export function DashboardScreen() {
         )
         .map(
           property => {
-            const meterCount =
-              state.meters.filter(
-                meter =>
-                  meter.propertyId ===
-                  property.id,
-              ).length;
+            const tenancy =
+              tenancies[
+                property.id
+              ];
 
             return (
               <Pressable
@@ -593,7 +546,6 @@ export function DashboardScreen() {
                 onPress={() =>
                   navigation.navigate(
                     'PropertyDetails',
-
                     {
                       propertyId:
                         property.id,
@@ -617,9 +569,7 @@ export function DashboardScreen() {
                           styles.cardTitle
                         }
                       >
-                        {
-                          property.name
-                        }
+                        {property.name}
                       </Text>
 
                       <Text
@@ -627,26 +577,48 @@ export function DashboardScreen() {
                           styles.muted
                         }
                       >
-                        {
-                          property.address
-                        }
-                        ,{' '}
-                        {
-                          property.city
-                        }
+                        {tenancyName(
+                          tenancy,
+                        )}
                       </Text>
                     </View>
 
                     <Badge
-                      text={`${meterCount} ${
-                        meterCount ===
-                        1
-                          ? 'meter'
-                          : 'meters'
-                      }`}
-                      tone="neutral"
+                      text={
+                        !tenancy
+                          ? 'Available'
+                          : tenancy.status ===
+                              'PENDING'
+                            ? 'Pending'
+                            : tenancy.status ===
+                                'CHECKOUT_PENDING'
+                              ? 'Checkout'
+                              : 'Occupied'
+                      }
+                      tone={
+                        !tenancy
+                          ? 'neutral'
+                          : tenancy.status ===
+                              'ACTIVE'
+                            ? 'success'
+                            : 'warning'
+                      }
                     />
                   </View>
+
+                  {tenancy &&
+                  tenancy.status !==
+                    'PENDING' ? (
+                    <Text
+                      style={
+                        styles.rentText
+                      }
+                    >
+                      Rent:{' '}
+                      {tenancy.rentAmount.toLocaleString()}{' '}
+                      {tenancy.currency} / month
+                    </Text>
+                  ) : null}
                 </Card>
               </Pressable>
             );
@@ -661,13 +633,10 @@ const styles =
     stats: {
       flexDirection:
         'row',
-
       flexWrap:
         'wrap',
-
       gap:
         spacing.sm,
-
       justifyContent:
         'space-between',
     },
@@ -675,13 +644,10 @@ const styles =
     rowBetween: {
       flexDirection:
         'row',
-
       alignItems:
         'center',
-
       justifyContent:
         'space-between',
-
       gap:
         spacing.md,
     },
@@ -694,10 +660,8 @@ const styles =
     cardTitle: {
       color:
         colors.text,
-
       fontSize:
         16,
-
       fontWeight:
         '700',
     },
@@ -705,61 +669,50 @@ const styles =
     muted: {
       color:
         colors.muted,
-
       fontSize:
         13,
-
-      lineHeight:
-        19,
-
       marginTop:
         4,
+      lineHeight:
+        18,
+    },
+
+    rentText: {
+      color:
+        colors.muted,
+      fontSize:
+        12,
+      marginTop:
+        spacing.sm,
+      fontWeight:
+        '600',
+    },
+
+    forecastRow: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-between',
+      paddingVertical:
+        5,
+    },
+
+    forecastLabel: {
+      color:
+        colors.muted,
+      fontSize:
+        12,
+      fontWeight:
+        '700',
     },
 
     forecastValue: {
       color:
         colors.text,
-
       fontSize:
-        24,
-
-      fontWeight:
-        '800',
-    },
-
-    errorTitle: {
-      color:
-        colors.danger ??
-        '#B42318',
-
-      fontSize:
-        14,
-
-      fontWeight:
-        '800',
-    },
-
-    errorText: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      marginTop:
-        5,
-    },
-
-    warningTitle: {
-      color:
-        colors.text,
-
-      fontSize:
-        14,
-
+        15,
       fontWeight:
         '800',
     },

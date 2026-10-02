@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  useMemo,
   useState,
 } from 'react';
 
@@ -17,10 +16,6 @@ import {
 } from '@react-navigation/native';
 
 import {
-  useTranslation,
-} from 'react-i18next';
-
-import {
   Badge,
   Card,
   Header,
@@ -30,12 +25,9 @@ import {
 } from '../components/ui';
 
 import {
-  MeterSubmissionBadge,
-} from '../components/MeterSubmissionBadge';
-
-import {
-  getLocaleTag,
-} from '../i18n/language';
+  loadTenantApartments,
+  TenantApartmentPortal,
+} from '../services/tenantPortalRepository';
 
 import {
   loadTenantFinanceBalances,
@@ -43,53 +35,20 @@ import {
 } from '../services/financeRepository';
 
 import {
-  findMeterSubmissionStatus,
-  loadMeterSubmissionStatuses,
-  MeterSubmissionStatus,
-} from '../services/meterSubmissionStatus';
-
-import {
-  registerPushNotificationsForCurrentUser,
-} from '../services/notifications';
-
-import {
-  loadTenantApartments,
-  TenantApartmentPortal,
-} from '../services/tenantPortalRepository';
-
-import {
   colors,
   spacing,
 } from '../theme';
 
-import {
-  CurrencyCode,
-} from '../types';
-
 function formatDate(
-  value:
-    string |
-    undefined,
-
-  locale:
-    string,
+  value?: string,
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return '—';
   }
 
-  const normalized =
-    value.includes(
-      'T',
-    )
-      ? value
-      : `${value}T00:00:00`;
-
   const date =
     new Date(
-      normalized,
+      `${value}T00:00:00`,
     );
 
   if (
@@ -101,49 +60,16 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    locale,
-
+    undefined,
     {
       day:
         '2-digit',
-
       month:
         'short',
-
       year:
         'numeric',
     },
   );
-}
-
-function formatMoney(
-  amount:
-    number,
-
-  currency:
-    CurrencyCode,
-) {
-  try {
-    return new Intl.NumberFormat(
-      undefined,
-
-      {
-        style:
-          'currency',
-
-        currency,
-
-        maximumFractionDigits:
-          0,
-      },
-    ).format(
-      amount,
-    );
-  } catch {
-    return `${Math.round(
-      amount,
-    ).toLocaleString()} ${currency}`;
-  }
 }
 
 function latestMeterText(
@@ -186,18 +112,6 @@ export function TenantHomeScreen() {
   const navigation =
     useNavigation<any>();
 
-  const {
-    t,
-    i18n,
-  } =
-    useTranslation();
-
-  const locale =
-    getLocaleTag(
-      i18n.resolvedLanguage ??
-        i18n.language,
-    );
-
   const [
     apartments,
     setApartments,
@@ -207,28 +121,21 @@ export function TenantHomeScreen() {
     >([]);
 
   const [
-    meterStatuses,
-    setMeterStatuses,
+    balances,
+    setBalances,
   ] =
     useState<
-      MeterSubmissionStatus[]
-    >([]);
-
-  const [
-    financeBalances,
-    setFinanceBalances,
-  ] =
-    useState<
-      TenantFinanceBalance[]
-    >([]);
+      Record<
+        string,
+        TenantFinanceBalance
+      >
+    >({});
 
   const [
     loading,
     setLoading,
   ] =
-    useState(
-      true,
-    );
+    useState(true);
 
   useFocusEffect(
     useCallback(
@@ -243,77 +150,44 @@ export function TenantHomeScreen() {
             );
 
             try {
-              const apartmentData =
+              const data =
                 await loadTenantApartments();
 
-              const [
-                statusData,
-                balanceData,
-              ] =
-                await Promise.all([
-                  loadMeterSubmissionStatuses(),
+              const finance =
+                await loadTenantFinanceBalances(
+                  data.map(
+                    apartment =>
+                      apartment.tenancyId,
+                  ),
+                );
 
-                  loadTenantFinanceBalances(
-                    apartmentData.map(
-                      apartment =>
-                        apartment.tenancyId,
+              if (active) {
+                setApartments(
+                  data,
+                );
+
+                setBalances(
+                  Object.fromEntries(
+                    finance.map(
+                      item => [
+                        item.tenancyId,
+                        item,
+                      ],
                     ),
                   ),
-                ]);
-
-              if (
-                !active
-              ) {
-                return;
+                );
               }
-
-              setApartments(
-                apartmentData,
-              );
-
-              setMeterStatuses(
-                statusData,
-              );
-
-              setFinanceBalances(
-                balanceData,
-              );
-
-              if (
-                apartmentData.length >
-                0
-              ) {
-                void registerPushNotificationsForCurrentUser()
-                  .catch(
-                    error => {
-                      console.warn(
-                        '[Dometra] Push registration failed:',
-                        error,
-                      );
-                    },
-                  );
-              }
-            } catch (
-              error
-            ) {
-              if (
-                active
-              ) {
+            } catch (error) {
+              if (active) {
                 Alert.alert(
-                  t(
-                    'tenantHomeTitle',
-                  ),
-
-                  error instanceof
-                  Error
+                  'Tenant home',
+                  error instanceof Error
                     ? error.message
-                    : 'Unable to load your apartments.',
+                    : 'Unable to load your apartment.',
                 );
               }
             } finally {
-              if (
-                active
-              ) {
+              if (active) {
                 setLoading(
                   false,
                 );
@@ -328,124 +202,15 @@ export function TenantHomeScreen() {
             false;
         };
       },
-
-      [
-        t,
-      ],
+      [],
     ),
   );
-
-  const financeByTenancy =
-    useMemo(
-      () => {
-        const map =
-          new Map<
-            string,
-            TenantFinanceBalance
-          >();
-
-        for (
-          const balance
-          of financeBalances
-        ) {
-          map.set(
-            balance.tenancyId,
-            balance,
-          );
-        }
-
-        return map;
-      },
-
-      [
-        financeBalances,
-      ],
-    );
-
-  const totalDebt =
-    useMemo(
-      () => {
-        const totals =
-          new Map<
-            CurrencyCode,
-            number
-          >();
-
-        for (
-          const balance
-          of financeBalances
-        ) {
-          if (
-            balance.outstanding <=
-            0
-          ) {
-            continue;
-          }
-
-          const currency =
-            balance.currency ??
-            'UAH';
-
-          totals.set(
-            currency,
-
-            (
-              totals.get(
-                currency,
-              ) ??
-              0
-            ) +
-              balance.outstanding,
-          );
-        }
-
-        return Array.from(
-          totals.entries(),
-        ).map(
-          ([
-            currency,
-            amount,
-          ]) => ({
-            currency,
-            amount,
-          }),
-        );
-      },
-
-      [
-        financeBalances,
-      ],
-    );
-
-  const totalDebtText =
-    totalDebt.length >
-    0
-      ? totalDebt
-          .map(
-            item =>
-              formatMoney(
-                item.amount,
-                item.currency,
-              ),
-          )
-          .join(
-            ' + ',
-          )
-      : '0';
 
   return (
     <Screen>
       <Header
-        title={
-          t(
-            'tenantHomeTitle',
-          )
-        }
-        subtitle={
-          t(
-            'rentalApartments',
-          )
-        }
+        title="Home"
+        subtitle="Your rental apartments"
       />
 
       {loading ? (
@@ -455,49 +220,9 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            {t(
-              'loadingApartments',
-            )}
+            Loading apartment...
           </Text>
         </Card>
-      ) : null}
-
-      {!loading &&
-      apartments.length >
-        0 ? (
-        <>
-          <SectionTitle
-            title={
-              t(
-                'outstanding',
-              )
-            }
-          />
-
-          <Card>
-            <Text
-              style={
-                styles.totalDebtLabel
-              }
-            >
-              Total debt
-            </Text>
-
-            <Text
-              style={[
-                styles.totalDebtValue,
-
-                totalDebt.length >
-                  0 &&
-                  styles.debtText,
-              ]}
-            >
-              {
-                totalDebtText
-              }
-            </Text>
-          </Card>
-        </>
       ) : null}
 
       {!loading &&
@@ -509,9 +234,7 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            {t(
-              'noActiveTenancy',
-            )}
+            No active tenancy
           </Text>
 
           <Text
@@ -519,9 +242,8 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            {t(
-              'noActiveTenancyDescription',
-            )}
+            When you accept an apartment invitation, the rental
+            will appear here.
           </Text>
         </Card>
       ) : null}
@@ -533,39 +255,17 @@ export function TenantHomeScreen() {
               apartment,
             );
 
-          const finance =
-            financeByTenancy.get(
-              apartment.tenancyId,
+          const financeBalance =
+            balances[
+              apartment.tenancyId
+            ];
+
+          const hasDebt =
+            Boolean(
+              financeBalance &&
+              financeBalance.outstanding >
+                0.009,
             );
-
-          const debtCurrency =
-            finance?.currency ??
-            apartment.currency;
-
-          const debt =
-            finance?.outstanding ??
-            0;
-
-          const advance =
-            finance?.advance ??
-            0;
-
-          const meteredMeters =
-            apartment.meters.filter(
-              meter =>
-                meter.billingMode ===
-                'METERED',
-            );
-
-          const submittedCount =
-            meteredMeters.filter(
-              meter =>
-                findMeterSubmissionStatus(
-                  meterStatuses,
-                  meter.id,
-                )?.submitted ===
-                true,
-            ).length;
 
           return (
             <React.Fragment
@@ -611,11 +311,15 @@ export function TenantHomeScreen() {
 
                   <Badge
                     text={
-                      t(
-                        'active',
-                      )
+                      hasDebt
+                        ? 'Debt'
+                        : 'Active'
                     }
-                    tone="success"
+                    tone={
+                      hasDebt
+                        ? 'warning'
+                        : 'success'
+                    }
                   />
                 </View>
 
@@ -640,9 +344,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'rent',
-                      )}
+                      Rent
                     </Text>
 
                     <Text
@@ -669,9 +371,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'paymentDue',
-                      )}
+                      Payment due
                     </Text>
 
                     <Text
@@ -679,82 +379,10 @@ export function TenantHomeScreen() {
                         styles.value
                       }
                     >
-                      {t(
-                        'dayNumber',
-
-                        {
-                          day:
-                            apartment.paymentDueDay,
-                        },
-                      )}
-                    </Text>
-                  </View>
-                </View>
-
-                <View
-                  style={
-                    styles.financeGrid
-                  }
-                >
-                  <View
-                    style={
-                      styles.financeCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
+                      Day{' '}
+                      {
+                        apartment.paymentDueDay
                       }
-                    >
-                      {t(
-                        'outstanding',
-                      )}
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.financeValue,
-
-                        debt >
-                          0 &&
-                          styles.debtText,
-                      ]}
-                    >
-                      {formatMoney(
-                        debt,
-                        debtCurrency,
-                      )}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.financeCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      {t(
-                        'advance',
-                      )}
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.financeValue,
-
-                        advance >
-                          0 &&
-                          styles.advanceText,
-                      ]}
-                    >
-                      {formatMoney(
-                        advance,
-                        debtCurrency,
-                      )}
                     </Text>
                   </View>
                 </View>
@@ -774,9 +402,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'started',
-                      )}
+                      Started
                     </Text>
 
                     <Text
@@ -786,7 +412,6 @@ export function TenantHomeScreen() {
                     >
                       {formatDate(
                         apartment.startDate,
-                        locale,
                       )}
                     </Text>
                   </View>
@@ -801,9 +426,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'endDate',
-                      )}
+                      End date
                     </Text>
 
                     <Text
@@ -814,13 +437,91 @@ export function TenantHomeScreen() {
                       {apartment.endDate
                         ? formatDate(
                             apartment.endDate,
-                            locale,
                           )
-                        : t(
-                            'openEnded',
-                          )}
+                        : 'Open-ended'}
                     </Text>
                   </View>
+                </View>
+
+                <View
+                  style={
+                    styles.balanceBox
+                  }
+                >
+                  <View
+                    style={
+                      styles.balanceRow
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.balanceLabel
+                      }
+                    >
+                      Debt
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.balanceValue,
+
+                        hasDebt &&
+                          styles.debtValue,
+                      ]}
+                    >
+                      {financeBalance
+                        ? `${financeBalance.outstanding.toLocaleString()} ${
+                            financeBalance.currency ??
+                            apartment.currency
+                          }`
+                        : '—'}
+                    </Text>
+                  </View>
+
+                  {financeBalance &&
+                  financeBalance.advance >
+                    0.009 ? (
+                    <View
+                      style={
+                        styles.balanceRow
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.balanceLabel
+                        }
+                      >
+                        Advance
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.advanceValue
+                        }
+                      >
+                        {financeBalance.advance.toLocaleString()}{' '}
+                        {financeBalance.currency ??
+                          apartment.currency}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {financeBalance &&
+                  financeBalance.openInvoices >
+                    0 ? (
+                    <Text
+                      style={
+                        styles.balanceHint
+                      }
+                    >
+                      {financeBalance.openInvoices}{' '}
+                      open invoice
+                      {financeBalance.openInvoices ===
+                      1
+                        ? ''
+                        : 's'}
+                    </Text>
+                  ) : null}
                 </View>
 
                 {apartment.depositAmount !==
@@ -835,9 +536,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'securityDeposit',
-                      )}
+                      Security deposit
                     </Text>
 
                     <Text
@@ -855,40 +554,9 @@ export function TenantHomeScreen() {
                 ) : null}
               </Card>
 
-              <View
-                style={
-                  styles.sectionHeader
-                }
-              >
-                <SectionTitle
-                  title={
-                    t(
-                      'metersAndServices',
-                    )
-                  }
-                />
-
-                {meteredMeters.length >
-                0 ? (
-                  <Text
-                    style={
-                      styles.sectionProgress
-                    }
-                  >
-                    {t(
-                      'submittedProgress',
-
-                      {
-                        submitted:
-                          submittedCount,
-
-                        total:
-                          meteredMeters.length,
-                      },
-                    )}
-                  </Text>
-                ) : null}
-              </View>
+              <SectionTitle
+                title="Meters & services"
+              />
 
               {apartment.meters.length ===
               0 ? (
@@ -898,9 +566,7 @@ export function TenantHomeScreen() {
                       styles.muted
                     }
                   >
-                    {t(
-                      'noMetersOrServices',
-                    )}
+                    No meters or services have been configured yet.
                   </Text>
                 </Card>
               ) : (
@@ -909,127 +575,93 @@ export function TenantHomeScreen() {
                     (
                       meter,
                       index,
-                    ) => {
-                      const meterStatus =
-                        meter.billingMode ===
-                        'METERED'
-                          ? findMeterSubmissionStatus(
-                              meterStatuses,
-                              meter.id,
-                            )
-                          : undefined;
-
-                      return (
-                        <View
-                          key={
-                            meter.id
-                          }
-                        >
-                          {index >
-                          0 ? (
-                            <View
-                              style={
-                                styles.smallSeparator
-                              }
-                            />
-                          ) : null}
-
+                    ) => (
+                      <View
+                        key={
+                          meter.id
+                        }
+                      >
+                        {index >
+                        0 ? (
                           <View
                             style={
-                              styles.meterRow
+                              styles.smallSeparator
+                            }
+                          />
+                        ) : null}
+
+                        <View
+                          style={
+                            styles.meterRow
+                          }
+                        >
+                          <View
+                            style={
+                              styles.flex
                             }
                           >
-                            <View
+                            <Text
                               style={
-                                styles.flex
+                                styles.meterName
                               }
                             >
-                              <View
+                              {
+                                meter.name
+                              }
+                            </Text>
+
+                            {meter.billingMode ===
+                            'FIXED' ? (
+                              <Text
                                 style={
-                                  styles.meterTitleRow
+                                  styles.muted
                                 }
                               >
-                                <Text
-                                  style={
-                                    styles.meterName
-                                  }
-                                >
-                                  {
-                                    meter.name
-                                  }
-                                </Text>
+                                {
+                                  meter.fixedAmount
+                                }{' '}
+                                {
+                                  meter.billingCurrency
+                                }{' '}
+                                / month
+                              </Text>
+                            ) : null}
 
-                                {meter.billingMode ===
-                                'METERED' ? (
-                                  <MeterSubmissionBadge
-                                    status={
-                                      meterStatus
-                                    }
-                                  />
-                                ) : null}
-                              </View>
-
-                              {meter.billingMode ===
-                                'METERED' &&
-                              meterStatus &&
-                              !meterStatus.submitted ? (
-                                <Text
-                                  style={
-                                    styles.dueText
-                                  }
-                                >
-                                  {t(
-                                    'sendBeforeFifth',
-                                  )}
-                                </Text>
-                              ) : null}
-
-                              {meter.billingMode ===
-                              'FIXED' ? (
-                                <Text
-                                  style={
-                                    styles.muted
-                                  }
-                                >
-                                  {
-                                    meter.fixedAmount
-                                  }{' '}
-                                  {
-                                    meter.billingCurrency
-                                  }{' '}
-                                  {t(
-                                    'perMonth',
-                                  )}
-                                </Text>
-                              ) : null}
-
-                              {meter.billingMode ===
-                                'VARIABLE' &&
-                              meter.lastAmount !==
-                                undefined ? (
-                                <Text
-                                  style={
-                                    styles.muted
-                                  }
-                                >
-                                  {t(
-                                    'lastValue',
-
-                                    {
-                                      value:
-                                        meter.lastAmount,
-
-                                      currency:
-                                        meter.billingCurrency,
-                                    },
-                                  )}
-                                </Text>
-                              ) : null}
-                            </View>
+                            {meter.billingMode ===
+                              'VARIABLE' &&
+                            meter.lastAmount !==
+                              undefined ? (
+                              <Text
+                                style={
+                                  styles.muted
+                                }
+                              >
+                                Last value:{' '}
+                                {
+                                  meter.lastAmount
+                                }{' '}
+                                {
+                                  meter.billingCurrency
+                                }
+                              </Text>
+                            ) : null}
                           </View>
+
+                          <Badge
+                            text={
+                              meter.billingMode ===
+                              'METERED'
+                                ? 'Meter'
+                                : meter.billingMode ===
+                                    'FIXED'
+                                  ? 'Fixed'
+                                  : 'Variable'
+                            }
+                            tone="neutral"
+                          />
                         </View>
-                      );
-                    },
+                      </View>
+                    ),
                   )}
                 </Card>
               )}
@@ -1038,11 +670,7 @@ export function TenantHomeScreen() {
               0 ? (
                 <>
                   <SectionTitle
-                    title={
-                      t(
-                        'lastReadings',
-                      )
-                    }
+                    title="Last readings"
                   />
 
                   <Card>
@@ -1066,11 +694,7 @@ export function TenantHomeScreen() {
               ) : null}
 
               <SecondaryButton
-                title={
-                  t(
-                    'openReadings',
-                  )
-                }
+                title="Open readings"
                 onPress={() =>
                   navigation.navigate(
                     'Readings',
@@ -1095,13 +719,10 @@ const styles =
     rowBetween: {
       flexDirection:
         'row',
-
       alignItems:
         'flex-start',
-
       justifyContent:
         'space-between',
-
       gap:
         spacing.md,
     },
@@ -1109,10 +730,8 @@ const styles =
     propertyName: {
       color:
         colors.text,
-
       fontSize:
         20,
-
       fontWeight:
         '800',
     },
@@ -1120,13 +739,10 @@ const styles =
     address: {
       color:
         colors.muted,
-
       fontSize:
         13,
-
       lineHeight:
         18,
-
       marginTop:
         4,
     },
@@ -1134,10 +750,8 @@ const styles =
     separator: {
       height:
         StyleSheet.hairlineWidth,
-
       backgroundColor:
         colors.border,
-
       marginVertical:
         spacing.md,
     },
@@ -1145,10 +759,8 @@ const styles =
     smallSeparator: {
       height:
         StyleSheet.hairlineWidth,
-
       backgroundColor:
         colors.border,
-
       marginVertical:
         spacing.sm,
     },
@@ -1156,10 +768,8 @@ const styles =
     infoGrid: {
       flexDirection:
         'row',
-
       gap:
         spacing.md,
-
       marginBottom:
         spacing.md,
     },
@@ -1169,93 +779,13 @@ const styles =
         1,
     },
 
-    financeGrid: {
-      flexDirection:
-        'row',
-
-      gap:
-        spacing.md,
-
-      paddingVertical:
-        spacing.md,
-
-      marginBottom:
-        spacing.md,
-
-      borderTopWidth:
-        StyleSheet.hairlineWidth,
-
-      borderBottomWidth:
-        StyleSheet.hairlineWidth,
-
-      borderColor:
-        colors.border,
-    },
-
-    financeCell: {
-      flex:
-        1,
-    },
-
-    financeValue: {
-      color:
-        colors.text,
-
-      fontSize:
-        17,
-
-      fontWeight:
-        '800',
-
-      marginTop:
-        5,
-    },
-
-    debtText: {
-      color:
-        '#B42318',
-    },
-
-    advanceText: {
-      color:
-        '#067647',
-    },
-
-    totalDebtLabel: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      fontWeight:
-        '700',
-    },
-
-    totalDebtValue: {
-      color:
-        colors.text,
-
-      fontSize:
-        28,
-
-      fontWeight:
-        '800',
-
-      marginTop:
-        6,
-    },
-
     label: {
       color:
         colors.muted,
-
       fontSize:
         11,
-
       fontWeight:
         '700',
-
       textTransform:
         'uppercase',
     },
@@ -1263,13 +793,10 @@ const styles =
     value: {
       color:
         colors.text,
-
       fontSize:
         18,
-
       fontWeight:
         '800',
-
       marginTop:
         4,
     },
@@ -1277,107 +804,107 @@ const styles =
     valueSmall: {
       color:
         colors.text,
-
       fontSize:
         14,
-
       fontWeight:
         '700',
-
       marginTop:
         4,
     },
 
-    deposit: {
+    balanceBox: {
+      borderTopWidth:
+        StyleSheet.hairlineWidth,
+      borderTopColor:
+        colors.border,
+      paddingTop:
+        spacing.md,
       marginTop:
         2,
+      gap:
+        8,
     },
 
-    sectionHeader: {
+    balanceRow: {
       flexDirection:
         'row',
-
       alignItems:
         'center',
-
       justifyContent:
         'space-between',
-
       gap:
         spacing.md,
     },
 
-    sectionProgress: {
+    balanceLabel: {
       color:
         colors.muted,
-
       fontSize:
-        11,
-
+        12,
       fontWeight:
         '700',
+    },
+
+    balanceValue: {
+      color:
+        colors.text,
+      fontSize:
+        15,
+      fontWeight:
+        '800',
+    },
+
+    debtValue: {
+      color:
+        colors.text,
+    },
+
+    advanceValue: {
+      color:
+        colors.primary,
+      fontSize:
+        14,
+      fontWeight:
+        '800',
+    },
+
+    balanceHint: {
+      color:
+        colors.muted,
+      fontSize:
+        11,
+    },
+
+    deposit: {
+      marginTop:
+        spacing.md,
     },
 
     meterRow: {
       flexDirection:
         'row',
-
       alignItems:
         'center',
-
       gap:
         spacing.md,
-    },
-
-    meterTitleRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      flexWrap:
-        'wrap',
-
-      gap:
-        8,
     },
 
     meterName: {
       color:
         colors.text,
-
       fontSize:
         14,
-
       fontWeight:
         '700',
-    },
-
-    dueText: {
-      color:
-        '#B42318',
-
-      fontSize:
-        11,
-
-      fontWeight:
-        '700',
-
-      marginTop:
-        5,
     },
 
     lastReading: {
       color:
         colors.text,
-
       fontSize:
         13,
-
       lineHeight:
         22,
-
       fontWeight:
         '600',
     },
@@ -1385,13 +912,10 @@ const styles =
     muted: {
       color:
         colors.muted,
-
       fontSize:
         12,
-
       lineHeight:
         18,
-
       marginTop:
         4,
     },
@@ -1399,10 +923,8 @@ const styles =
     emptyTitle: {
       color:
         colors.text,
-
       fontSize:
         16,
-
       fontWeight:
         '800',
     },
