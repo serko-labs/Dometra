@@ -44,6 +44,10 @@ import {
 } from '../context/AppContext';
 
 import {
+  getLocaleTag,
+} from '../i18n/language';
+
+import {
   findMeterSubmissionStatus,
   loadMeterSubmissionStatuses,
   MeterSubmissionStatus,
@@ -69,18 +73,15 @@ import {
 } from '../theme';
 
 function formatDate(
-  value?: string,
+  value: string | undefined,
+  locale: string,
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return '—';
   }
 
   const normalized =
-    value.includes(
-      'T',
-    )
+    value.includes('T')
       ? value
       : `${value}T00:00:00`;
 
@@ -98,7 +99,7 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    undefined,
+    locale,
     {
       day:
         '2-digit',
@@ -113,7 +114,10 @@ function formatDate(
 }
 
 function formatHistoryDate(
-  iso: string,
+  iso:
+    string,
+  locale:
+    string,
 ) {
   const date =
     new Date(
@@ -129,7 +133,7 @@ function formatHistoryDate(
   }
 
   return date.toLocaleString(
-    undefined,
+    locale,
     {
       day:
         '2-digit',
@@ -181,6 +185,7 @@ function getLatestReading(
           timestamp,
         );
       },
+
       0,
     );
 
@@ -236,62 +241,18 @@ function historyTone(
   }
 }
 
-function tenancyBadge(
-  tenancy:
-    PropertyTenancySummary | null,
-) {
-  if (
-    !tenancy
-  ) {
-    return {
-      text:
-        'Available',
-
-      tone:
-        'neutral' as const,
-    };
-  }
-
-  if (
-    tenancy.status ===
-    'CHECKOUT_PENDING'
-  ) {
-    return {
-      text:
-        'Checkout required',
-
-      tone:
-        'warning' as const,
-    };
-  }
-
-  if (
-    tenancy.status ===
-    'PENDING'
-  ) {
-    return {
-      text:
-        'Invitation pending',
-
-      tone:
-        'warning' as const,
-    };
-  }
-
-  return {
-    text:
-      'Occupied',
-
-    tone:
-      'success' as const,
-  };
-}
-
 export function PropertyDetailsScreen() {
   const {
     t,
+    i18n,
   } =
     useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
 
   const route =
     useRoute<any>();
@@ -329,7 +290,9 @@ export function PropertyDetailsScreen() {
     tenancyLoading,
     setTenancyLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   const [
     history,
@@ -343,7 +306,9 @@ export function PropertyDetailsScreen() {
     historyLoading,
     setHistoryLoading,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const [
     meterStatuses,
@@ -442,6 +407,7 @@ export function PropertyDetailsScreen() {
             false;
         };
       },
+
       [
         propertyId,
       ],
@@ -454,8 +420,16 @@ export function PropertyDetailsScreen() {
     return (
       <Screen>
         <Header
-          title="Apartment"
-          subtitle="Apartment not found"
+          title={
+            t(
+              'apartment',
+            )
+          }
+          subtitle={
+            t(
+              'apartmentNotFound',
+            )
+          }
         />
       </Screen>
     );
@@ -476,9 +450,80 @@ export function PropertyDetailsScreen() {
     );
 
   const statusBadge =
-    tenancyBadge(
-      tenancy,
-    );
+    !tenancy
+      ? {
+          text:
+            t(
+              'available',
+            ),
+
+          tone:
+            'neutral' as const,
+        }
+      : tenancy.status ===
+          'CHECKOUT_PENDING'
+        ? {
+            text:
+              t(
+                'checkoutRequired',
+              ),
+
+            tone:
+              'warning' as const,
+          }
+        : tenancy.status ===
+            'PENDING'
+          ? {
+              text:
+                t(
+                  'invitationPending',
+                ),
+
+              tone:
+                'warning' as const,
+            }
+          : {
+              text:
+                t(
+                  'occupied',
+                ),
+
+              tone:
+                'success' as const,
+            };
+
+  const historyLabel =
+    (
+      category:
+        PropertyHistoryItem['category'],
+    ) => {
+      switch (
+        category
+      ) {
+        case 'PAYMENT':
+          return t(
+            'historyPayment',
+          );
+
+        case 'INVOICE':
+          return t(
+            'historyInvoice',
+          );
+
+        case 'READING':
+          return t(
+            'historyReading',
+          );
+
+        case 'TENANT':
+          return t(
+            'historyTenant',
+          );
+
+        default:
+          return category;
+      }
+    };
 
   const confirmRemoveMeter =
     (
@@ -489,12 +534,25 @@ export function PropertyDetailsScreen() {
         string,
     ) => {
       Alert.alert(
-        'Remove meter / service?',
-        `Are you sure you want to remove "${meterName}"?`,
+        t(
+          'removeMeterTitle',
+        ),
+
+        t(
+          'removeMeterMessage',
+
+          {
+            name:
+              meterName,
+          },
+        ),
+
         [
           {
             text:
-              'Cancel',
+              t(
+                'cancel',
+              ),
 
             style:
               'cancel',
@@ -502,7 +560,9 @@ export function PropertyDetailsScreen() {
 
           {
             text:
-              'Remove',
+              t(
+                'remove',
+              ),
 
             style:
               'destructive',
@@ -528,6 +588,7 @@ export function PropertyDetailsScreen() {
 
       navigation.navigate(
         'TenantDetails',
+
         {
           propertyId:
             property.id,
@@ -547,6 +608,7 @@ export function PropertyDetailsScreen() {
 
       navigation.navigate(
         'TenantProfile',
+
         {
           mode:
             'EDIT_MANUAL',
@@ -573,6 +635,7 @@ export function PropertyDetailsScreen() {
 
         navigation.navigate(
           'InvoiceDetails',
+
           {
             invoiceId:
               invoice.id,
@@ -582,12 +645,16 @@ export function PropertyDetailsScreen() {
         error
       ) {
         Alert.alert(
-          'Invoices',
+          t(
+            'invoices',
+          ),
 
           error instanceof
           Error
             ? error.message
-            : 'Unable to create invoice.',
+            : t(
+                'invoiceCreationFailed',
+              ),
         );
       }
     };
@@ -612,7 +679,11 @@ export function PropertyDetailsScreen() {
       />
 
       <SectionTitle
-        title="Tenant"
+        title={
+          t(
+            'tenantLabel',
+          )
+        }
       />
 
       {tenancyLoading ? (
@@ -622,7 +693,9 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            Loading tenant...
+            {t(
+              'loadingTenant',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -635,7 +708,9 @@ export function PropertyDetailsScreen() {
               styles.emptyTitle
             }
           >
-            No tenant assigned
+            {t(
+              'noTenantAssigned',
+            )}
           </Text>
 
           <Text
@@ -643,7 +718,9 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            Add a manual tenant or invite a Dometra user.
+            {t(
+              'addTenantDescription',
+            )}
           </Text>
 
           <View
@@ -652,10 +729,13 @@ export function PropertyDetailsScreen() {
             }
           >
             <PrimaryButton
-              title="+ Add tenant"
+              title={`+ ${t(
+                'addTenant',
+              )}`}
               onPress={() =>
                 navigation.navigate(
                   'AddTenantMethod',
+
                   {
                     propertyId:
                       property.id,
@@ -709,8 +789,12 @@ export function PropertyDetailsScreen() {
                         text={
                           tenancy.tenantType ===
                           'MANUAL'
-                            ? 'Manual'
-                            : 'Dometra'
+                            ? t(
+                                'manual',
+                              )
+                            : t(
+                                'dometra',
+                              )
                         }
                         tone="neutral"
                       />
@@ -743,7 +827,9 @@ export function PropertyDetailsScreen() {
                         styles.tenantName
                       }
                     >
-                      Tenant invitation
+                      {t(
+                        'tenantInvitation',
+                      )}
                     </Text>
 
                     <Text
@@ -751,7 +837,9 @@ export function PropertyDetailsScreen() {
                         styles.muted
                       }
                     >
-                      Waiting for the tenant to accept the invitation.
+                      {t(
+                        'waitingTenantAcceptance',
+                      )}
                     </Text>
                   </>
                 )}
@@ -787,7 +875,9 @@ export function PropertyDetailsScreen() {
                     styles.label
                   }
                 >
-                  Rent
+                  {t(
+                    'rent',
+                  )}
                 </Text>
 
                 <Text
@@ -814,7 +904,9 @@ export function PropertyDetailsScreen() {
                     styles.label
                   }
                 >
-                  Since
+                  {t(
+                    'since',
+                  )}
                 </Text>
 
                 <Text
@@ -824,6 +916,7 @@ export function PropertyDetailsScreen() {
                 >
                   {formatDate(
                     tenancy.startDate,
+                    locale,
                   )}
                 </Text>
               </View>
@@ -840,15 +933,26 @@ export function PropertyDetailsScreen() {
                     styles.muted
                   }
                 >
-                  Agreement until{' '}
-                  {formatDate(
-                    tenancy.endDate,
+                  {t(
+                    'agreementUntil',
+
+                    {
+                      date:
+                        formatDate(
+                          tenancy.endDate,
+                          locale,
+                        ),
+                    },
                   )}
                 </Text>
 
                 {tenancy.autoProlongation ? (
                   <Badge
-                    text="Auto-prolongation"
+                    text={
+                      t(
+                        'autoProlongation',
+                      )
+                    }
                     tone="success"
                   />
                 ) : null}
@@ -863,7 +967,11 @@ export function PropertyDetailsScreen() {
                 }
               >
                 <SecondaryButton
-                  title="Edit tenant"
+                  title={
+                    t(
+                      'editTenant',
+                    )
+                  }
                   onPress={
                     editManualTenant
                   }
@@ -875,7 +983,11 @@ export function PropertyDetailsScreen() {
       ) : null}
 
       <SectionTitle
-        title="Meters & services"
+        title={
+          t(
+            'metersAndServices',
+          )
+        }
       />
 
       {meters.length ===
@@ -886,7 +998,9 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            No meters or services yet.
+            {t(
+              'noMetersOrServices',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -915,6 +1029,7 @@ export function PropertyDetailsScreen() {
               onEdit={() =>
                 navigation.navigate(
                   'AddMeter',
+
                   {
                     propertyId:
                       property.id,
@@ -994,11 +1109,16 @@ export function PropertyDetailsScreen() {
                               styles.submissionInfo
                             }
                           >
-                            {meterStatus.submittedByTenant
-                              ? 'Tenant submitted'
-                              : 'Submitted'}{' '}
-                            {formatDate(
-                              meterStatus.submittedAt,
+                            {t(
+                              'lastSubmitted',
+
+                              {
+                                date:
+                                  formatDate(
+                                    meterStatus.submittedAt,
+                                    locale,
+                                  ),
+                              },
                             )}
                           </Text>
                         ) : null}
@@ -1010,8 +1130,11 @@ export function PropertyDetailsScreen() {
                             }
                           >
                             <Badge
-                              text={`Last ${formatDate(
+                              text={`${t(
+                                'lastReading',
+                              )} ${formatDate(
                                 latestReading.date,
+                                locale,
                               )}`}
                               tone="neutral"
                             />
@@ -1033,7 +1156,11 @@ export function PropertyDetailsScreen() {
                             }
                           >
                             <Badge
-                              text="No readings yet"
+                              text={
+                                t(
+                                  'noReadingsYet',
+                                )
+                              }
                               tone="neutral"
                             />
                           </View>
@@ -1048,7 +1175,10 @@ export function PropertyDetailsScreen() {
                           styles.muted
                         }
                       >
-                        Fixed •{' '}
+                        {t(
+                          'fixed',
+                        )}
+                        {' • '}
                         {
                           meter.fixedAmount
                         }{' '}
@@ -1056,7 +1186,9 @@ export function PropertyDetailsScreen() {
                           meter.billingCurrency ??
                           'UAH'
                         }{' '}
-                        / month
+                        {t(
+                          'perMonth',
+                        )}
                       </Text>
                     ) : null}
 
@@ -1068,7 +1200,9 @@ export function PropertyDetailsScreen() {
                             styles.muted
                           }
                         >
-                          Variable service
+                          {t(
+                            'variableService',
+                          )}
                         </Text>
 
                         {meter.lastAmount !==
@@ -1100,10 +1234,15 @@ export function PropertyDetailsScreen() {
                   {meter.billingMode ===
                   'METERED' ? (
                     <SecondaryButton
-                      title="Reading"
+                      title={
+                        t(
+                          'reading',
+                        )
+                      }
                       onPress={() =>
                         navigation.navigate(
                           'MeterReading',
+
                           {
                             meterId:
                               meter.id,
@@ -1116,10 +1255,15 @@ export function PropertyDetailsScreen() {
                   {meter.billingMode ===
                   'VARIABLE' ? (
                     <SecondaryButton
-                      title="Enter value"
+                      title={
+                        t(
+                          'enterValue',
+                        )
+                      }
                       onPress={() =>
                         navigation.navigate(
                           'MeterReading',
+
                           {
                             meterId:
                               meter.id,
@@ -1136,10 +1280,13 @@ export function PropertyDetailsScreen() {
       )}
 
       <SecondaryButton
-        title="+ Add meter / service"
+        title={`+ ${t(
+          'addMeter',
+        )}`}
         onPress={() =>
           navigation.navigate(
             'AddMeter',
+
             {
               propertyId:
                 property.id,
@@ -1149,7 +1296,11 @@ export function PropertyDetailsScreen() {
       />
 
       <SectionTitle
-        title="History"
+        title={
+          t(
+            'history',
+          )
+        }
       />
 
       {historyLoading &&
@@ -1161,7 +1312,9 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            Loading history...
+            {t(
+              'loadingHistory',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -1175,7 +1328,9 @@ export function PropertyDetailsScreen() {
               styles.muted
             }
           >
-            No activity yet.
+            {t(
+              'noActivityYet',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -1230,7 +1385,9 @@ export function PropertyDetailsScreen() {
 
                 <Badge
                   text={
-                    item.category
+                    historyLabel(
+                      item.category,
+                    )
                   }
                   tone={
                     historyTone(
@@ -1259,6 +1416,7 @@ export function PropertyDetailsScreen() {
               >
                 {formatHistoryDate(
                   item.timestamp,
+                  locale,
                 )}
               </Text>
             </View>
@@ -1322,6 +1480,7 @@ export function PropertyDetailsScreen() {
                   onPress={() =>
                     navigation.navigate(
                       'InvoiceDetails',
+
                       {
                         invoiceId:
                           invoice.id,

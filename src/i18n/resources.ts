@@ -22,7 +22,14 @@ export const resources = {
       reminders: 'Нагадування',
       seeAll: 'Переглянути все',
       activeProperties: 'Активні об’єкти',
+
       addProperty: 'Додати об’єкт',
+      addApartment: 'Додати квартиру',
+      editApartment: 'Редагувати квартиру',
+      updateApartmentInformation:
+        'Оновіть інформацію про квартиру',
+      addBasicApartmentInformation:
+        'Додайте основну інформацію про квартиру',
 
       occupied: 'Заселено',
       vacant: 'Вільно',
@@ -39,6 +46,12 @@ export const resources = {
       tenantLabel: 'Орендар',
 
       addMeter: 'Додати лічильник',
+      editMeterService: 'Редагувати лічильник / послугу',
+      updateMeterServiceSettings:
+        'Оновіть налаштування лічильника або послуги',
+      addUtilityMeterOrService:
+        'Додайте комунальний лічильник або щомісячну послугу',
+
       generateInvoice: 'Згенерувати рахунок',
 
       meterReading: 'Показники лічильника',
@@ -68,6 +81,10 @@ export const resources = {
       saving: 'Збереження...',
       saved: 'Збережено',
       cancel: 'Скасувати',
+      remove: 'Видалити',
+      delete: 'Видалити',
+      create: 'Створити',
+      optional: 'необов’язково',
 
       language: 'Мова',
       notifications: 'Нагадування та push',
@@ -83,6 +100,7 @@ export const resources = {
       password: 'Пароль',
 
       continueDemo: 'Продовжити демо',
+
       authHint:
         'Без Supabase можна увійти в демо та одразу тестувати весь UX.',
 
@@ -93,13 +111,91 @@ export const resources = {
       city: 'Місто',
       area: 'Площа, м²',
       monthlyRent: 'Місячна оренда',
-      create: 'Створити',
+
+      cityRequired:
+        'Місто є обов’язковим полем.',
+
+      addressRequired:
+        'Адреса є обов’язковим полем.',
+
+      squareGreaterThanZero:
+        'Площа має бути більшою за 0.',
+
+      unableSaveApartment:
+        'Не вдалося зберегти квартиру',
+
+      unknownError:
+        'Невідома помилка.',
+
+      cityPlaceholder:
+        'Чернівці',
+
+      addressPlaceholder:
+        'вул. Головна, 100, кв. 12',
+
+      apartmentNamePlaceholder:
+        'Квартира в центрі',
+
+      apartmentRentSetupHint:
+        'Оренду, орендаря та умови оплати можна налаштувати окремо.',
 
       electricity: 'Електроенергія',
       water: 'Вода',
       gas: 'Газ',
-      dualTariff: 'Двотарифний T1/T2',
-      singleTariff: 'Однотарифний',
+      custom: 'Інше',
+
+      type: 'Тип',
+
+      tariffType:
+        'Тип тарифу',
+
+      dualTariff:
+        'Двотарифний T1/T2',
+
+      singleTariff:
+        'Однотарифний',
+
+      pricePerUnitRequired:
+        'Ціна за {{unit}} *',
+
+      t1PriceRequired:
+        'Ціна T1 за kWh *',
+
+      t2PriceRequired:
+        'Ціна T2 за kWh *',
+
+      tariffCurrency:
+        'Валюта тарифу',
+
+      billingType:
+        'Тип нарахування',
+
+      monthlyAmount:
+        'Щомісячна сума',
+
+      customServicePlaceholder:
+        'Інтернет, охорона, центральне опалення...',
+
+      propertyMissing:
+        'Квартиру не визначено.',
+
+      customServiceNameRequired:
+        'Введіть назву додаткової послуги.',
+
+      validFixedMonthlyAmountRequired:
+        'Введіть коректну фіксовану щомісячну суму.',
+
+      validT1PriceRequired:
+        'Введіть коректну ціну T1 за kWh.',
+
+      validT2PriceRequired:
+        'Введіть коректну ціну T2 за kWh.',
+
+      validPricePerUnitRequired:
+        'Введіть коректну ціну за {{unit}}.',
+
+      unableSaveMeterService:
+        'Не вдалося зберегти лічильник / послугу',
 
       nextPayment: 'Наступна оплата',
       submitReadings: 'Передати показники',
@@ -129,6 +225,7 @@ export const resources = {
         'Доступ до сповіщень не надано.',
 
       account: 'Обліковий запис',
+
       signedInWithSupabase:
         'Вхід виконано через Supabase',
 
@@ -139,6 +236,7 @@ export const resources = {
         'Не вдалося змінити мову.',
 
       tenantHomeTitle: 'Моя оренда',
+
       rentalApartments:
         'Ваші орендовані квартири',
 
@@ -321,6 +419,198 @@ export const resources = {
 
       never:
         'Ніколи',
+
+      apartment:
+        'Квартира',
+
+      apartmentNotFound:
+        'Квартиру не знайдено',
+
+      loadingTenant:
+        'Завантаження орендаря...',
+
+      noTenantAssigned:
+        'Орендар не призначений',
+
+      addTenantDescription:
+        'Додайте орендаря вручну або запросіть користувача Dometra.',
+
+      addTenant:
+        'Додати орендаря',
+
+      manual:
+        'Вручну',
+
+      dometra:
+        'Dometra',
+
+      tenantInvitation:
+        'Запрошення орендаря',
+
+      waitingTenantAcceptance:
+        'Очікуємо, поки орендар прийме запрошення.',
+
+      since:
+        'З',
+
+      agreementUntil:
+        'Договір до {{date}}',
+
+      autoProlongation:
+        'Автопродовження',
+
+      editTenant:
+        'Редагувати орендаря',
+
+      removeMeterTitle:
+        'Видалити лічильник / послугу?',
+
+      removeMeterMessage:
+        'Ви впевнені, що хочете видалити «{{name}}»?',
+
+      reading:
+        'Показник',
+
+      enterValue:
+        'Ввести значення',
+
+      history:
+        'Історія',
+
+      loadingHistory:
+        'Завантаження історії...',
+
+      noActivityYet:
+        'Активності ще немає.',
+
+      historyPayment:
+        'Платіж',
+
+      historyInvoice:
+        'Рахунок',
+
+      historyReading:
+        'Показник',
+
+      historyTenant:
+        'Орендар',
+
+      invoiceCreationFailed:
+        'Не вдалося створити рахунок.',
+
+      tenantTitle:
+        'Орендар',
+
+      loadingTenantInformation:
+        'Завантаження інформації про орендаря...',
+
+      noActiveTenantForApartment:
+        'Для цієї квартири немає активного орендаря.',
+
+      manualTenant:
+        'Орендар доданий вручну',
+
+      dometraTenant:
+        'Орендар Dometra',
+
+      checkoutRequiredDescription:
+        'Термін договору оренди завершився. Завершіть виселення, щоб закрити оренду.',
+
+      invitation:
+        'Запрошення',
+
+      waitingForTenant:
+        'Очікуємо орендаря',
+
+      tenantHasNotAccepted:
+        'Орендар ще не прийняв це запрошення.',
+
+      expires:
+        'Діє до: {{date}}',
+
+      contact:
+        'Контакти',
+
+      firstName:
+        'Ім’я',
+
+      lastName:
+        'Прізвище',
+
+      phone:
+        'Телефон',
+
+      emergencyContact:
+        'Екстрений контакт',
+
+      identification:
+        'Документи',
+
+      passportId:
+        'Паспорт / ID',
+
+      notes:
+        'Примітки',
+
+      rental:
+        'Оренда',
+
+      rentPerMonth:
+        '{{amount}} {{currency}} / місяць',
+
+      agreementEnds:
+        'Договір завершується',
+
+      paymentDueDay:
+        '{{day}} число кожного місяця',
+
+      enabled:
+        'Увімкнено',
+
+      disabled:
+        'Вимкнено',
+
+      openingMeterReadings:
+        'Початкові показники лічильників',
+
+      moveIn:
+        'Заселення',
+
+      agreement:
+        'Договір',
+
+      personalProfileManagedByTenant:
+        'Особистими даними профілю керує сам орендар у своєму обліковому записі Dometra.',
+
+      endRental:
+        'Завершити оренду',
+
+      completeCheckout:
+        'Завершити виселення',
+
+      deleteInvitation:
+        'Видалити запрошення',
+
+      deletingInvitation:
+        'Видалення запрошення...',
+
+      deleteInvitationTitle:
+        'Видалити запрошення?',
+
+      deleteInvitationMessage:
+        'Посилання на запрошення перестане працювати, а квартира знову стане доступною.',
+
+      invitationDeleted:
+        'Запрошення видалено',
+
+      invitationDeletedMessage:
+        'Запрошення скасовано, квартира знову доступна.',
+
+      unableDeleteInvitation:
+        'Не вдалося видалити запрошення',
+
+      invitationDeleteHint:
+        'Запрошення можна видалити, доки орендар його не прийняв.',
     },
   },
 
@@ -347,7 +637,14 @@ export const resources = {
       reminders: 'Reminders',
       seeAll: 'See all',
       activeProperties: 'Active properties',
+
       addProperty: 'Add property',
+      addApartment: 'Add apartment',
+      editApartment: 'Edit apartment',
+      updateApartmentInformation:
+        'Update apartment information',
+      addBasicApartmentInformation:
+        'Add the basic apartment information',
 
       occupied: 'Occupied',
       vacant: 'Vacant',
@@ -364,6 +661,12 @@ export const resources = {
       tenantLabel: 'Tenant',
 
       addMeter: 'Add meter',
+      editMeterService: 'Edit meter / service',
+      updateMeterServiceSettings:
+        'Update meter or service settings',
+      addUtilityMeterOrService:
+        'Add a utility meter or monthly service',
+
       generateInvoice: 'Generate invoice',
 
       meterReading: 'Meter reading',
@@ -396,6 +699,10 @@ export const resources = {
       saving: 'Saving...',
       saved: 'Saved',
       cancel: 'Cancel',
+      remove: 'Remove',
+      delete: 'Delete',
+      create: 'Create',
+      optional: 'optional',
 
       language: 'Language',
       notifications: 'Notifications',
@@ -422,13 +729,91 @@ export const resources = {
       city: 'City',
       area: 'Area, m²',
       monthlyRent: 'Monthly rent',
-      create: 'Create',
+
+      cityRequired:
+        'City is required.',
+
+      addressRequired:
+        'Address is required.',
+
+      squareGreaterThanZero:
+        'Square must be greater than 0.',
+
+      unableSaveApartment:
+        'Unable to save apartment',
+
+      unknownError:
+        'Unknown error.',
+
+      cityPlaceholder:
+        'Chernivtsi',
+
+      addressPlaceholder:
+        'Holovna St, 100, Apt 12',
+
+      apartmentNamePlaceholder:
+        'Central apartment',
+
+      apartmentRentSetupHint:
+        'Rent, tenant and payment conditions can be configured separately.',
 
       electricity: 'Electricity',
       water: 'Water',
       gas: 'Gas',
-      dualTariff: 'Dual tariff T1/T2',
-      singleTariff: 'Single tariff',
+      custom: 'Custom',
+
+      type: 'Type',
+
+      tariffType:
+        'Tariff type',
+
+      dualTariff:
+        'Dual tariff T1/T2',
+
+      singleTariff:
+        'Single tariff',
+
+      pricePerUnitRequired:
+        'Price per {{unit}} *',
+
+      t1PriceRequired:
+        'T1 price per kWh *',
+
+      t2PriceRequired:
+        'T2 price per kWh *',
+
+      tariffCurrency:
+        'Tariff currency',
+
+      billingType:
+        'Billing type',
+
+      monthlyAmount:
+        'Monthly amount',
+
+      customServicePlaceholder:
+        'Internet, Security, Central heating...',
+
+      propertyMissing:
+        'Property is missing.',
+
+      customServiceNameRequired:
+        'Enter a name for the custom service.',
+
+      validFixedMonthlyAmountRequired:
+        'Enter a valid fixed monthly amount.',
+
+      validT1PriceRequired:
+        'Enter a valid T1 price per kWh.',
+
+      validT2PriceRequired:
+        'Enter a valid T2 price per kWh.',
+
+      validPricePerUnitRequired:
+        'Enter a valid price per {{unit}}.',
+
+      unableSaveMeterService:
+        'Unable to save meter / service',
 
       nextPayment: 'Next payment',
       submitReadings: 'Submit readings',
@@ -461,8 +846,7 @@ export const resources = {
       notificationPermissionDenied:
         'Notification permission was denied.',
 
-      account:
-        'Account',
+      account: 'Account',
 
       signedInWithSupabase:
         'Signed in with Supabase',
@@ -665,8 +1049,127 @@ export const resources = {
       sendMeterValuesBeforeFifth:
         'Submit meter values and fresh photos before the 5th of the month.',
 
-      never:
-        'Never',
+      never: 'Never',
+
+      apartment: 'Apartment',
+      apartmentNotFound: 'Apartment not found',
+      loadingTenant: 'Loading tenant...',
+      noTenantAssigned: 'No tenant assigned',
+
+      addTenantDescription:
+        'Add a manual tenant or invite a Dometra user.',
+
+      addTenant: 'Add tenant',
+      manual: 'Manual',
+      dometra: 'Dometra',
+      tenantInvitation: 'Tenant invitation',
+
+      waitingTenantAcceptance:
+        'Waiting for the tenant to accept the invitation.',
+
+      since: 'Since',
+
+      agreementUntil:
+        'Agreement until {{date}}',
+
+      autoProlongation:
+        'Auto-prolongation',
+
+      editTenant:
+        'Edit tenant',
+
+      removeMeterTitle:
+        'Remove meter / service?',
+
+      removeMeterMessage:
+        'Are you sure you want to remove "{{name}}"?',
+
+      reading: 'Reading',
+      enterValue: 'Enter value',
+      history: 'History',
+      loadingHistory: 'Loading history...',
+      noActivityYet: 'No activity yet.',
+      historyPayment: 'Payment',
+      historyInvoice: 'Invoice',
+      historyReading: 'Reading',
+      historyTenant: 'Tenant',
+
+      invoiceCreationFailed:
+        'Unable to create invoice.',
+
+      tenantTitle: 'Tenant',
+
+      loadingTenantInformation:
+        'Loading tenant information...',
+
+      noActiveTenantForApartment:
+        'There is no active tenant for this apartment.',
+
+      manualTenant: 'Manual tenant',
+      dometraTenant: 'Dometra tenant',
+
+      checkoutRequiredDescription:
+        'The rental agreement has reached its end date. Complete checkout to close the rental.',
+
+      invitation: 'Invitation',
+      waitingForTenant: 'Waiting for tenant',
+
+      tenantHasNotAccepted:
+        'The tenant has not accepted this invitation yet.',
+
+      expires:
+        'Expires: {{date}}',
+
+      contact: 'Contact',
+      firstName: 'First name',
+      lastName: 'Last name',
+      phone: 'Phone',
+      emergencyContact: 'Emergency contact',
+      identification: 'Identification',
+      passportId: 'Passport / ID',
+      notes: 'Notes',
+      rental: 'Rental',
+
+      rentPerMonth:
+        '{{amount}} {{currency}} / month',
+
+      agreementEnds: 'Agreement ends',
+
+      paymentDueDay:
+        'Day {{day}} of each month',
+
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+
+      openingMeterReadings:
+        'Opening meter readings',
+
+      moveIn: 'Move-in',
+      agreement: 'Agreement',
+
+      personalProfileManagedByTenant:
+        'Personal profile information is managed by the tenant in their Dometra account.',
+
+      endRental: 'End rental',
+      completeCheckout: 'Complete checkout',
+      deleteInvitation: 'Delete invitation',
+      deletingInvitation: 'Deleting invitation...',
+      deleteInvitationTitle: 'Delete invitation?',
+
+      deleteInvitationMessage:
+        'The invitation link will stop working and the apartment will become available again.',
+
+      invitationDeleted:
+        'Invitation deleted',
+
+      invitationDeletedMessage:
+        'The invitation has been cancelled and the apartment is available again.',
+
+      unableDeleteInvitation:
+        'Unable to delete invitation',
+
+      invitationDeleteHint:
+        'The invitation can be deleted until the tenant accepts it.',
     },
   },
 
@@ -693,7 +1196,14 @@ export const resources = {
       reminders: 'Erinnerungen',
       seeAll: 'Alle anzeigen',
       activeProperties: 'Aktive Objekte',
+
       addProperty: 'Objekt hinzufügen',
+      addApartment: 'Wohnung hinzufügen',
+      editApartment: 'Wohnung bearbeiten',
+      updateApartmentInformation:
+        'Wohnungsinformationen aktualisieren',
+      addBasicApartmentInformation:
+        'Grundlegende Wohnungsinformationen hinzufügen',
 
       occupied: 'Vermietet',
       vacant: 'Frei',
@@ -710,6 +1220,12 @@ export const resources = {
       tenantLabel: 'Mieter',
 
       addMeter: 'Zähler hinzufügen',
+      editMeterService: 'Zähler / Leistung bearbeiten',
+      updateMeterServiceSettings:
+        'Zähler- oder Leistungseinstellungen aktualisieren',
+      addUtilityMeterOrService:
+        'Verbrauchszähler oder monatliche Leistung hinzufügen',
+
       generateInvoice: 'Rechnung erstellen',
 
       meterReading: 'Zählerstand',
@@ -742,6 +1258,10 @@ export const resources = {
       saving: 'Speichern...',
       saved: 'Gespeichert',
       cancel: 'Abbrechen',
+      remove: 'Entfernen',
+      delete: 'Löschen',
+      create: 'Erstellen',
+      optional: 'optional',
 
       language: 'Sprache',
       notifications: 'Benachrichtigungen',
@@ -768,13 +1288,91 @@ export const resources = {
       city: 'Stadt',
       area: 'Fläche, m²',
       monthlyRent: 'Monatsmiete',
-      create: 'Erstellen',
+
+      cityRequired:
+        'Stadt ist erforderlich.',
+
+      addressRequired:
+        'Adresse ist erforderlich.',
+
+      squareGreaterThanZero:
+        'Die Fläche muss größer als 0 sein.',
+
+      unableSaveApartment:
+        'Wohnung konnte nicht gespeichert werden',
+
+      unknownError:
+        'Unbekannter Fehler.',
+
+      cityPlaceholder:
+        'Chernivtsi',
+
+      addressPlaceholder:
+        'Holovna Str. 100, Whg. 12',
+
+      apartmentNamePlaceholder:
+        'Wohnung im Zentrum',
+
+      apartmentRentSetupHint:
+        'Miete, Mieter und Zahlungsbedingungen können separat eingerichtet werden.',
 
       electricity: 'Strom',
       water: 'Wasser',
       gas: 'Gas',
-      dualTariff: 'Doppeltarif T1/T2',
-      singleTariff: 'Einzeltarif',
+      custom: 'Benutzerdefiniert',
+
+      type: 'Typ',
+
+      tariffType:
+        'Tarifart',
+
+      dualTariff:
+        'Doppeltarif T1/T2',
+
+      singleTariff:
+        'Einzeltarif',
+
+      pricePerUnitRequired:
+        'Preis pro {{unit}} *',
+
+      t1PriceRequired:
+        'T1-Preis pro kWh *',
+
+      t2PriceRequired:
+        'T2-Preis pro kWh *',
+
+      tariffCurrency:
+        'Tarifwährung',
+
+      billingType:
+        'Abrechnungsart',
+
+      monthlyAmount:
+        'Monatlicher Betrag',
+
+      customServicePlaceholder:
+        'Internet, Sicherheit, Zentralheizung...',
+
+      propertyMissing:
+        'Wohnung fehlt.',
+
+      customServiceNameRequired:
+        'Geben Sie einen Namen für die benutzerdefinierte Leistung ein.',
+
+      validFixedMonthlyAmountRequired:
+        'Geben Sie einen gültigen festen Monatsbetrag ein.',
+
+      validT1PriceRequired:
+        'Geben Sie einen gültigen T1-Preis pro kWh ein.',
+
+      validT2PriceRequired:
+        'Geben Sie einen gültigen T2-Preis pro kWh ein.',
+
+      validPricePerUnitRequired:
+        'Geben Sie einen gültigen Preis pro {{unit}} ein.',
+
+      unableSaveMeterService:
+        'Zähler / Leistung konnte nicht gespeichert werden',
 
       nextPayment: 'Nächste Zahlung',
       submitReadings: 'Zählerstände senden',
@@ -787,13 +1385,11 @@ export const resources = {
       supabaseNotConnected: 'Supabase nicht verbunden',
 
       pushTest: 'Test-Erinnerung',
-
       paymentSaved: 'Zahlung gespeichert',
       invoiceCreated: 'Rechnung erstellt',
       readingSaved: 'Zählerstand gespeichert',
 
-      push:
-        'Push-Benachrichtigungen',
+      push: 'Push-Benachrichtigungen',
 
       notificationDescription:
         'Miete, Zählerstände und Erinnerungen bei Überfälligkeit',
@@ -804,53 +1400,26 @@ export const resources = {
       notificationPermissionDenied:
         'Benachrichtigungsberechtigung wurde verweigert.',
 
-      account:
-        'Konto',
+      account: 'Konto',
+      signedInWithSupabase: 'Mit Supabase angemeldet',
+      selectLanguage: 'Sprache auswählen',
+      change: 'Ändern',
+      languageChangeFailed: 'Sprache konnte nicht geändert werden.',
 
-      signedInWithSupabase:
-        'Mit Supabase angemeldet',
-
-      selectLanguage:
-        'Sprache auswählen',
-
-      change:
-        'Ändern',
-
-      languageChangeFailed:
-        'Sprache konnte nicht geändert werden.',
-
-      tenantHomeTitle:
-        'Meine Miete',
-
-      rentalApartments:
-        'Ihre Mietwohnungen',
-
-      loadingApartments:
-        'Wohnungen werden geladen...',
-
-      noActiveTenancy:
-        'Kein aktives Mietverhältnis',
+      tenantHomeTitle: 'Meine Miete',
+      rentalApartments: 'Ihre Mietwohnungen',
+      loadingApartments: 'Wohnungen werden geladen...',
+      noActiveTenancy: 'Kein aktives Mietverhältnis',
 
       noActiveTenancyDescription:
         'Nach Annahme einer Wohnungseinladung erscheint das Mietverhältnis hier.',
 
-      paymentDue:
-        'Zahlung fällig',
-
-      dayNumber:
-        'Tag {{day}}',
-
-      started:
-        'Beginn',
-
-      endDate:
-        'Enddatum',
-
-      openEnded:
-        'Unbefristet',
-
-      securityDeposit:
-        'Kaution',
+      paymentDue: 'Zahlung fällig',
+      dayNumber: 'Tag {{day}}',
+      started: 'Beginn',
+      endDate: 'Enddatum',
+      openEnded: 'Unbefristet',
+      securityDeposit: 'Kaution',
 
       submittedProgress:
         '{{submitted}}/{{total}} übermittelt',
@@ -858,41 +1427,21 @@ export const resources = {
       noMetersOrServices:
         'Noch keine Zähler oder Leistungen konfiguriert.',
 
-      meter:
-        'Zähler',
-
-      fixed:
-        'Fest',
-
-      variable:
-        'Variabel',
-
-      perMonth:
-        'pro Monat',
+      meter: 'Zähler',
+      fixed: 'Fest',
+      variable: 'Variabel',
+      perMonth: 'pro Monat',
 
       lastValue:
         'Letzter Wert: {{value}} {{currency}}',
 
-      lastReadings:
-        'Letzte Zählerstände',
-
-      openReadings:
-        'Zählerstände öffnen',
-
-      meterStatusSubmitted:
-        'Übermittelt',
-
-      meterStatusNeedValues:
-        'Werte erforderlich',
-
-      sendBeforeFifth:
-        'Bis zum 5. übermitteln',
-
-      readingsSubtitle:
-        'Zählerstände für Nebenkosten übermitteln',
-
-      loadingMeters:
-        'Zähler werden geladen...',
+      lastReadings: 'Letzte Zählerstände',
+      openReadings: 'Zählerstände öffnen',
+      meterStatusSubmitted: 'Übermittelt',
+      meterStatusNeedValues: 'Werte erforderlich',
+      sendBeforeFifth: 'Bis zum 5. übermitteln',
+      readingsSubtitle: 'Zählerstände für Nebenkosten übermitteln',
+      loadingMeters: 'Zähler werden geladen...',
 
       readingsAvailableAfterJoin:
         'Zählerstände werden verfügbar, nachdem Sie einer Wohnung beigetreten sind.',
@@ -903,74 +1452,43 @@ export const resources = {
       noUtilityMeters:
         'Für diese Wohnung sind keine Verbrauchszähler konfiguriert.',
 
-      lastReading:
-        'Letzter Zählerstand',
+      lastReading: 'Letzter Zählerstand',
 
       lastSubmitted:
         'Zuletzt übermittelt: {{date}}',
 
-      lastSubmittedLabel:
-        'Zuletzt übermittelt',
+      lastSubmittedLabel: 'Zuletzt übermittelt',
+      noReadingsYet: 'Noch keine Zählerstände.',
+      addReading: 'Zählerstand hinzufügen',
+      updateReading: 'Zählerstand aktualisieren',
 
-      noReadingsYet:
-        'Noch keine Zählerstände.',
+      tariffsCount: '{{count}} Tarife',
+      tariffsCount_one: '{{count}} Tarif',
+      tariffsCount_other: '{{count}} Tarife',
 
-      addReading:
-        'Zählerstand hinzufügen',
-
-      updateReading:
-        'Zählerstand aktualisieren',
-
-      tariffsCount:
-        '{{count}} Tarife',
-
-      tariffsCount_one:
-        '{{count}} Tarif',
-
-      tariffsCount_other:
-        '{{count}} Tarife',
-
-      meterReadingLoading:
-        'Zähler wird geladen...',
-
-      meterNotFound:
-        'Zähler nicht gefunden',
+      meterReadingLoading: 'Zähler wird geladen...',
+      meterNotFound: 'Zähler nicht gefunden',
 
       meterUnavailable:
         'Dieser Zähler ist für das aktuelle Konto nicht verfügbar.',
 
-      fixedMonthlyService:
-        'Feste monatliche Leistung',
-
-      fixedAmount:
-        'Fester Betrag',
+      fixedMonthlyService: 'Feste monatliche Leistung',
+      fixedAmount: 'Fester Betrag',
 
       noMeterReadingRequired:
         'Für diese Leistung ist kein Zählerstand erforderlich.',
 
-      variableService:
-        'Variable Leistung',
-
-      landlordManagedService:
-        'Vom Vermieter verwaltete Leistung',
+      variableService: 'Variable Leistung',
+      landlordManagedService: 'Vom Vermieter verwaltete Leistung',
 
       landlordManagedServiceDescription:
         'Variable Beträge für diese Leistung werden derzeit vom Vermieter eingetragen.',
 
-      variableMonthlyService:
-        'Variable monatliche Leistung',
-
-      valueSaved:
-        'Der Wert wurde gespeichert.',
-
-      unableToSave:
-        'Speichern nicht möglich',
-
-      unableToTakePhoto:
-        'Foto konnte nicht aufgenommen werden.',
-
-      unableToSelectPhoto:
-        'Foto konnte nicht ausgewählt werden.',
+      variableMonthlyService: 'Variable monatliche Leistung',
+      valueSaved: 'Der Wert wurde gespeichert.',
+      unableToSave: 'Speichern nicht möglich',
+      unableToTakePhoto: 'Foto konnte nicht aufgenommen werden.',
+      unableToSelectPhoto: 'Foto konnte nicht ausgewählt werden.',
 
       enterValidValueForRegister:
         'Geben Sie einen gültigen Wert für {{register}} ein.',
@@ -981,35 +1499,110 @@ export const resources = {
       addNewPhotoForRegister:
         'Fügen Sie ein neues Foto für {{register}} hinzu.',
 
-      readingSavedTitle:
-        'Zählerstand gespeichert',
-
-      tenantReadingSavedMessage:
-        'Ihr Zählerstand wurde erfolgreich übermittelt.',
-
-      landlordReadingSavedMessage:
-        'Der neue Zählerstand wurde gespeichert.',
-
-      unableToSaveReading:
-        'Zählerstand konnte nicht gespeichert werden',
+      readingSavedTitle: 'Zählerstand gespeichert',
+      tenantReadingSavedMessage: 'Ihr Zählerstand wurde erfolgreich übermittelt.',
+      landlordReadingSavedMessage: 'Der neue Zählerstand wurde gespeichert.',
+      unableToSaveReading: 'Zählerstand konnte nicht gespeichert werden',
 
       cameraAccessDescription:
         'Dometra benötigt Kamerazugriff, um den Zähler zu fotografieren.',
 
-      gallery:
-        'Galerie',
-
-      addNewMeterPhoto:
-        'Neues Zählerfoto hinzufügen',
-
-      currentReadingPlaceholder:
-        'Zählerstand eingeben',
+      gallery: 'Galerie',
+      addNewMeterPhoto: 'Neues Zählerfoto hinzufügen',
+      currentReadingPlaceholder: 'Zählerstand eingeben',
 
       sendMeterValuesBeforeFifth:
         'Übermitteln Sie Zählerstände und aktuelle Fotos vor dem 5. des Monats.',
 
-      never:
-        'Nie',
+      never: 'Nie',
+      apartment: 'Wohnung',
+      apartmentNotFound: 'Wohnung nicht gefunden',
+      loadingTenant: 'Mieter wird geladen...',
+      noTenantAssigned: 'Kein Mieter zugewiesen',
+
+      addTenantDescription:
+        'Fügen Sie einen Mieter manuell hinzu oder laden Sie einen Dometra-Nutzer ein.',
+
+      addTenant: 'Mieter hinzufügen',
+      manual: 'Manuell',
+      dometra: 'Dometra',
+      tenantInvitation: 'Mietereinladung',
+
+      waitingTenantAcceptance:
+        'Warten auf die Annahme der Einladung durch den Mieter.',
+
+      since: 'Seit',
+      agreementUntil: 'Vertrag bis {{date}}',
+      autoProlongation: 'Automatische Verlängerung',
+      editTenant: 'Mieter bearbeiten',
+      removeMeterTitle: 'Zähler / Leistung entfernen?',
+
+      removeMeterMessage:
+        'Möchten Sie „{{name}}“ wirklich entfernen?',
+
+      reading: 'Zählerstand',
+      enterValue: 'Wert eingeben',
+      history: 'Verlauf',
+      loadingHistory: 'Verlauf wird geladen...',
+      noActivityYet: 'Noch keine Aktivität.',
+      historyPayment: 'Zahlung',
+      historyInvoice: 'Rechnung',
+      historyReading: 'Zählerstand',
+      historyTenant: 'Mieter',
+      invoiceCreationFailed: 'Rechnung konnte nicht erstellt werden.',
+      tenantTitle: 'Mieter',
+      loadingTenantInformation: 'Mieterinformationen werden geladen...',
+      noActiveTenantForApartment: 'Für diese Wohnung gibt es keinen aktiven Mieter.',
+      manualTenant: 'Manueller Mieter',
+      dometraTenant: 'Dometra-Mieter',
+
+      checkoutRequiredDescription:
+        'Der Mietvertrag hat sein Enddatum erreicht. Schließen Sie den Auszug ab, um das Mietverhältnis zu beenden.',
+
+      invitation: 'Einladung',
+      waitingForTenant: 'Warten auf Mieter',
+      tenantHasNotAccepted: 'Der Mieter hat diese Einladung noch nicht angenommen.',
+      expires: 'Läuft ab: {{date}}',
+      contact: 'Kontakt',
+      firstName: 'Vorname',
+      lastName: 'Nachname',
+      phone: 'Telefon',
+      emergencyContact: 'Notfallkontakt',
+      identification: 'Identifikation',
+      passportId: 'Pass / ID',
+      notes: 'Notizen',
+      rental: 'Mietverhältnis',
+      rentPerMonth: '{{amount}} {{currency}} / Monat',
+      agreementEnds: 'Vertragsende',
+      paymentDueDay: 'Tag {{day}} jedes Monats',
+      enabled: 'Aktiviert',
+      disabled: 'Deaktiviert',
+      openingMeterReadings: 'Zählerstände beim Einzug',
+      moveIn: 'Einzug',
+      agreement: 'Vertrag',
+
+      personalProfileManagedByTenant:
+        'Persönliche Profildaten werden vom Mieter in seinem Dometra-Konto verwaltet.',
+
+      endRental: 'Mietverhältnis beenden',
+      completeCheckout: 'Auszug abschließen',
+      deleteInvitation: 'Einladung löschen',
+      deletingInvitation: 'Einladung wird gelöscht...',
+      deleteInvitationTitle: 'Einladung löschen?',
+
+      deleteInvitationMessage:
+        'Der Einladungslink funktioniert danach nicht mehr und die Wohnung wird wieder verfügbar.',
+
+      invitationDeleted: 'Einladung gelöscht',
+
+      invitationDeletedMessage:
+        'Die Einladung wurde widerrufen und die Wohnung ist wieder verfügbar.',
+
+      unableDeleteInvitation:
+        'Einladung konnte nicht gelöscht werden',
+
+      invitationDeleteHint:
+        'Die Einladung kann gelöscht werden, solange der Mieter sie noch nicht angenommen hat.',
     },
   },
 
@@ -1036,7 +1629,14 @@ export const resources = {
       reminders: 'Напоминания',
       seeAll: 'Показать все',
       activeProperties: 'Активные объекты',
+
       addProperty: 'Добавить объект',
+      addApartment: 'Добавить квартиру',
+      editApartment: 'Редактировать квартиру',
+      updateApartmentInformation:
+        'Обновите информацию о квартире',
+      addBasicApartmentInformation:
+        'Добавьте основную информацию о квартире',
 
       occupied: 'Заселено',
       vacant: 'Свободно',
@@ -1053,6 +1653,12 @@ export const resources = {
       tenantLabel: 'Арендатор',
 
       addMeter: 'Добавить счётчик',
+      editMeterService: 'Редактировать счётчик / услугу',
+      updateMeterServiceSettings:
+        'Обновите настройки счётчика или услуги',
+      addUtilityMeterOrService:
+        'Добавьте коммунальный счётчик или ежемесячную услугу',
+
       generateInvoice: 'Создать счёт',
 
       meterReading: 'Показания счётчика',
@@ -1064,11 +1670,8 @@ export const resources = {
       consumption: 'Расход',
       saveReading: 'Сохранить показание',
 
-      cameraPermission:
-        'Нужен доступ к камере',
-
-      allowCamera:
-        'Разрешить камеру',
+      cameraPermission: 'Нужен доступ к камере',
+      allowCamera: 'Разрешить камеру',
 
       invoice: 'Счёт',
       due: 'К оплате',
@@ -1085,6 +1688,10 @@ export const resources = {
       saving: 'Сохранение...',
       saved: 'Сохранено',
       cancel: 'Отмена',
+      remove: 'Удалить',
+      delete: 'Удалить',
+      create: 'Создать',
+      optional: 'необязательно',
 
       language: 'Язык',
       notifications: 'Уведомления',
@@ -1111,13 +1718,91 @@ export const resources = {
       city: 'Город',
       area: 'Площадь, м²',
       monthlyRent: 'Месячная аренда',
-      create: 'Создать',
+
+      cityRequired:
+        'Город является обязательным полем.',
+
+      addressRequired:
+        'Адрес является обязательным полем.',
+
+      squareGreaterThanZero:
+        'Площадь должна быть больше 0.',
+
+      unableSaveApartment:
+        'Не удалось сохранить квартиру',
+
+      unknownError:
+        'Неизвестная ошибка.',
+
+      cityPlaceholder:
+        'Черновцы',
+
+      addressPlaceholder:
+        'ул. Главная, 100, кв. 12',
+
+      apartmentNamePlaceholder:
+        'Квартира в центре',
+
+      apartmentRentSetupHint:
+        'Аренду, арендатора и условия оплаты можно настроить отдельно.',
 
       electricity: 'Электроэнергия',
       water: 'Вода',
       gas: 'Газ',
-      dualTariff: 'Двухтарифный T1/T2',
-      singleTariff: 'Однотарифный',
+      custom: 'Другое',
+
+      type: 'Тип',
+
+      tariffType:
+        'Тип тарифа',
+
+      dualTariff:
+        'Двухтарифный T1/T2',
+
+      singleTariff:
+        'Однотарифный',
+
+      pricePerUnitRequired:
+        'Цена за {{unit}} *',
+
+      t1PriceRequired:
+        'Цена T1 за kWh *',
+
+      t2PriceRequired:
+        'Цена T2 за kWh *',
+
+      tariffCurrency:
+        'Валюта тарифа',
+
+      billingType:
+        'Тип начисления',
+
+      monthlyAmount:
+        'Ежемесячная сумма',
+
+      customServicePlaceholder:
+        'Интернет, охрана, центральное отопление...',
+
+      propertyMissing:
+        'Квартира не определена.',
+
+      customServiceNameRequired:
+        'Введите название дополнительной услуги.',
+
+      validFixedMonthlyAmountRequired:
+        'Введите корректную фиксированную ежемесячную сумму.',
+
+      validT1PriceRequired:
+        'Введите корректную цену T1 за kWh.',
+
+      validT2PriceRequired:
+        'Введите корректную цену T2 за kWh.',
+
+      validPricePerUnitRequired:
+        'Введите корректную цену за {{unit}}.',
+
+      unableSaveMeterService:
+        'Не удалось сохранить счётчик / услугу',
 
       nextPayment: 'Следующая оплата',
       submitReadings: 'Передать показания',
@@ -1135,8 +1820,7 @@ export const resources = {
       invoiceCreated: 'Счёт создан',
       readingSaved: 'Показание сохранено',
 
-      push:
-        'Push-уведомления',
+      push: 'Push-уведомления',
 
       notificationDescription:
         'Аренда, показания счётчиков и напоминания о просрочке',
@@ -1147,53 +1831,29 @@ export const resources = {
       notificationPermissionDenied:
         'Доступ к уведомлениям не предоставлен.',
 
-      account:
-        'Учётная запись',
+      account: 'Учётная запись',
 
       signedInWithSupabase:
         'Вход выполнен через Supabase',
 
-      selectLanguage:
-        'Выберите язык',
+      selectLanguage: 'Выберите язык',
+      change: 'Изменить',
+      languageChangeFailed: 'Не удалось изменить язык.',
 
-      change:
-        'Изменить',
-
-      languageChangeFailed:
-        'Не удалось изменить язык.',
-
-      tenantHomeTitle:
-        'Моя аренда',
-
-      rentalApartments:
-        'Ваши арендованные квартиры',
-
-      loadingApartments:
-        'Загрузка квартир...',
-
-      noActiveTenancy:
-        'Нет активной аренды',
+      tenantHomeTitle: 'Моя аренда',
+      rentalApartments: 'Ваши арендованные квартиры',
+      loadingApartments: 'Загрузка квартир...',
+      noActiveTenancy: 'Нет активной аренды',
 
       noActiveTenancyDescription:
         'После принятия приглашения квартира появится здесь.',
 
-      paymentDue:
-        'День оплаты',
-
-      dayNumber:
-        '{{day}} число',
-
-      started:
-        'Начало',
-
-      endDate:
-        'Дата окончания',
-
-      openEnded:
-        'Без конечной даты',
-
-      securityDeposit:
-        'Залог',
+      paymentDue: 'День оплаты',
+      dayNumber: '{{day}} число',
+      started: 'Начало',
+      endDate: 'Дата окончания',
+      openEnded: 'Без конечной даты',
+      securityDeposit: 'Залог',
 
       submittedProgress:
         '{{submitted}}/{{total}} передано',
@@ -1201,41 +1861,24 @@ export const resources = {
       noMetersOrServices:
         'Счётчики или услуги ещё не настроены.',
 
-      meter:
-        'Счётчик',
-
-      fixed:
-        'Фиксированная',
-
-      variable:
-        'Переменная',
-
-      perMonth:
-        'в месяц',
+      meter: 'Счётчик',
+      fixed: 'Фиксированная',
+      variable: 'Переменная',
+      perMonth: 'в месяц',
 
       lastValue:
         'Последнее значение: {{value}} {{currency}}',
 
-      lastReadings:
-        'Последние показания',
-
-      openReadings:
-        'Открыть показания',
-
-      meterStatusSubmitted:
-        'Передано',
-
-      meterStatusNeedValues:
-        'Нужно передать',
-
-      sendBeforeFifth:
-        'Передайте до 5-го числа',
+      lastReadings: 'Последние показания',
+      openReadings: 'Открыть показания',
+      meterStatusSubmitted: 'Передано',
+      meterStatusNeedValues: 'Нужно передать',
+      sendBeforeFifth: 'Передайте до 5-го числа',
 
       readingsSubtitle:
         'Передавайте показания коммунальных счётчиков',
 
-      loadingMeters:
-        'Загрузка счётчиков...',
+      loadingMeters: 'Загрузка счётчиков...',
 
       readingsAvailableAfterJoin:
         'Показания станут доступны после присоединения к квартире.',
@@ -1246,41 +1889,20 @@ export const resources = {
       noUtilityMeters:
         'Для этой квартиры не настроены коммунальные счётчики.',
 
-      lastReading:
-        'Последнее показание',
+      lastReading: 'Последнее показание',
+      lastSubmitted: 'Последняя передача: {{date}}',
+      lastSubmittedLabel: 'Последняя передача',
+      noReadingsYet: 'Показаний ещё нет.',
+      addReading: 'Добавить показание',
+      updateReading: 'Обновить показание',
 
-      lastSubmitted:
-        'Последняя передача: {{date}}',
+      tariffsCount: '{{count}} тарифа',
+      tariffsCount_one: '{{count}} тариф',
+      tariffsCount_few: '{{count}} тарифа',
+      tariffsCount_many: '{{count}} тарифов',
 
-      lastSubmittedLabel:
-        'Последняя передача',
-
-      noReadingsYet:
-        'Показаний ещё нет.',
-
-      addReading:
-        'Добавить показание',
-
-      updateReading:
-        'Обновить показание',
-
-      tariffsCount:
-        '{{count}} тарифа',
-
-      tariffsCount_one:
-        '{{count}} тариф',
-
-      tariffsCount_few:
-        '{{count}} тарифа',
-
-      tariffsCount_many:
-        '{{count}} тарифов',
-
-      meterReadingLoading:
-        'Загрузка счётчика...',
-
-      meterNotFound:
-        'Счётчик не найден',
+      meterReadingLoading: 'Загрузка счётчика...',
+      meterNotFound: 'Счётчик не найден',
 
       meterUnavailable:
         'Этот счётчик недоступен для текущей учётной записи.',
@@ -1288,14 +1910,12 @@ export const resources = {
       fixedMonthlyService:
         'Фиксированная ежемесячная услуга',
 
-      fixedAmount:
-        'Фиксированная сумма',
+      fixedAmount: 'Фиксированная сумма',
 
       noMeterReadingRequired:
         'Для этой услуги не нужно передавать показания.',
 
-      variableService:
-        'Переменная услуга',
+      variableService: 'Переменная услуга',
 
       landlordManagedService:
         'Услуга управляется арендодателем',
@@ -1306,17 +1926,10 @@ export const resources = {
       variableMonthlyService:
         'Переменная ежемесячная услуга',
 
-      valueSaved:
-        'Значение сохранено.',
-
-      unableToSave:
-        'Не удалось сохранить',
-
-      unableToTakePhoto:
-        'Не удалось сделать фото.',
-
-      unableToSelectPhoto:
-        'Не удалось выбрать фото.',
+      valueSaved: 'Значение сохранено.',
+      unableToSave: 'Не удалось сохранить',
+      unableToTakePhoto: 'Не удалось сделать фото.',
+      unableToSelectPhoto: 'Не удалось выбрать фото.',
 
       enterValidValueForRegister:
         'Введите корректное значение для {{register}}.',
@@ -1327,35 +1940,110 @@ export const resources = {
       addNewPhotoForRegister:
         'Добавьте новое фото для {{register}}.',
 
-      readingSavedTitle:
-        'Показание сохранено',
-
-      tenantReadingSavedMessage:
-        'Ваши показания успешно переданы.',
-
-      landlordReadingSavedMessage:
-        'Новые показания сохранены.',
-
-      unableToSaveReading:
-        'Не удалось сохранить показание',
+      readingSavedTitle: 'Показание сохранено',
+      tenantReadingSavedMessage: 'Ваши показания успешно переданы.',
+      landlordReadingSavedMessage: 'Новые показания сохранены.',
+      unableToSaveReading: 'Не удалось сохранить показание',
 
       cameraAccessDescription:
         'Dometra нужен доступ к камере, чтобы сфотографировать счётчик.',
 
-      gallery:
-        'Галерея',
-
-      addNewMeterPhoto:
-        'Добавьте новое фото счётчика',
-
-      currentReadingPlaceholder:
-        'Введите показание',
+      gallery: 'Галерея',
+      addNewMeterPhoto: 'Добавьте новое фото счётчика',
+      currentReadingPlaceholder: 'Введите показание',
 
       sendMeterValuesBeforeFifth:
         'Передайте показания и свежие фото до 5-го числа месяца.',
 
-      never:
-        'Никогда',
+      never: 'Никогда',
+      apartment: 'Квартира',
+      apartmentNotFound: 'Квартира не найдена',
+      loadingTenant: 'Загрузка арендатора...',
+      noTenantAssigned: 'Арендатор не назначен',
+
+      addTenantDescription:
+        'Добавьте арендатора вручную или пригласите пользователя Dometra.',
+
+      addTenant: 'Добавить арендатора',
+      manual: 'Вручную',
+      dometra: 'Dometra',
+      tenantInvitation: 'Приглашение арендатора',
+
+      waitingTenantAcceptance:
+        'Ожидаем, пока арендатор примет приглашение.',
+
+      since: 'С',
+      agreementUntil: 'Договор до {{date}}',
+      autoProlongation: 'Автопродление',
+      editTenant: 'Редактировать арендатора',
+      removeMeterTitle: 'Удалить счётчик / услугу?',
+
+      removeMeterMessage:
+        'Вы уверены, что хотите удалить «{{name}}»?',
+
+      reading: 'Показание',
+      enterValue: 'Ввести значение',
+      history: 'История',
+      loadingHistory: 'Загрузка истории...',
+      noActivityYet: 'Активности пока нет.',
+      historyPayment: 'Платёж',
+      historyInvoice: 'Счёт',
+      historyReading: 'Показание',
+      historyTenant: 'Арендатор',
+      invoiceCreationFailed: 'Не удалось создать счёт.',
+      tenantTitle: 'Арендатор',
+      loadingTenantInformation: 'Загрузка информации об арендаторе...',
+      noActiveTenantForApartment: 'Для этой квартиры нет активного арендатора.',
+      manualTenant: 'Арендатор добавлен вручную',
+      dometraTenant: 'Арендатор Dometra',
+
+      checkoutRequiredDescription:
+        'Срок договора аренды завершился. Завершите выезд, чтобы закрыть аренду.',
+
+      invitation: 'Приглашение',
+      waitingForTenant: 'Ожидаем арендатора',
+      tenantHasNotAccepted: 'Арендатор ещё не принял это приглашение.',
+      expires: 'Действует до: {{date}}',
+      contact: 'Контакты',
+      firstName: 'Имя',
+      lastName: 'Фамилия',
+      phone: 'Телефон',
+      emergencyContact: 'Экстренный контакт',
+      identification: 'Документы',
+      passportId: 'Паспорт / ID',
+      notes: 'Примечания',
+      rental: 'Аренда',
+      rentPerMonth: '{{amount}} {{currency}} / месяц',
+      agreementEnds: 'Договор заканчивается',
+      paymentDueDay: '{{day}} число каждого месяца',
+      enabled: 'Включено',
+      disabled: 'Выключено',
+      openingMeterReadings: 'Начальные показания счётчиков',
+      moveIn: 'Заселение',
+      agreement: 'Договор',
+
+      personalProfileManagedByTenant:
+        'Личными данными профиля управляет сам арендатор в своей учётной записи Dometra.',
+
+      endRental: 'Завершить аренду',
+      completeCheckout: 'Завершить выезд',
+      deleteInvitation: 'Удалить приглашение',
+      deletingInvitation: 'Удаление приглашения...',
+      deleteInvitationTitle: 'Удалить приглашение?',
+
+      deleteInvitationMessage:
+        'Ссылка приглашения перестанет работать, а квартира снова станет доступной.',
+
+      invitationDeleted: 'Приглашение удалено',
+
+      invitationDeletedMessage:
+        'Приглашение отменено, квартира снова доступна.',
+
+      unableDeleteInvitation:
+        'Не удалось удалить приглашение',
+
+      invitationDeleteHint:
+        'Приглашение можно удалить, пока арендатор его не принял.',
     },
   },
 } as const;

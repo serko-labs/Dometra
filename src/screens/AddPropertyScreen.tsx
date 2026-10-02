@@ -60,9 +60,7 @@ export function AddPropertyScreen() {
   const property =
     propertyId
       ? state.properties.find(
-          (
-            item,
-          ) =>
+          item =>
             item.id ===
             propertyId,
         )
@@ -121,7 +119,9 @@ export function AddPropertyScreen() {
     busy,
     setBusy,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const submit =
     async () => {
@@ -139,7 +139,9 @@ export function AddPropertyScreen() {
       ) {
         Alert.alert(
           'Dometra',
-          'City is required.',
+          t(
+            'cityRequired',
+          ),
         );
 
         return;
@@ -150,7 +152,9 @@ export function AddPropertyScreen() {
       ) {
         Alert.alert(
           'Dometra',
-          'Address is required.',
+          t(
+            'addressRequired',
+          ),
         );
 
         return;
@@ -173,12 +177,15 @@ export function AddPropertyScreen() {
           !Number.isFinite(
             areaValue,
           ) ||
-          areaValue <= 0
+          areaValue <=
+            0
         )
       ) {
         Alert.alert(
           'Dometra',
-          'Square must be greater than 0.',
+          t(
+            'squareGreaterThanZero',
+          ),
         );
 
         return;
@@ -235,12 +242,16 @@ export function AddPropertyScreen() {
         error
       ) {
         Alert.alert(
-          'Unable to save apartment',
+          t(
+            'unableSaveApartment',
+          ),
 
           error instanceof
           Error
             ? error.message
-            : 'Unknown error.',
+            : t(
+                'unknownError',
+              ),
         );
       } finally {
         setBusy(
@@ -254,27 +265,37 @@ export function AddPropertyScreen() {
       <Header
         title={
           isEditing
-            ? 'Edit apartment'
+            ? t(
+                'editApartment',
+              )
             : t(
-                'addProperty',
+                'addApartment',
               )
         }
         subtitle={
           isEditing
-            ? 'Update apartment information'
-            : 'Add the basic apartment information'
+            ? t(
+                'updateApartmentInformation',
+              )
+            : t(
+                'addBasicApartmentInformation',
+              )
         }
       />
 
       <Field
-        label="City *"
+        label={`${t('city')} *`}
         value={
           city
         }
         onChangeText={
           setCity
         }
-        placeholder="Chernivtsi"
+        placeholder={
+          t(
+            'cityPlaceholder',
+          )
+        }
         autoCapitalize="words"
         editable={
           !busy
@@ -282,35 +303,43 @@ export function AddPropertyScreen() {
       />
 
       <Field
-        label="Address *"
+        label={`${t('address')} *`}
         value={
           address
         }
         onChangeText={
           setAddress
         }
-        placeholder="Holovna St, 100, Apt 12"
+        placeholder={
+          t(
+            'addressPlaceholder',
+          )
+        }
         editable={
           !busy
         }
       />
 
       <Field
-        label="Name (optional)"
+        label={`${t('name')} (${t('optional')})`}
         value={
           name
         }
         onChangeText={
           setName
         }
-        placeholder="Central apartment"
+        placeholder={
+          t(
+            'apartmentNamePlaceholder',
+          )
+        }
         editable={
           !busy
         }
       />
 
       <Field
-        label="Square, m² (optional)"
+        label={`${t('area')} (${t('optional')})`}
         value={
           area
         }
@@ -329,17 +358,21 @@ export function AddPropertyScreen() {
           styles.hint
         }
       >
-        Rent, tenant and payment
-        conditions can be configured
-        separately.
+        {t(
+          'apartmentRentSetupHint',
+        )}
       </Text>
 
       <PrimaryButton
         title={
           busy
-            ? 'Saving...'
+            ? t(
+                'saving',
+              )
             : isEditing
-              ? 'Save'
+              ? t(
+                  'save',
+                )
               : t(
                   'create',
                 )

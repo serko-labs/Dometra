@@ -19,6 +19,10 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Badge,
   Card,
   Header,
@@ -26,6 +30,10 @@ import {
   Screen,
   SectionTitle,
 } from '../components/ui';
+
+import {
+  getLocaleTag,
+} from '../i18n/language';
 
 import {
   CheckoutContext,
@@ -40,7 +48,7 @@ import {
   spacing,
 } from '../theme';
 
-function todayLocalDate(): string {
+function todayLocalDate() {
   const now =
     new Date();
 
@@ -49,7 +57,8 @@ function todayLocalDate(): string {
 
   const month =
     String(
-      now.getMonth() + 1,
+      now.getMonth() +
+        1,
     ).padStart(
       2,
       '0',
@@ -66,51 +75,90 @@ function todayLocalDate(): string {
   return `${year}-${month}-${day}`;
 }
 
-function isValidIsoDate(
-  value: string,
-): boolean {
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+function isValidDate(
+  value:
+    string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
       value,
-    );
-
-  if (!match) {
+    )
+  ) {
     return false;
   }
 
-  const year =
-    Number(
-      match[1],
+  const date =
+    new Date(
+      `${value}T00:00:00`,
     );
 
-  const month =
-    Number(
-      match[2],
-    );
+  return !Number.isNaN(
+    date.getTime(),
+  );
+}
 
-  const day =
-    Number(
-      match[3],
-    );
+function formatDate(
+  value:
+    string | undefined,
+
+  locale:
+    string,
+) {
+  if (
+    !value
+  ) {
+    return '—';
+  }
+
+  const normalized =
+    value.includes(
+      'T',
+    )
+      ? value
+      : `${value}T00:00:00`;
 
   const date =
     new Date(
-      year,
-      month - 1,
-      day,
+      normalized,
     );
 
-  return (
-    date.getFullYear() ===
-      year &&
-    date.getMonth() ===
-      month - 1 &&
-    date.getDate() ===
-      day
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    locale,
+
+    {
+      day:
+        '2-digit',
+
+      month:
+        'short',
+
+      year:
+        'numeric',
+    },
   );
 }
 
 export function CheckoutTenantScreen() {
+  const {
+    t,
+    i18n,
+  } =
+    useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
+
   const navigation =
     useNavigation<any>();
 
@@ -127,19 +175,25 @@ export function CheckoutTenantScreen() {
   ] =
     useState<
       CheckoutContext | null
-    >(null);
+    >(
+      null,
+    );
 
   const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   const [
     saving,
     setSaving,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const [
     checkoutDate,
@@ -153,7 +207,9 @@ export function CheckoutTenantScreen() {
     notes,
     setNotes,
   ] =
-    useState('');
+    useState(
+      '',
+    );
 
   const [
     readingValues,
@@ -185,21 +241,20 @@ export function CheckoutTenantScreen() {
                 );
 
               if (
-                !active
+                active
               ) {
-                return;
+                setContext(
+                  result,
+                );
+
+                /*
+                 * Final readings must always
+                 * start blank.
+                 */
+                setReadingValues(
+                  {},
+                );
               }
-
-              setContext(
-                result,
-              );
-
-              // Important:
-              // every checkout starts
-              // with blank final readings.
-              setReadingValues(
-                {},
-              );
             } catch (
               error
             ) {
@@ -207,11 +262,16 @@ export function CheckoutTenantScreen() {
                 active
               ) {
                 Alert.alert(
-                  'End rental',
+                  t(
+                    'endRental',
+                  ),
+
                   error instanceof
                   Error
                     ? error.message
-                    : 'Unable to load checkout.',
+                    : t(
+                        'unableLoadCheckout',
+                      ),
                 );
               }
             } finally {
@@ -232,8 +292,10 @@ export function CheckoutTenantScreen() {
             false;
         };
       },
+
       [
         propertyId,
+        t,
       ],
     ),
   );
@@ -246,237 +308,295 @@ export function CheckoutTenantScreen() {
         ).filter(
           value =>
             value.trim()
-              .length > 0,
+              .length >
+            0,
         ).length,
+
       [
         readingValues,
       ],
     );
 
-  function buildReadings():
-    CheckoutReadingInput[] {
-    if (!context) {
-      return [];
-    }
-
-    const result:
-      CheckoutReadingInput[] =
-      [];
-
-    for (
-      const register
-      of context.registers
-    ) {
-      const raw =
-        readingValues[
-          register.id
-        ]?.trim();
-
-      if (!raw) {
-        continue;
-      }
-
-      const normalized =
-        raw.replace(
-          ',',
-          '.',
-        );
-
-      const value =
-        Number(
-          normalized,
-        );
-
+  const buildReadings =
+    () => {
       if (
-        !Number.isFinite(
-          value,
-        ) ||
-        value < 0
+        !context
       ) {
-        throw new Error(
-          `Invalid final reading for ${register.meterName} ${register.registerCode}.`,
-        );
+        return [];
       }
 
-      result.push({
-        meterRegisterId:
-          register.id,
+      const result:
+        CheckoutReadingInput[] =
+        [];
 
-        value,
-      });
-    }
+      for (
+        const register
+        of context.registers
+      ) {
+        const raw =
+          readingValues[
+            register.id
+          ]?.trim();
 
-    return result;
-  }
+        if (
+          !raw
+        ) {
+          continue;
+        }
 
-  async function performCheckout() {
-    if (
-      !context ||
-      saving
-    ) {
-      return;
-    }
+        const value =
+          Number(
+            raw.replace(
+              ',',
+              '.',
+            ),
+          );
 
-    setSaving(
-      true,
-    );
+        if (
+          !Number.isFinite(
+            value,
+          ) ||
+          value <
+            0
+        ) {
+          throw new Error(
+            t(
+              'invalidFinalReading',
 
-    try {
-      const readings =
-        buildReadings();
+              {
+                meter:
+                  register.meterName,
 
-      await checkoutTenancy({
-        tenancyId:
-          context.tenancyId,
+                register:
+                  register.registerCode,
+              },
+            ),
+          );
+        }
 
-        checkoutDate:
-          checkoutDate.trim(),
+        result.push({
+          meterRegisterId:
+            register.id,
 
-        notes,
+          value,
+        });
+      }
 
-        readings,
-      });
+      return result;
+    };
 
-      Alert.alert(
-        'Rental ended',
-        'The tenant checkout is complete. The apartment is now available.',
-        [
-          {
-            text:
-              'OK',
+  const performCheckout =
+    async () => {
+      if (
+        !context ||
+        saving
+      ) {
+        return;
+      }
 
-            onPress:
-              () => {
-                if (
-                  typeof navigation.popTo ===
-                  'function'
-                ) {
-                  navigation.popTo(
+      setSaving(
+        true,
+      );
+
+      try {
+        await checkoutTenancy({
+          tenancyId:
+            context.tenancyId,
+
+          checkoutDate:
+            checkoutDate.trim(),
+
+          notes,
+
+          readings:
+            buildReadings(),
+        });
+
+        Alert.alert(
+          t(
+            'rentalEnded',
+          ),
+
+          t(
+            'rentalEndedMessage',
+          ),
+
+          [
+            {
+              text:
+                'OK',
+
+              onPress:
+                () => {
+                  if (
+                    typeof navigation.popTo ===
+                    'function'
+                  ) {
+                    navigation.popTo(
+                      'PropertyDetails',
+
+                      {
+                        propertyId,
+                      },
+                    );
+
+                    return;
+                  }
+
+                  navigation.navigate(
                     'PropertyDetails',
+
                     {
                       propertyId,
                     },
                   );
+                },
+            },
+          ],
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          t(
+            'unableEndRental',
+          ),
 
-                  return;
-                }
+          error instanceof
+          Error
+            ? error.message
+            : t(
+                'pleaseTryAgain',
+              ),
+        );
+      } finally {
+        setSaving(
+          false,
+        );
+      }
+    };
 
-                navigation.navigate(
-                  'PropertyDetails',
-                  {
-                    propertyId,
-                  },
-                );
-              },
+  const submit =
+    () => {
+      if (
+        !context ||
+        saving
+      ) {
+        return;
+      }
+
+      const date =
+        checkoutDate.trim();
+
+      if (
+        !isValidDate(
+          date,
+        )
+      ) {
+        Alert.alert(
+          t(
+            'checkoutDate',
+          ),
+
+          t(
+            'enterValidCheckoutDate',
+          ),
+        );
+
+        return;
+      }
+
+      if (
+        date <
+        context.startDate
+      ) {
+        Alert.alert(
+          t(
+            'checkoutDate',
+          ),
+
+          t(
+            'checkoutDateBeforeStart',
+          ),
+        );
+
+        return;
+      }
+
+      if (
+        date >
+        todayLocalDate()
+      ) {
+        Alert.alert(
+          t(
+            'checkoutDate',
+          ),
+
+          t(
+            'checkoutDateFuture',
+          ),
+        );
+
+        return;
+      }
+
+      try {
+        buildReadings();
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          t(
+            'finalMeterReadings',
+          ),
+
+          error instanceof
+          Error
+            ? error.message
+            : t(
+                'checkFinalMeterReadings',
+              ),
+        );
+
+        return;
+      }
+
+      Alert.alert(
+        t(
+          'endRentalConfirmTitle',
+        ),
+
+        t(
+          'endRentalConfirmMessage',
+        ),
+
+        [
+          {
+            text:
+              t(
+                'cancel',
+              ),
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              t(
+                'endRental',
+              ),
+
+            style:
+              'destructive',
+
+            onPress:
+              () =>
+                void performCheckout(),
           },
         ],
       );
-    } catch (
-      error
-    ) {
-      Alert.alert(
-        'Unable to end rental',
-        error instanceof
-        Error
-          ? error.message
-          : 'Please try again.',
-      );
-    } finally {
-      setSaving(
-        false,
-      );
-    }
-  }
-
-  function submit() {
-    if (
-      !context ||
-      saving
-    ) {
-      return;
-    }
-
-    const date =
-      checkoutDate.trim();
-
-    if (
-      !isValidIsoDate(
-        date,
-      )
-    ) {
-      Alert.alert(
-        'Checkout date',
-        'Enter a valid date in YYYY-MM-DD format.',
-      );
-
-      return;
-    }
-
-    if (
-      date <
-      context.startDate
-    ) {
-      Alert.alert(
-        'Checkout date',
-        'Checkout date cannot be before the rental start date.',
-      );
-
-      return;
-    }
-
-    if (
-      date >
-      todayLocalDate()
-    ) {
-      Alert.alert(
-        'Checkout date',
-        'Checkout date cannot be in the future.',
-      );
-
-      return;
-    }
-
-    try {
-      buildReadings();
-    } catch (
-      error
-    ) {
-      Alert.alert(
-        'Meter readings',
-        error instanceof
-        Error
-          ? error.message
-          : 'Check the final meter readings.',
-      );
-
-      return;
-    }
-
-    Alert.alert(
-      'End this rental?',
-      'This will finish the tenancy and make the apartment available. Tenant history, payments, invoices and meter history will be preserved.',
-      [
-        {
-          text:
-            'Cancel',
-
-          style:
-            'cancel',
-        },
-        {
-          text:
-            'End rental',
-
-          style:
-            'destructive',
-
-          onPress:
-            () =>
-              void performCheckout(),
-        },
-      ],
-    );
-  }
+    };
 
   if (
     loading
@@ -484,8 +604,16 @@ export function CheckoutTenantScreen() {
     return (
       <Screen>
         <Header
-          title="End rental"
-          subtitle="Loading checkout..."
+          title={
+            t(
+              'endRental',
+            )
+          }
+          subtitle={
+            t(
+              'loadingCheckout',
+            )
+          }
         />
       </Screen>
     );
@@ -497,8 +625,16 @@ export function CheckoutTenantScreen() {
     return (
       <Screen>
         <Header
-          title="End rental"
-          subtitle="No active rental"
+          title={
+            t(
+              'endRental',
+            )
+          }
+          subtitle={
+            t(
+              'noActiveRental',
+            )
+          }
         />
 
         <Card>
@@ -507,7 +643,9 @@ export function CheckoutTenantScreen() {
               styles.muted
             }
           >
-            There is no active or checkout-pending rental for this apartment.
+            {t(
+              'noActiveOrCheckoutPendingRental',
+            )}
           </Text>
         </Card>
       </Screen>
@@ -521,7 +659,11 @@ export function CheckoutTenantScreen() {
   return (
     <Screen>
       <Header
-        title="End rental"
+        title={
+          t(
+            'endRental',
+          )
+        }
         subtitle={
           context.propertyTitle
         }
@@ -529,8 +671,12 @@ export function CheckoutTenantScreen() {
           <Badge
             text={
               checkoutRequired
-                ? 'Checkout required'
-                : 'Active'
+                ? t(
+                    'checkoutRequired',
+                  )
+                : t(
+                    'active',
+                  )
             }
             tone={
               checkoutRequired
@@ -548,7 +694,9 @@ export function CheckoutTenantScreen() {
               styles.warningTitle
             }
           >
-            Rental term has ended
+            {t(
+              'rentalTermEnded',
+            )}
           </Text>
 
           <Text
@@ -556,13 +704,19 @@ export function CheckoutTenantScreen() {
               styles.muted
             }
           >
-            Complete checkout to close the tenancy and make the apartment available.
+            {t(
+              'completeCheckoutDescription',
+            )}
           </Text>
         </Card>
       ) : null}
 
       <SectionTitle
-        title="Checkout"
+        title={
+          t(
+            'checkout',
+          )
+        }
       />
 
       <Card>
@@ -571,7 +725,9 @@ export function CheckoutTenantScreen() {
             styles.label
           }
         >
-          Checkout date *
+          {t(
+            'checkoutDateRequired',
+          )}
         </Text>
 
         <TextInput
@@ -599,17 +755,40 @@ export function CheckoutTenantScreen() {
             styles.helper
           }
         >
-          Rental started{' '}
-          {context.startDate}
+          {t(
+            'rentalStarted',
+
+            {
+              date:
+                formatDate(
+                  context.startDate,
+                  locale,
+                ),
+            },
+          )}
 
           {context.endDate
-            ? ` • Agreement ends ${context.endDate}`
+            ? ` • ${t(
+                'agreementEndsInline',
+
+                {
+                  date:
+                    formatDate(
+                      context.endDate,
+                      locale,
+                    ),
+                },
+              )}`
             : ''}
         </Text>
       </Card>
 
       <SectionTitle
-        title="Final meter readings"
+        title={
+          t(
+            'finalMeterReadings',
+          )
+        }
       />
 
       <Card>
@@ -620,7 +799,9 @@ export function CheckoutTenantScreen() {
               styles.muted
             }
           >
-            No active meters are configured for this apartment.
+            {t(
+              'noActiveMetersForApartment',
+            )}
           </Text>
         ) : (
           <>
@@ -629,7 +810,9 @@ export function CheckoutTenantScreen() {
                 styles.muted
               }
             >
-              Optional. Leave a field blank if you do not want to save a move-out reading.
+              {t(
+                'finalReadingsOptionalHint',
+              )}
             </Text>
 
             {context.registers.map(
@@ -706,7 +889,11 @@ export function CheckoutTenantScreen() {
                           }),
                         )
                     }
-                    placeholder="Final reading"
+                    placeholder={
+                      t(
+                        'finalReading',
+                      )
+                    }
                     placeholderTextColor={
                       colors.muted
                     }
@@ -723,7 +910,11 @@ export function CheckoutTenantScreen() {
       </Card>
 
       <SectionTitle
-        title="Notes"
+        title={
+          t(
+            'notes',
+          )
+        }
       />
 
       <Card>
@@ -734,7 +925,11 @@ export function CheckoutTenantScreen() {
           onChangeText={
             setNotes
           }
-          placeholder="Optional checkout notes"
+          placeholder={
+            t(
+              'optionalCheckoutNotes',
+            )
+          }
           placeholderTextColor={
             colors.muted
           }
@@ -752,7 +947,9 @@ export function CheckoutTenantScreen() {
             styles.summaryTitle
           }
         >
-          What happens next
+          {t(
+            'whatHappensNext',
+          )}
         </Text>
 
         <Text
@@ -760,7 +957,9 @@ export function CheckoutTenantScreen() {
             styles.muted
           }
         >
-          The tenancy will be marked as ended, the apartment will become available, and all existing tenant history will remain in Dometra.
+          {t(
+            'checkoutResultDescription',
+          )}
         </Text>
 
         <Text
@@ -768,16 +967,26 @@ export function CheckoutTenantScreen() {
             styles.helper
           }
         >
-          Final readings entered:{' '}
-          {enteredReadingCount}
+          {t(
+            'finalReadingsEntered',
+
+            {
+              count:
+                enteredReadingCount,
+            },
+          )}
         </Text>
       </Card>
 
       <PrimaryButton
         title={
           saving
-            ? 'Ending rental...'
-            : 'End rental'
+            ? t(
+                'endingRental',
+              )
+            : t(
+                'endRental',
+              )
         }
         onPress={
           submit
@@ -790,7 +999,8 @@ export function CheckoutTenantScreen() {
 const styles =
   StyleSheet.create({
     flex: {
-      flex: 1,
+      flex:
+        1,
     },
 
     label: {

@@ -42,44 +42,13 @@ import {
   MeterBillingMode,
 } from '../types';
 
-const categories: Array<{
-  value:
-    Meter['category'];
-
-  label:
-    string;
-}> = [
-  {
-    value:
-      'ELECTRICITY',
-
-    label:
-      'Electricity',
-  },
-
-  {
-    value:
-      'WATER',
-
-    label:
-      'Water',
-  },
-
-  {
-    value:
-      'GAS',
-
-    label:
-      'Gas',
-  },
-
-  {
-    value:
-      'CUSTOM',
-
-    label:
-      'Custom',
-  },
+const categories: Array<
+  Meter['category']
+> = [
+  'ELECTRICITY',
+  'WATER',
+  'GAS',
+  'CUSTOM',
 ];
 
 const currencies:
@@ -96,7 +65,9 @@ function numberText(
 ) {
   return value !==
     undefined
-    ? String(value)
+    ? String(
+        value,
+      )
     : '';
 }
 
@@ -133,9 +104,7 @@ export function AddMeterScreen() {
   const existing =
     meterId
       ? state.meters.find(
-          (
-            meter,
-          ) =>
+          meter =>
             meter.id ===
             meterId,
         )
@@ -150,9 +119,7 @@ export function AddMeterScreen() {
     Boolean(
       existing
         ?.registers.find(
-          (
-            register,
-          ) =>
+          register =>
             register.code ===
             'T1',
         ),
@@ -166,7 +133,7 @@ export function AddMeterScreen() {
       Meter['category']
     >(
       existing?.category ??
-      'ELECTRICITY',
+        'ELECTRICITY',
     );
 
   const [
@@ -199,9 +166,7 @@ export function AddMeterScreen() {
       numberText(
         existing
           ?.registers.find(
-            (
-              register,
-            ) =>
+            register =>
               register.code ===
               'T1',
           )
@@ -217,9 +182,7 @@ export function AddMeterScreen() {
       numberText(
         existing
           ?.registers.find(
-            (
-              register,
-            ) =>
+            register =>
               register.code ===
               'T2',
           )
@@ -231,13 +194,15 @@ export function AddMeterScreen() {
     tariffCurrency,
     setTariffCurrency,
   ] =
-    useState<CurrencyCode>(
+    useState<
+      CurrencyCode
+    >(
       existing
         ?.registers[0]
         ?.tariffCurrency ??
-      existing
-        ?.billingCurrency ??
-      'UAH',
+        existing
+          ?.billingCurrency ??
+        'UAH',
     );
 
   const [
@@ -281,17 +246,21 @@ export function AddMeterScreen() {
     customCurrency,
     setCustomCurrency,
   ] =
-    useState<CurrencyCode>(
+    useState<
+      CurrencyCode
+    >(
       existing
         ?.billingCurrency ??
-      'UAH',
+        'UAH',
     );
 
   const [
     busy,
     setBusy,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const parseAmount =
     (
@@ -314,11 +283,52 @@ export function AddMeterScreen() {
       );
     };
 
+  const categoryLabel =
+    (
+      value:
+        Meter['category'],
+    ) => {
+      switch (
+        value
+      ) {
+        case 'ELECTRICITY':
+          return t(
+            'electricity',
+          );
+
+        case 'WATER':
+          return t(
+            'water',
+          );
+
+        case 'GAS':
+          return t(
+            'gas',
+          );
+
+        case 'CUSTOM':
+          return t(
+            'custom',
+          );
+
+        default:
+          return value;
+      }
+    };
+
   const clearTariffs =
     () => {
-      setTariff('');
-      setTariffT1('');
-      setTariffT2('');
+      setTariff(
+        '',
+      );
+
+      setTariffT1(
+        '',
+      );
+
+      setTariffT2(
+        '',
+      );
     };
 
   const returnToProperty =
@@ -358,9 +368,13 @@ export function AddMeterScreen() {
         next !==
         'CUSTOM'
       ) {
-        setCustomName('');
+        setCustomName(
+          '',
+        );
 
-        setFixedAmount('');
+        setFixedAmount(
+          '',
+        );
 
         setBillingMode(
           'FIXED',
@@ -375,7 +389,9 @@ export function AddMeterScreen() {
       ) {
         Alert.alert(
           'Dometra',
-          'Property is missing.',
+          t(
+            'propertyMissing',
+          ),
         );
 
         return;
@@ -387,7 +403,7 @@ export function AddMeterScreen() {
 
       try {
         /*
-         * CUSTOM
+         * CUSTOM SERVICE
          */
         if (
           category ===
@@ -397,12 +413,15 @@ export function AddMeterScreen() {
             !customName.trim()
           ) {
             throw new Error(
-              'Enter a name for the custom service.',
+              t(
+                'customServiceNameRequired',
+              ),
             );
           }
 
           let amount:
-            number | undefined;
+            number |
+            undefined;
 
           if (
             billingMode ===
@@ -417,10 +436,13 @@ export function AddMeterScreen() {
               !Number.isFinite(
                 amount,
               ) ||
-              amount < 0
+              amount <
+                0
             ) {
               throw new Error(
-                'Enter a valid fixed monthly amount.',
+                t(
+                  'validFixedMonthlyAmountRequired',
+                ),
               );
             }
           }
@@ -462,7 +484,7 @@ export function AddMeterScreen() {
         }
 
         /*
-         * METERED
+         * METERED SERVICE
          */
 
         const unit =
@@ -472,13 +494,16 @@ export function AddMeterScreen() {
             : 'm³';
 
         let normalTariff:
-          number | undefined;
+          number |
+          undefined;
 
         let t1:
-          number | undefined;
+          number |
+          undefined;
 
         let t2:
-          number | undefined;
+          number |
+          undefined;
 
         if (
           category ===
@@ -499,10 +524,13 @@ export function AddMeterScreen() {
             !Number.isFinite(
               t1,
             ) ||
-            t1 < 0
+            t1 <
+              0
           ) {
             throw new Error(
-              'Enter a valid T1 price per kWh.',
+              t(
+                'validT1PriceRequired',
+              ),
             );
           }
 
@@ -510,10 +538,13 @@ export function AddMeterScreen() {
             !Number.isFinite(
               t2,
             ) ||
-            t2 < 0
+            t2 <
+              0
           ) {
             throw new Error(
-              'Enter a valid T2 price per kWh.',
+              t(
+                'validT2PriceRequired',
+              ),
             );
           }
         } else {
@@ -526,10 +557,17 @@ export function AddMeterScreen() {
             !Number.isFinite(
               normalTariff,
             ) ||
-            normalTariff < 0
+            normalTariff <
+              0
           ) {
             throw new Error(
-              `Enter a valid price per ${unit}.`,
+              t(
+                'validPricePerUnitRequired',
+
+                {
+                  unit,
+                },
+              ),
             );
           }
         }
@@ -560,10 +598,8 @@ export function AddMeterScreen() {
         };
 
         /*
-         * EDIT:
-         *
-         * Editing meter settings does NOT
-         * automatically ask for a new reading.
+         * Editing settings does not create
+         * another meter reading.
          */
         if (
           existing
@@ -579,17 +615,9 @@ export function AddMeterScreen() {
         }
 
         /*
-         * CREATE:
+         * New meter:
          *
-         * Replace AddMeter with MeterReading.
-         *
-         * Stack becomes:
-         *
-         * Home
-         * PropertyDetails
-         * MeterReading
-         *
-         * AddMeter is gone.
+         * replace AddMeter with MeterReading.
          */
         const created =
           await addMeter(
@@ -608,12 +636,16 @@ export function AddMeterScreen() {
         error
       ) {
         Alert.alert(
-          'Unable to save meter / service',
+          t(
+            'unableSaveMeterService',
+          ),
 
           error instanceof
           Error
             ? error.message
-            : 'Unknown error.',
+            : t(
+                'unknownError',
+              ),
         );
       } finally {
         setBusy(
@@ -633,15 +665,21 @@ export function AddMeterScreen() {
       <Header
         title={
           isEditing
-            ? 'Edit meter / service'
+            ? t(
+                'editMeterService',
+              )
             : t(
                 'addMeter',
               )
         }
         subtitle={
           isEditing
-            ? 'Update meter or service settings'
-            : 'Add a utility meter or monthly service'
+            ? t(
+                'updateMeterServiceSettings',
+              )
+            : t(
+                'addUtilityMeterOrService',
+              )
         }
       />
 
@@ -650,7 +688,9 @@ export function AddMeterScreen() {
           styles.label
         }
       >
-        Type
+        {t(
+          'type',
+        )}
       </Text>
 
       <View
@@ -659,26 +699,24 @@ export function AddMeterScreen() {
         }
       >
         {categories.map(
-          (
-            item,
-          ) => (
+          item => (
             <Pressable
               key={
-                item.value
+                item
               }
               disabled={
                 busy
               }
               onPress={() =>
                 selectCategory(
-                  item.value,
+                  item,
                 )
               }
               style={[
                 styles.chip,
 
                 category ===
-                  item.value &&
+                  item &&
                   styles.chipActive,
               ]}
             >
@@ -687,13 +725,13 @@ export function AddMeterScreen() {
                   styles.chipText,
 
                   category ===
-                    item.value &&
+                    item &&
                     styles.chipTextActive,
                 ]}
               >
-                {
-                  item.label
-                }
+                {categoryLabel(
+                  item,
+                )}
               </Text>
             </Pressable>
           ),
@@ -708,7 +746,9 @@ export function AddMeterScreen() {
               styles.label
             }
           >
-            Tariff type
+            {t(
+              'tariffType',
+            )}
           </Text>
 
           <View
@@ -746,7 +786,9 @@ export function AddMeterScreen() {
                     styles.chipTextActive,
                 ]}
               >
-                Single tariff
+                {t(
+                  'singleTariff',
+                )}
               </Text>
             </Pressable>
 
@@ -780,7 +822,9 @@ export function AddMeterScreen() {
                     styles.chipTextActive,
                 ]}
               >
-                Double tariff
+                {t(
+                  'dualTariff',
+                )}
               </Text>
             </Pressable>
           </View>
@@ -795,7 +839,14 @@ export function AddMeterScreen() {
         dualTariff
       ) ? (
         <Field
-          label={`Price per ${priceUnit} *`}
+          label={t(
+            'pricePerUnitRequired',
+
+            {
+              unit:
+                priceUnit,
+            },
+          )}
           value={
             tariff
           }
@@ -815,7 +866,11 @@ export function AddMeterScreen() {
       dualTariff ? (
         <>
           <Field
-            label="T1 price per kWh *"
+            label={
+              t(
+                't1PriceRequired',
+              )
+            }
             value={
               tariffT1
             }
@@ -830,7 +885,11 @@ export function AddMeterScreen() {
           />
 
           <Field
-            label="T2 price per kWh *"
+            label={
+              t(
+                't2PriceRequired',
+              )
+            }
             value={
               tariffT2
             }
@@ -854,7 +913,9 @@ export function AddMeterScreen() {
               styles.label
             }
           >
-            Tariff currency
+            {t(
+              'tariffCurrency',
+            )}
           </Text>
 
           <View
@@ -863,9 +924,7 @@ export function AddMeterScreen() {
             }
           >
             {currencies.map(
-              (
-                item,
-              ) => (
+              item => (
                 <Pressable
                   key={
                     item
@@ -910,14 +969,18 @@ export function AddMeterScreen() {
       'CUSTOM' ? (
         <>
           <Field
-            label="Name *"
+            label={`${t('name')} *`}
             value={
               customName
             }
             onChangeText={
               setCustomName
             }
-            placeholder="Internet, Security, Central heating..."
+            placeholder={
+              t(
+                'customServicePlaceholder',
+              )
+            }
             editable={
               !busy
             }
@@ -928,7 +991,9 @@ export function AddMeterScreen() {
               styles.label
             }
           >
-            Billing type
+            {t(
+              'billingType',
+            )}
           </Text>
 
           <View
@@ -962,7 +1027,9 @@ export function AddMeterScreen() {
                     styles.chipTextActive,
                 ]}
               >
-                Fixed
+                {t(
+                  'fixed',
+                )}
               </Text>
             </Pressable>
 
@@ -992,7 +1059,9 @@ export function AddMeterScreen() {
                     styles.chipTextActive,
                 ]}
               >
-                Variable
+                {t(
+                  'variable',
+                )}
               </Text>
             </Pressable>
           </View>
@@ -1000,7 +1069,7 @@ export function AddMeterScreen() {
           {billingMode ===
           'FIXED' ? (
             <Field
-              label="Monthly amount *"
+              label={`${t('monthlyAmount')} *`}
               value={
                 fixedAmount
               }
@@ -1020,7 +1089,9 @@ export function AddMeterScreen() {
               styles.label
             }
           >
-            Currency
+            {t(
+              'currency',
+            )}
           </Text>
 
           <View
@@ -1029,9 +1100,7 @@ export function AddMeterScreen() {
             }
           >
             {currencies.map(
-              (
-                item,
-              ) => (
+              item => (
                 <Pressable
                   key={
                     item
@@ -1075,9 +1144,13 @@ export function AddMeterScreen() {
       <PrimaryButton
         title={
           busy
-            ? 'Saving...'
+            ? t(
+                'saving',
+              )
             : isEditing
-              ? 'Save'
+              ? t(
+                  'save',
+                )
               : t(
                   'create',
                 )

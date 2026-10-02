@@ -18,6 +18,10 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Badge,
   Card,
   Header,
@@ -26,6 +30,10 @@ import {
   SecondaryButton,
   SectionTitle,
 } from '../components/ui';
+
+import {
+  getLocaleTag,
+} from '../i18n/language';
 
 import {
   getPropertyTenancy,
@@ -40,15 +48,26 @@ import {
 } from '../theme';
 
 function formatDate(
-  value?: string,
+  value:
+    string | undefined,
+
+  locale:
+    string,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return '—';
   }
 
+  const normalized =
+    value.includes('T')
+      ? value
+      : `${value}T00:00:00`;
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      normalized,
     );
 
   if (
@@ -60,7 +79,8 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    undefined,
+    locale,
+
     {
       day:
         '2-digit',
@@ -78,10 +98,15 @@ function DetailRow({
   label,
   value,
 }: {
-  label: string;
-  value?: string;
+  label:
+    string;
+
+  value?:
+    string;
 }) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 
@@ -111,6 +136,18 @@ function DetailRow({
 }
 
 export function TenantDetailsScreen() {
+  const {
+    t,
+    i18n,
+  } =
+    useTranslation();
+
+  const locale =
+    getLocaleTag(
+      i18n.resolvedLanguage ??
+        i18n.language,
+    );
+
   const navigation =
     useNavigation<any>();
 
@@ -133,13 +170,17 @@ export function TenantDetailsScreen() {
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   const [
     deletingInvitation,
     setDeletingInvitation,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
 
   const loadTenancy =
     useCallback(
@@ -153,6 +194,7 @@ export function TenantDetailsScreen() {
           result,
         );
       },
+
       [
         propertyId,
       ],
@@ -190,11 +232,16 @@ export function TenantDetailsScreen() {
                 active
               ) {
                 Alert.alert(
-                  'Tenant',
+                  t(
+                    'tenantTitle',
+                  ),
+
                   error instanceof
                   Error
                     ? error.message
-                    : 'Unable to load tenant.',
+                    : t(
+                        'noActiveTenantForApartment',
+                      ),
                 );
               }
             } finally {
@@ -215,8 +262,10 @@ export function TenantDetailsScreen() {
             false;
         };
       },
+
       [
         propertyId,
+        t,
       ],
     ),
   );
@@ -231,19 +280,30 @@ export function TenantDetailsScreen() {
       }
 
       Alert.alert(
-        'Delete invitation?',
-        'The invitation link will stop working and the apartment will become available again.',
+        t(
+          'deleteInvitationTitle',
+        ),
+
+        t(
+          'deleteInvitationMessage',
+        ),
+
         [
           {
             text:
-              'Cancel',
+              t(
+                'cancel',
+              ),
 
             style:
               'cancel',
           },
+
           {
             text:
-              'Delete',
+              t(
+                'delete',
+              ),
 
             style:
               'destructive',
@@ -260,8 +320,14 @@ export function TenantDetailsScreen() {
                   );
 
                   Alert.alert(
-                    'Invitation deleted',
-                    'The invitation has been cancelled and the apartment is available again.',
+                    t(
+                      'invitationDeleted',
+                    ),
+
+                    t(
+                      'invitationDeletedMessage',
+                    ),
+
                     [
                       {
                         text:
@@ -275,6 +341,7 @@ export function TenantDetailsScreen() {
                             ) {
                               navigation.popTo(
                                 'PropertyDetails',
+
                                 {
                                   propertyId,
                                 },
@@ -285,6 +352,7 @@ export function TenantDetailsScreen() {
 
                             navigation.navigate(
                               'PropertyDetails',
+
                               {
                                 propertyId,
                               },
@@ -297,17 +365,22 @@ export function TenantDetailsScreen() {
                   error
                 ) {
                   Alert.alert(
-                    'Unable to delete invitation',
+                    t(
+                      'unableDeleteInvitation',
+                    ),
+
                     error instanceof
                     Error
                       ? error.message
-                      : 'Please try again.',
+                      : t(
+                          'unableDeleteInvitation',
+                        ),
                   );
 
                   try {
                     await loadTenancy();
                   } catch {
-                    // Ignore reload failure here.
+                    // Reload failure is intentionally ignored here.
                   }
                 } finally {
                   setDeletingInvitation(
@@ -326,8 +399,16 @@ export function TenantDetailsScreen() {
     return (
       <Screen>
         <Header
-          title="Tenant"
-          subtitle="Loading tenant information..."
+          title={
+            t(
+              'tenantTitle',
+            )
+          }
+          subtitle={
+            t(
+              'loadingTenantInformation',
+            )
+          }
         />
       </Screen>
     );
@@ -339,8 +420,16 @@ export function TenantDetailsScreen() {
     return (
       <Screen>
         <Header
-          title="Tenant"
-          subtitle="No active tenancy"
+          title={
+            t(
+              'tenantTitle',
+            )
+          }
+          subtitle={
+            t(
+              'noActiveTenancy',
+            )
+          }
         />
 
         <Card>
@@ -349,7 +438,9 @@ export function TenantDetailsScreen() {
               styles.muted
             }
           >
-            There is no active tenant for this apartment.
+            {t(
+              'noActiveTenantForApartment',
+            )}
           </Text>
         </Card>
       </Screen>
@@ -362,7 +453,9 @@ export function TenantDetailsScreen() {
   const fullName =
     tenant
       ? `${tenant.firstName} ${tenant.lastName}`
-      : 'Tenant invitation';
+      : t(
+          'tenantInvitation',
+        );
 
   const tenancyStatus =
     String(
@@ -378,7 +471,8 @@ export function TenantDetailsScreen() {
       'PENDING' &&
     tenancy.tenantType ===
       'INVITED' &&
-    tenancy.invitation?.status ===
+    tenancy.invitation
+      ?.status ===
       'PENDING';
 
   const canCheckout =
@@ -395,21 +489,33 @@ export function TenantDetailsScreen() {
         subtitle={
           tenancy.tenantType ===
           'MANUAL'
-            ? 'Manual tenant'
+            ? t(
+                'manualTenant',
+              )
             : tenancy.tenantType ===
                 'DOMETRA'
-              ? 'Dometra tenant'
-              : 'Invitation pending'
+              ? t(
+                  'dometraTenant',
+                )
+              : t(
+                  'invitationPending',
+                )
         }
         right={
           <Badge
             text={
               checkoutPending
-                ? 'Checkout required'
+                ? t(
+                    'checkoutRequired',
+                  )
                 : tenancyStatus ===
                     'ACTIVE'
-                  ? 'Active'
-                  : 'Pending'
+                  ? t(
+                      'active',
+                    )
+                  : t(
+                      'pending',
+                    )
             }
             tone={
               tenancyStatus ===
@@ -428,7 +534,9 @@ export function TenantDetailsScreen() {
               styles.importantTitle
             }
           >
-            Checkout required
+            {t(
+              'checkoutRequired',
+            )}
           </Text>
 
           <Text
@@ -436,7 +544,9 @@ export function TenantDetailsScreen() {
               styles.muted
             }
           >
-            The rental agreement has reached its end date. Complete checkout to close the rental.
+            {t(
+              'checkoutRequiredDescription',
+            )}
           </Text>
         </Card>
       ) : null}
@@ -444,7 +554,11 @@ export function TenantDetailsScreen() {
       {invitationPending ? (
         <>
           <SectionTitle
-            title="Invitation"
+            title={
+              t(
+                'invitation',
+              )
+            }
           />
 
           <Card>
@@ -463,7 +577,9 @@ export function TenantDetailsScreen() {
                     styles.importantTitle
                   }
                 >
-                  Waiting for tenant
+                  {t(
+                    'waitingForTenant',
+                  )}
                 </Text>
 
                 <Text
@@ -471,26 +587,41 @@ export function TenantDetailsScreen() {
                     styles.muted
                   }
                 >
-                  The tenant has not accepted this invitation yet.
+                  {t(
+                    'tenantHasNotAccepted',
+                  )}
                 </Text>
               </View>
 
               <Badge
-                text="Pending"
+                text={
+                  t(
+                    'pending',
+                  )
+                }
                 tone="warning"
               />
             </View>
 
-            {tenancy.invitation?.expiresAt ? (
+            {tenancy.invitation
+              ?.expiresAt ? (
               <Text
                 style={
                   styles.invitationExpiry
                 }
               >
-                Expires:{' '}
-                {new Date(
-                  tenancy.invitation.expiresAt,
-                ).toLocaleString()}
+                {t(
+                  'expires',
+
+                  {
+                    date:
+                      new Date(
+                        tenancy.invitation.expiresAt,
+                      ).toLocaleString(
+                        locale,
+                      ),
+                  },
+                )}
               </Text>
             ) : null}
           </Card>
@@ -500,40 +631,64 @@ export function TenantDetailsScreen() {
       {tenant ? (
         <>
           <SectionTitle
-            title="Contact"
+            title={
+              t(
+                'contact',
+              )
+            }
           />
 
           <Card>
             <DetailRow
-              label="First name"
+              label={
+                t(
+                  'firstName',
+                )
+              }
               value={
                 tenant.firstName
               }
             />
 
             <DetailRow
-              label="Last name"
+              label={
+                t(
+                  'lastName',
+                )
+              }
               value={
                 tenant.lastName
               }
             />
 
             <DetailRow
-              label="Phone"
+              label={
+                t(
+                  'phone',
+                )
+              }
               value={
                 tenant.phone
               }
             />
 
             <DetailRow
-              label="Email"
+              label={
+                t(
+                  'email',
+                )
+              }
               value={
                 tenant.email
               }
             />
 
             <DetailRow
-              label="Emergency contact"
+              label={
+                t(
+                  'emergencyContact',
+                )
+              }
               value={
                 tenant.emergencyContact
               }
@@ -546,12 +701,20 @@ export function TenantDetailsScreen() {
           ) ? (
             <>
               <SectionTitle
-                title="Identification"
+                title={
+                  t(
+                    'identification',
+                  )
+                }
               />
 
               <Card>
                 <DetailRow
-                  label="Passport / ID"
+                  label={
+                    t(
+                      'passportId',
+                    )
+                  }
                   value={
                     tenant.passportIdNumber
                   }
@@ -576,7 +739,11 @@ export function TenantDetailsScreen() {
           {tenant.notes ? (
             <>
               <SectionTitle
-                title="Notes"
+                title={
+                  t(
+                    'notes',
+                  )
+                }
               />
 
               <Card>
@@ -596,53 +763,110 @@ export function TenantDetailsScreen() {
       ) : null}
 
       <SectionTitle
-        title="Rental"
+        title={
+          t(
+            'rental',
+          )
+        }
       />
 
       <Card>
         <DetailRow
-          label="Rent"
-          value={`${tenancy.rentAmount} ${tenancy.currency} / month`}
-        />
-
-        <DetailRow
-          label="Started"
+          label={
+            t(
+              'rent',
+            )
+          }
           value={
-            formatDate(
-              tenancy.startDate,
+            t(
+              'rentPerMonth',
+
+              {
+                amount:
+                  tenancy.rentAmount,
+
+                currency:
+                  tenancy.currency,
+              },
             )
           }
         />
 
         <DetailRow
-          label="Agreement ends"
+          label={
+            t(
+              'started',
+            )
+          }
           value={
-            tenancy.endDate
-              ? formatDate(
-                  tenancy.endDate,
-                )
-              : 'Open-ended'
+            formatDate(
+              tenancy.startDate,
+              locale,
+            )
           }
         />
 
         <DetailRow
-          label="Payment due"
-          value={`Day ${tenancy.paymentDueDay} of each month`}
+          label={
+            t(
+              'agreementEnds',
+            )
+          }
+          value={
+            tenancy.endDate
+              ? formatDate(
+                  tenancy.endDate,
+                  locale,
+                )
+              : t(
+                  'openEnded',
+                )
+          }
         />
 
         <DetailRow
-          label="Auto-prolongation"
+          label={
+            t(
+              'paymentDue',
+            )
+          }
+          value={
+            t(
+              'paymentDueDay',
+
+              {
+                day:
+                  tenancy.paymentDueDay,
+              },
+            )
+          }
+        />
+
+        <DetailRow
+          label={
+            t(
+              'autoProlongation',
+            )
+          }
           value={
             tenancy.autoProlongation
-              ? 'Enabled'
-              : 'Disabled'
+              ? t(
+                  'enabled',
+                )
+              : t(
+                  'disabled',
+                )
           }
         />
 
         {tenancy.depositAmount !==
         undefined ? (
           <DetailRow
-            label="Security deposit"
+            label={
+              t(
+                'securityDeposit',
+              )
+            }
             value={`${tenancy.depositAmount} ${
               tenancy.depositCurrency ??
               tenancy.currency
@@ -655,7 +879,11 @@ export function TenantDetailsScreen() {
       0 ? (
         <>
           <SectionTitle
-            title="Opening meter readings"
+            title={
+              t(
+                'openingMeterReadings',
+              )
+            }
           />
 
           <Card>
@@ -693,9 +921,13 @@ export function TenantDetailsScreen() {
                         styles.muted
                       }
                     >
-                      Move-in •{' '}
+                      {t(
+                        'moveIn',
+                      )}
+                      {' • '}
                       {formatDate(
                         reading.date,
+                        locale,
                       )}
                     </Text>
                   </View>
@@ -722,7 +954,11 @@ export function TenantDetailsScreen() {
       {tenancy.agreementUri ? (
         <>
           <SectionTitle
-            title="Agreement"
+            title={
+              t(
+                'agreement',
+              )
+            }
           />
 
           <Card>
@@ -743,10 +979,15 @@ export function TenantDetailsScreen() {
       {tenancy.tenantType ===
       'MANUAL' ? (
         <PrimaryButton
-          title="Edit tenant"
+          title={
+            t(
+              'editTenant',
+            )
+          }
           onPress={() =>
             navigation.navigate(
               'TenantProfile',
+
               {
                 mode:
                   'EDIT_MANUAL',
@@ -762,12 +1003,17 @@ export function TenantDetailsScreen() {
         <PrimaryButton
           title={
             checkoutPending
-              ? 'Complete checkout'
-              : 'End rental'
+              ? t(
+                  'completeCheckout',
+                )
+              : t(
+                  'endRental',
+                )
           }
           onPress={() =>
             navigation.navigate(
               'CheckoutTenant',
+
               {
                 propertyId,
               },
@@ -785,8 +1031,12 @@ export function TenantDetailsScreen() {
           <SecondaryButton
             title={
               deletingInvitation
-                ? 'Deleting invitation...'
-                : 'Delete invitation'
+                ? t(
+                    'deletingInvitation',
+                  )
+                : t(
+                    'deleteInvitation',
+                  )
             }
             onPress={
               deleteInvitation
@@ -798,7 +1048,9 @@ export function TenantDetailsScreen() {
               styles.deleteHint
             }
           >
-            The invitation can be deleted until the tenant accepts it.
+            {t(
+              'invitationDeleteHint',
+            )}
           </Text>
         </View>
       ) : null}
@@ -810,7 +1062,9 @@ export function TenantDetailsScreen() {
             styles.footerHint
           }
         >
-          Personal profile information is managed by the tenant in their Dometra account.
+          {t(
+            'personalProfileManagedByTenant',
+          )}
         </Text>
       ) : null}
     </Screen>

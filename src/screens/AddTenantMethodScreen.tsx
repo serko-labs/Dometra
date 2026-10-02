@@ -13,6 +13,10 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Card,
   Header,
   Screen,
@@ -24,6 +28,11 @@ import {
 } from '../theme';
 
 export function AddTenantMethodScreen() {
+  const {
+    t,
+  } =
+    useTranslation();
+
   const navigation =
     useNavigation<any>();
 
@@ -37,14 +46,23 @@ export function AddTenantMethodScreen() {
   return (
     <Screen>
       <Header
-        title="Add tenant"
-        subtitle="Choose how you want to add a tenant"
+        title={
+          t(
+            'addTenant',
+          )
+        }
+        subtitle={
+          t(
+            'chooseTenantAddMethod',
+          )
+        }
       />
 
       <Pressable
         onPress={() =>
           navigation.navigate(
             'TenantProfile',
+
             {
               mode:
                 'MANUAL',
@@ -83,7 +101,9 @@ export function AddTenantMethodScreen() {
                 styles.title
               }
             >
-              Add manually
+              {t(
+                'addManually',
+              )}
             </Text>
 
             <Text
@@ -91,8 +111,9 @@ export function AddTenantMethodScreen() {
                 styles.subtitle
               }
             >
-              Tenant does not use Dometra yet.
-              Add their contact details and rental terms yourself.
+              {t(
+                'addManuallyDescription',
+              )}
             </Text>
           </View>
 
@@ -110,6 +131,7 @@ export function AddTenantMethodScreen() {
         onPress={() =>
           navigation.navigate(
             'TenancyTerms',
+
             {
               mode:
                 'INVITE',
@@ -148,7 +170,9 @@ export function AddTenantMethodScreen() {
                 styles.title
               }
             >
-              Invite Dometra user
+              {t(
+                'inviteDometraUser',
+              )}
             </Text>
 
             <Text
@@ -156,8 +180,9 @@ export function AddTenantMethodScreen() {
                 styles.subtitle
               }
             >
-              Configure the rental terms, generate a secure invitation,
-              then share it through your preferred messenger.
+              {t(
+                'inviteDometraUserDescription',
+              )}
             </Text>
           </View>
 
