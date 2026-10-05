@@ -34,6 +34,11 @@ import {
 } from '../components/SubmissionStatusBadge';
 
 import {
+  loadTenancyCheckout,
+  TenancyCheckout,
+} from '../services/checkoutRepository';
+
+import {
   loadTenantFinanceBalances,
   TenantFinanceBalance,
 } from '../services/financeRepository';
@@ -173,10 +178,11 @@ export function TenantApartmentScreen() {
   } =
     useTranslation();
 
-  const tenancyId:
-    string | undefined =
-      route.params
-        ?.tenancyId;
+  const tenancyId =
+    route.params
+      ?.tenancyId as
+      | string
+      | undefined;
 
   const [
     apartment,
@@ -195,10 +201,20 @@ export function TenantApartmentScreen() {
     >(null);
 
   const [
+    checkout,
+    setCheckout,
+  ] =
+    useState<
+      TenancyCheckout | null
+    >(null);
+
+  const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   useFocusEffect(
     useCallback(
@@ -232,12 +248,21 @@ export function TenantApartmentScreen() {
                 );
               }
 
-              const finance =
-                await loadTenantFinanceBalances(
-                  [
+              const [
+                finance,
+                checkoutData,
+              ] =
+                await Promise.all([
+                  loadTenantFinanceBalances(
+                    [
+                      selected.tenancyId,
+                    ],
+                  ),
+
+                  loadTenancyCheckout(
                     selected.tenancyId,
-                  ],
-                );
+                  ),
+                ]);
 
               if (
                 active
@@ -248,7 +273,11 @@ export function TenantApartmentScreen() {
 
                 setBalance(
                   finance[0] ??
-                    null,
+                  null,
+                );
+
+                setCheckout(
+                  checkoutData,
                 );
               }
             } catch (
@@ -260,6 +289,7 @@ export function TenantApartmentScreen() {
                 Alert.alert(
                   t(
                     'apartment',
+
                     {
                       defaultValue:
                         'Apartment',
@@ -306,6 +336,7 @@ export function TenantApartmentScreen() {
         <Header
           title={t(
             'apartment',
+
             {
               defaultValue:
                 'Apartment',
@@ -313,6 +344,7 @@ export function TenantApartmentScreen() {
           )}
           subtitle={t(
             'loadingApartment',
+
             {
               defaultValue:
                 'Loading apartment...',
@@ -328,6 +360,7 @@ export function TenantApartmentScreen() {
           >
             {t(
               'loadingApartment',
+
               {
                 defaultValue:
                   'Loading apartment...',
@@ -347,6 +380,7 @@ export function TenantApartmentScreen() {
         <Header
           title={t(
             'apartment',
+
             {
               defaultValue:
                 'Apartment',
@@ -362,6 +396,7 @@ export function TenantApartmentScreen() {
           >
             {t(
               'apartmentNotFound',
+
               {
                 defaultValue:
                   'Apartment not found',
@@ -374,8 +409,10 @@ export function TenantApartmentScreen() {
   }
 
   const checkoutPending =
+    checkout?.status ===
+      'PENDING' ||
     apartment.status ===
-    'CHECKOUT_PENDING';
+      'CHECKOUT_PENDING';
 
   const apartmentStatus =
     getApartmentSubmissionStatus(
@@ -443,13 +480,7 @@ export function TenantApartmentScreen() {
 
           {checkoutPending ? (
             <Badge
-              text={t(
-                'pending',
-                {
-                  defaultValue:
-                    'Pending',
-                },
-              )}
+              text="Checkout"
               tone="warning"
             />
           ) : (
@@ -486,9 +517,56 @@ export function TenantApartmentScreen() {
         ) : null}
       </Card>
 
+      {checkoutPending ? (
+        <Card>
+          <Text
+            style={
+              styles.checkoutTitle
+            }
+          >
+            Checkout in progress
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            {checkout?.checkoutDate
+              ? `Move-out date: ${formatDate(
+                  checkout.checkoutDate,
+                )}. `
+              : ''}
+
+            Regular monthly readings are disabled. Submit the final meter values for move-out.
+          </Text>
+
+          <View
+            style={
+              styles.buttonTop
+            }
+          >
+            <SecondaryButton
+              title="Submit final readings"
+              onPress={() =>
+                navigation.navigate(
+                  'TenantCheckout',
+
+                  {
+                    tenancyId:
+                      apartment.tenancyId,
+                  },
+                )
+              }
+            />
+          </View>
+        </Card>
+      ) : null}
+
       <SectionTitle
         title={t(
           'rentTerms',
+
           {
             defaultValue:
               'Rent & tenancy',
@@ -514,6 +592,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'rent',
+
                 {
                   defaultValue:
                     'Rent',
@@ -547,6 +626,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'paymentDue',
+
                 {
                   defaultValue:
                     'Payment due',
@@ -561,9 +641,11 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'dayNumber',
+
                 {
                   defaultValue:
                     'Day {{day}}',
+
                   day:
                     apartment.paymentDueDay,
                 },
@@ -589,6 +671,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'startDate',
+
                 {
                   defaultValue:
                     'Start date',
@@ -619,6 +702,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'endDate',
+
                 {
                   defaultValue:
                     'End date',
@@ -631,17 +715,23 @@ export function TenantApartmentScreen() {
                 styles.valueSmall
               }
             >
-              {apartment.endDate
+              {checkoutPending &&
+              checkout?.checkoutDate
                 ? formatDate(
-                    apartment.endDate,
+                    checkout.checkoutDate,
                   )
-                : t(
-                    'openEnded',
-                    {
-                      defaultValue:
-                        'Open-ended',
-                    },
-                  )}
+                : apartment.endDate
+                  ? formatDate(
+                      apartment.endDate,
+                    )
+                  : t(
+                      'openEnded',
+
+                      {
+                        defaultValue:
+                          'Open-ended',
+                      },
+                    )}
             </Text>
           </View>
         </View>
@@ -663,6 +753,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'securityDeposit',
+
                 {
                   defaultValue:
                     'Security deposit',
@@ -697,6 +788,7 @@ export function TenantApartmentScreen() {
             >
               {t(
                 'agreement',
+
                 {
                   defaultValue:
                     'Agreement',
@@ -712,6 +804,7 @@ export function TenantApartmentScreen() {
               {apartment.agreementPath
                 ? t(
                     'agreementAvailable',
+
                     {
                       defaultValue:
                         'Available',
@@ -719,6 +812,7 @@ export function TenantApartmentScreen() {
                   )
                 : t(
                     'notAttached',
+
                     {
                       defaultValue:
                         'Not attached',
@@ -732,6 +826,7 @@ export function TenantApartmentScreen() {
       <SectionTitle
         title={t(
           'paymentStatus',
+
           {
             defaultValue:
               'Payment status',
@@ -752,6 +847,7 @@ export function TenantApartmentScreen() {
           >
             {t(
               'outstanding',
+
               {
                 defaultValue:
                   'Outstanding',
@@ -788,6 +884,7 @@ export function TenantApartmentScreen() {
           >
             {t(
               'advance',
+
               {
                 defaultValue:
                   'Advance',
@@ -830,6 +927,7 @@ export function TenantApartmentScreen() {
       <SectionTitle
         title={t(
           'metersAndServices',
+
           {
             defaultValue:
               'Meters & services',
@@ -847,6 +945,7 @@ export function TenantApartmentScreen() {
           >
             {t(
               'noMetersOrServices',
+
               {
                 defaultValue:
                   'No meters or services have been configured yet.',
@@ -950,14 +1049,21 @@ export function TenantApartmentScreen() {
 
                   {meter.billingMode ===
                   'METERED' ? (
-                    <SubmissionStatusBadge
-                      state={
-                        status.state
-                      }
-                      text={meterStatusText(
-                        meter,
-                      )}
-                    />
+                    checkoutPending ? (
+                      <Badge
+                        text="Final required"
+                        tone="warning"
+                      />
+                    ) : (
+                      <SubmissionStatusBadge
+                        state={
+                          status.state
+                        }
+                        text={meterStatusText(
+                          meter,
+                        )}
+                      />
+                    )
                   ) : (
                     <Badge
                       text={
@@ -986,6 +1092,7 @@ export function TenantApartmentScreen() {
                     >
                       {t(
                         'lastReadings',
+
                         {
                           defaultValue:
                             'Last readings',
@@ -1014,6 +1121,7 @@ export function TenantApartmentScreen() {
         <SecondaryButton
           title={t(
             'openReadings',
+
             {
               defaultValue:
                 'Open readings',
@@ -1030,38 +1138,6 @@ export function TenantApartmentScreen() {
             )
           }
         />
-      ) : null}
-
-      {checkoutPending ? (
-        <Card>
-          <Text
-            style={
-              styles.title
-            }
-          >
-            {t(
-              'checkoutRequired',
-              {
-                defaultValue:
-                  'Checkout required',
-              },
-            )}
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {t(
-              'checkoutRegularReadingsDisabled',
-              {
-                defaultValue:
-                  'Regular monthly readings are disabled while checkout is pending.',
-              },
-            )}
-          </Text>
-        </Card>
       ) : null}
     </Screen>
   );
@@ -1102,6 +1178,17 @@ const styles =
     title: {
       color:
         colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    checkoutTitle: {
+      color:
+        '#92400E',
 
       fontSize:
         16,
@@ -1291,5 +1378,10 @@ const styles =
 
       marginTop:
         4,
+    },
+
+    buttonTop: {
+      marginTop:
+        spacing.md,
     },
   });

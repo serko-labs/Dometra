@@ -6,9 +6,9 @@ import React, {
 
 import {
   Alert,
+  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
@@ -25,22 +25,31 @@ import {
 import {
   Badge,
   Card,
+  Field,
   Header,
   PrimaryButton,
   Screen,
+  SecondaryButton,
   SectionTitle,
 } from '../components/ui';
 
 import {
-  getLocaleTag,
-} from '../i18n/language';
+  cancelTenancyCheckout,
+  CheckoutReading,
+  CheckoutRequiredRegister,
+  completeTenancyCheckout,
+  DepositSettlementAction,
+  loadCheckoutReadings,
+  loadCheckoutRequiredRegisters,
+  loadTenancyCheckout,
+  startTenancyCheckout,
+  TenancyCheckout,
+} from '../services/checkoutRepository';
 
 import {
-  CheckoutContext,
-  CheckoutReadingInput,
-  checkoutTenancy,
-  getCheckoutContext,
-} from '../services/checkoutRepository';
+  getPropertyTenancy,
+  PropertyTenancySummary,
+} from '../services/tenantRepository';
 
 import {
   colors,
@@ -48,34 +57,24 @@ import {
   spacing,
 } from '../theme';
 
-function todayLocalDate() {
+function todayLocal() {
   const now =
     new Date();
 
-  const year =
-    now.getFullYear();
-
-  const month =
-    String(
-      now.getMonth() +
-        1,
-    ).padStart(
-      2,
-      '0',
-    );
-
-  const day =
-    String(
-      now.getDate(),
-    ).padStart(
-      2,
-      '0',
-    );
-
-  return `${year}-${month}-${day}`;
+  return `${now.getFullYear()}-${String(
+    now.getMonth() + 1,
+  ).padStart(
+    2,
+    '0',
+  )}-${String(
+    now.getDate(),
+  ).padStart(
+    2,
+    '0',
+  )}`;
 }
 
-function isValidDate(
+function isDate(
   value:
     string,
 ) {
@@ -98,10 +97,7 @@ function isValidDate(
 }
 
 function formatDate(
-  value:
-    string | undefined,
-
-  locale:
+  value?:
     string,
 ) {
   if (
@@ -110,16 +106,9 @@ function formatDate(
     return '—';
   }
 
-  const normalized =
-    value.includes(
-      'T',
-    )
-      ? value
-      : `${value}T00:00:00`;
-
   const date =
     new Date(
-      normalized,
+      `${value}T00:00:00`,
     );
 
   if (
@@ -131,7 +120,7 @@ function formatDate(
   }
 
   return date.toLocaleDateString(
-    locale,
+    undefined,
 
     {
       day:
@@ -146,61 +135,130 @@ function formatDate(
   );
 }
 
+function money(
+  value:
+    number | undefined,
+
+  currency:
+    string | undefined,
+) {
+  if (
+    value === undefined
+  ) {
+    return '—';
+  }
+
+  return `${value.toLocaleString(
+    undefined,
+
+    {
+      maximumFractionDigits:
+        2,
+    },
+  )} ${currency ?? ''}`.trim();
+}
+
+const depositOptions:
+  Array<{
+    value:
+      DepositSettlementAction;
+
+    label:
+      string;
+  }> = [
+    {
+      value:
+        'RETURNED',
+
+      label:
+        'Return full',
+    },
+
+    {
+      value:
+        'PARTIALLY_RETURNED',
+
+      label:
+        'Return part',
+    },
+
+    {
+      value:
+        'APPLIED',
+
+      label:
+        'Keep / apply',
+    },
+
+    {
+      value:
+        'WAIVED',
+
+      label:
+        'Waive',
+    },
+  ];
+
 export function CheckoutTenantScreen() {
-  const {
-    t,
-    i18n,
-  } =
-    useTranslation();
-
-  const locale =
-    getLocaleTag(
-      i18n.resolvedLanguage ??
-        i18n.language,
-    );
-
   const navigation =
     useNavigation<any>();
 
   const route =
     useRoute<any>();
 
+  const {
+    t,
+  } =
+    useTranslation();
+
   const propertyId =
     route.params
       ?.propertyId as string;
 
+  const tenancyIdFromRoute =
+    route.params
+      ?.tenancyId as
+      | string
+      | undefined;
+
   const [
-    context,
-    setContext,
+    tenancy,
+    setTenancy,
   ] =
     useState<
-      CheckoutContext | null
-    >(
-      null,
-    );
+      PropertyTenancySummary | null
+    >(null);
 
   const [
-    loading,
-    setLoading,
+    checkout,
+    setCheckout,
   ] =
-    useState(
-      true,
-    );
+    useState<
+      TenancyCheckout | null
+    >(null);
 
   const [
-    saving,
-    setSaving,
+    registers,
+    setRegisters,
   ] =
-    useState(
-      false,
-    );
+    useState<
+      CheckoutRequiredRegister[]
+    >([]);
+
+  const [
+    readings,
+    setReadings,
+  ] =
+    useState<
+      CheckoutReading[]
+    >([]);
 
   const [
     checkoutDate,
     setCheckoutDate,
   ] =
     useState(
-      todayLocalDate(),
+      todayLocal(),
     );
 
   const [
@@ -212,370 +270,334 @@ export function CheckoutTenantScreen() {
     );
 
   const [
-    readingValues,
-    setReadingValues,
+    depositAction,
+    setDepositAction,
   ] =
     useState<
-      Record<
-        string,
-        string
-      >
-    >({});
+      DepositSettlementAction
+    >(
+      'RETURNED',
+    );
 
-  useFocusEffect(
+  const [
+    partialReturn,
+    setPartialReturn,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    settlementNotes,
+    setSettlementNotes,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    busy,
+    setBusy,
+  ] =
+    useState(
+      false,
+    );
+
+  const reload =
     useCallback(
-      () => {
-        let active =
-          true;
+      async () => {
+        setLoading(
+          true,
+        );
 
-        const load =
-          async () => {
-            setLoading(
-              true,
+        try {
+          const currentTenancy =
+            await getPropertyTenancy(
+              propertyId,
             );
 
-            try {
-              const result =
-                await getCheckoutContext(
-                  propertyId,
-                );
+          const tenancyId =
+            tenancyIdFromRoute ??
+            currentTenancy?.id;
 
-              if (
-                active
-              ) {
-                setContext(
-                  result,
-                );
+          if (
+            !currentTenancy ||
+            !tenancyId
+          ) {
+            setTenancy(
+              null,
+            );
 
-                /*
-                 * Final readings must always
-                 * start blank.
-                 */
-                setReadingValues(
-                  {},
-                );
-              }
-            } catch (
-              error
+            setCheckout(
+              null,
+            );
+
+            setRegisters(
+              [],
+            );
+
+            setReadings(
+              [],
+            );
+
+            return;
+          }
+
+          const [
+            checkoutData,
+            requiredRegisters,
+            checkoutReadings,
+          ] =
+            await Promise.all([
+              loadTenancyCheckout(
+                tenancyId,
+              ),
+
+              loadCheckoutRequiredRegisters(
+                tenancyId,
+              ),
+
+              loadCheckoutReadings(
+                tenancyId,
+              ),
+            ]);
+
+          setTenancy(
+            currentTenancy,
+          );
+
+          setCheckout(
+            checkoutData,
+          );
+
+          setRegisters(
+            requiredRegisters,
+          );
+
+          setReadings(
+            checkoutReadings,
+          );
+
+          if (
+            checkoutData
+          ) {
+            setCheckoutDate(
+              checkoutData.checkoutDate,
+            );
+
+            setNotes(
+              checkoutData.notes ??
+              '',
+            );
+
+            if (
+              checkoutData.depositAction
             ) {
-              if (
-                active
-              ) {
-                Alert.alert(
-                  t(
-                    'endRental',
-                  ),
-
-                  error instanceof
-                  Error
-                    ? error.message
-                    : t(
-                        'unableLoadCheckout',
-                      ),
-                );
-              }
-            } finally {
-              if (
-                active
-              ) {
-                setLoading(
-                  false,
-                );
-              }
+              setDepositAction(
+                checkoutData.depositAction,
+              );
             }
-          };
 
-        void load();
+            if (
+              checkoutData.depositReturnAmount !==
+              undefined
+            ) {
+              setPartialReturn(
+                String(
+                  checkoutData.depositReturnAmount,
+                ),
+              );
+            }
 
-        return () => {
-          active =
-            false;
-        };
+            setSettlementNotes(
+              checkoutData.settlementNotes ??
+              '',
+            );
+          }
+        } catch (
+          error
+        ) {
+          Alert.alert(
+            t(
+              'checkout',
+
+              {
+                defaultValue:
+                  'Checkout',
+              },
+            ),
+
+            error instanceof
+            Error
+              ? error.message
+              : 'Unable to load checkout.',
+          );
+        } finally {
+          setLoading(
+            false,
+          );
+        }
       },
 
       [
         propertyId,
+        tenancyIdFromRoute,
         t,
+      ],
+    );
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        void reload();
+      },
+
+      [
+        reload,
       ],
     ),
   );
 
-  const enteredReadingCount =
+  const submittedIds =
     useMemo(
       () =>
-        Object.values(
-          readingValues,
-        ).filter(
-          value =>
-            value.trim()
-              .length >
-            0,
-        ).length,
+        new Set(
+          readings.map(
+            item =>
+              item.meterRegisterId,
+          ),
+        ),
 
       [
-        readingValues,
+        readings,
       ],
     );
 
-  const buildReadings =
-    () => {
-      if (
-        !context
-      ) {
-        return [];
-      }
+  const submittedCount =
+    registers.filter(
+      item =>
+        submittedIds.has(
+          item.id,
+        ),
+    ).length;
 
-      const result:
-        CheckoutReadingInput[] =
-        [];
+  const readingsComplete =
+    submittedCount ===
+    registers.length;
 
-      for (
-        const register
-        of context.registers
-      ) {
-        const raw =
-          readingValues[
-            register.id
-          ]?.trim();
+  const depositAmount =
+    tenancy?.depositAmount;
 
-        if (
-          !raw
-        ) {
-          continue;
-        }
+  const depositCurrency =
+    tenancy?.depositCurrency ??
+    tenancy?.currency;
 
-        const value =
-          Number(
-            raw.replace(
-              ',',
-              '.',
-            ),
-          );
+  const hasDeposit =
+    Boolean(
+      depositAmount &&
+      depositAmount >
+        0,
+    );
 
-        if (
-          !Number.isFinite(
-            value,
-          ) ||
-          value <
-            0
-        ) {
-          throw new Error(
-            t(
-              'invalidFinalReading',
-
-              {
-                meter:
-                  register.meterName,
-
-                register:
-                  register.registerCode,
-              },
-            ),
-          );
-        }
-
-        result.push({
-          meterRegisterId:
-            register.id,
-
-          value,
-        });
-      }
-
-      return result;
-    };
-
-  const performCheckout =
+  const startCheckout =
     async () => {
       if (
-        !context ||
-        saving
+        !tenancy ||
+        busy
       ) {
         return;
       }
 
-      setSaving(
+      if (
+        !isDate(
+          checkoutDate,
+        )
+      ) {
+        Alert.alert(
+          'Checkout',
+          'Enter a valid date in YYYY-MM-DD format.',
+        );
+
+        return;
+      }
+
+      if (
+        checkoutDate <
+        tenancy.startDate
+      ) {
+        Alert.alert(
+          'Checkout',
+          'Checkout date cannot be before the tenancy start date.',
+        );
+
+        return;
+      }
+
+      setBusy(
         true,
       );
 
       try {
-        await checkoutTenancy({
-          tenancyId:
-            context.tenancyId,
+        await startTenancyCheckout(
+          {
+            tenancyId:
+              tenancy.id,
 
-          checkoutDate:
-            checkoutDate.trim(),
+            checkoutDate,
 
-          notes,
+            notes,
+          },
+        );
 
-          readings:
-            buildReadings(),
-        });
+        await reload();
 
         Alert.alert(
-          t(
-            'rentalEnded',
-          ),
-
-          t(
-            'rentalEndedMessage',
-          ),
-
-          [
-            {
-              text:
-                'OK',
-
-              onPress:
-                () => {
-                  if (
-                    typeof navigation.popTo ===
-                    'function'
-                  ) {
-                    navigation.popTo(
-                      'PropertyDetails',
-
-                      {
-                        propertyId,
-                      },
-                    );
-
-                    return;
-                  }
-
-                  navigation.navigate(
-                    'PropertyDetails',
-
-                    {
-                      propertyId,
-                    },
-                  );
-                },
-            },
-          ],
+          'Checkout started',
+          'The tenant can now submit final meter readings. Regular monthly readings should no longer be used for this move-out.',
         );
       } catch (
         error
       ) {
         Alert.alert(
-          t(
-            'unableEndRental',
-          ),
+          'Unable to start checkout',
 
           error instanceof
           Error
             ? error.message
-            : t(
-                'pleaseTryAgain',
-              ),
+            : 'Unknown error.',
         );
       } finally {
-        setSaving(
+        setBusy(
           false,
         );
       }
     };
 
-  const submit =
+  const cancelCheckout =
     () => {
       if (
-        !context ||
-        saving
+        !tenancy ||
+        busy
       ) {
-        return;
-      }
-
-      const date =
-        checkoutDate.trim();
-
-      if (
-        !isValidDate(
-          date,
-        )
-      ) {
-        Alert.alert(
-          t(
-            'checkoutDate',
-          ),
-
-          t(
-            'enterValidCheckoutDate',
-          ),
-        );
-
-        return;
-      }
-
-      if (
-        date <
-        context.startDate
-      ) {
-        Alert.alert(
-          t(
-            'checkoutDate',
-          ),
-
-          t(
-            'checkoutDateBeforeStart',
-          ),
-        );
-
-        return;
-      }
-
-      if (
-        date >
-        todayLocalDate()
-      ) {
-        Alert.alert(
-          t(
-            'checkoutDate',
-          ),
-
-          t(
-            'checkoutDateFuture',
-          ),
-        );
-
-        return;
-      }
-
-      try {
-        buildReadings();
-      } catch (
-        error
-      ) {
-        Alert.alert(
-          t(
-            'finalMeterReadings',
-          ),
-
-          error instanceof
-          Error
-            ? error.message
-            : t(
-                'checkFinalMeterReadings',
-              ),
-        );
-
         return;
       }
 
       Alert.alert(
-        t(
-          'endRentalConfirmTitle',
-        ),
-
-        t(
-          'endRentalConfirmMessage',
-        ),
+        'Cancel checkout?',
+        'Final checkout readings will be removed and the tenancy will remain active.',
 
         [
           {
             text:
-              t(
-                'cancel',
-              ),
+              'Keep checkout',
 
             style:
               'cancel',
@@ -583,16 +605,218 @@ export function CheckoutTenantScreen() {
 
           {
             text:
-              t(
-                'endRental',
-              ),
+              'Cancel checkout',
 
             style:
               'destructive',
 
             onPress:
-              () =>
-                void performCheckout(),
+              async () => {
+                if (
+                  busy
+                ) {
+                  return;
+                }
+
+                setBusy(
+                  true,
+                );
+
+                try {
+                  await cancelTenancyCheckout(
+                    tenancy.id,
+                  );
+
+                  await reload();
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to cancel checkout',
+
+                    error instanceof
+                    Error
+                      ? error.message
+                      : 'Unknown error.',
+                  );
+                } finally {
+                  setBusy(
+                    false,
+                  );
+                }
+              },
+          },
+        ],
+      );
+    };
+
+  const finishCheckout =
+    async () => {
+      if (
+        !tenancy ||
+        !checkout ||
+        busy
+      ) {
+        return;
+      }
+
+      if (
+        !readingsComplete
+      ) {
+        Alert.alert(
+          'Final readings required',
+          'Submit all final meter readings first.',
+        );
+
+        return;
+      }
+
+      let returnAmount:
+        number | undefined;
+
+      if (
+        hasDeposit &&
+        depositAction ===
+          'RETURNED'
+      ) {
+        returnAmount =
+          depositAmount;
+      } else if (
+        hasDeposit &&
+        depositAction ===
+          'PARTIALLY_RETURNED'
+      ) {
+        const parsed =
+          Number(
+            partialReturn.replace(
+              ',',
+              '.',
+            ),
+          );
+
+        if (
+          !Number.isFinite(
+            parsed,
+          ) ||
+          parsed <=
+            0 ||
+          parsed >=
+            (
+              depositAmount ??
+              0
+            )
+        ) {
+          Alert.alert(
+            'Deposit',
+
+            `Enter an amount greater than 0 and less than ${money(
+              depositAmount,
+              depositCurrency,
+            )}.`,
+          );
+
+          return;
+        }
+
+        returnAmount =
+          parsed;
+      } else if (
+        hasDeposit
+      ) {
+        returnAmount =
+          0;
+      }
+
+      Alert.alert(
+        'Complete checkout?',
+
+        `This will end the tenancy on ${formatDate(
+          checkout.checkoutDate,
+        )} and make the apartment vacant.`,
+
+        [
+          {
+            text:
+              'Cancel',
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              'Complete',
+
+            style:
+              'destructive',
+
+            onPress:
+              async () => {
+                if (
+                  busy
+                ) {
+                  return;
+                }
+
+                setBusy(
+                  true,
+                );
+
+                try {
+                  await completeTenancyCheckout(
+                    {
+                      tenancyId:
+                        tenancy.id,
+
+                      depositAction:
+                        hasDeposit
+                          ? depositAction
+                          : undefined,
+
+                      depositReturnAmount:
+                        returnAmount,
+
+                      settlementNotes,
+                    },
+                  );
+
+                  Alert.alert(
+                    'Checkout completed',
+                    'The tenancy is ended and the apartment is now vacant.',
+
+                    [
+                      {
+                        text:
+                          'OK',
+
+                        onPress:
+                          () => {
+                            if (
+                              navigation.canGoBack()
+                            ) {
+                              navigation.goBack();
+                            }
+                          },
+                      },
+                    ],
+                  );
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to complete checkout',
+
+                    error instanceof
+                    Error
+                      ? error.message
+                      : 'Unknown error.',
+                  );
+                } finally {
+                  setBusy(
+                    false,
+                  );
+                }
+              },
           },
         ],
       );
@@ -604,230 +828,237 @@ export function CheckoutTenantScreen() {
     return (
       <Screen>
         <Header
-          title={
-            t(
-              'endRental',
-            )
-          }
-          subtitle={
-            t(
-              'loadingCheckout',
-            )
-          }
+          title="Tenant checkout"
+          subtitle="Loading checkout..."
         />
+
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Loading...
+          </Text>
+        </Card>
       </Screen>
     );
   }
 
   if (
-    !context
+    !tenancy
   ) {
     return (
       <Screen>
         <Header
-          title={
-            t(
-              'endRental',
-            )
-          }
-          subtitle={
-            t(
-              'noActiveRental',
-            )
-          }
+          title="Tenant checkout"
         />
 
         <Card>
           <Text
             style={
+              styles.title
+            }
+          >
+            No active tenancy
+          </Text>
+
+          <Text
+            style={
               styles.muted
             }
           >
-            {t(
-              'noActiveOrCheckoutPendingRental',
-            )}
+            This apartment does not currently have an active tenant.
           </Text>
         </Card>
       </Screen>
     );
   }
 
-  const checkoutRequired =
-    context.status ===
-    'CHECKOUT_PENDING';
+  const tenantName =
+    tenancy.tenant
+      ? `${tenancy.tenant.firstName} ${tenancy.tenant.lastName}`
+      : 'Tenant';
 
   return (
     <Screen>
       <Header
-        title={
-          t(
-            'endRental',
-          )
-        }
+        title="Tenant checkout"
         subtitle={
-          context.propertyTitle
-        }
-        right={
-          <Badge
-            text={
-              checkoutRequired
-                ? t(
-                    'checkoutRequired',
-                  )
-                : t(
-                    'active',
-                  )
-            }
-            tone={
-              checkoutRequired
-                ? 'warning'
-                : 'success'
-            }
-          />
+          tenantName
         }
       />
 
-      {checkoutRequired ? (
-        <Card>
-          <Text
-            style={
-              styles.warningTitle
-            }
-          >
-            {t(
-              'rentalTermEnded',
-            )}
-          </Text>
+      {!checkout ||
+      checkout.status ===
+        'CANCELLED' ? (
+        <>
+          <Card>
+            <Text
+              style={
+                styles.title
+              }
+            >
+              End this tenancy
+            </Text>
 
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {t(
-              'completeCheckoutDescription',
-            )}
-          </Text>
-        </Card>
-      ) : null}
-
-      <SectionTitle
-        title={
-          t(
-            'checkout',
-          )
-        }
-      />
-
-      <Card>
-        <Text
-          style={
-            styles.label
-          }
-        >
-          {t(
-            'checkoutDateRequired',
-          )}
-        </Text>
-
-        <TextInput
-          value={
-            checkoutDate
-          }
-          onChangeText={
-            setCheckoutDate
-          }
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={
-            colors.muted
-          }
-          autoCapitalize="none"
-          autoCorrect={
-            false
-          }
-          style={
-            styles.input
-          }
-        />
-
-        <Text
-          style={
-            styles.helper
-          }
-        >
-          {t(
-            'rentalStarted',
-
-            {
-              date:
-                formatDate(
-                  context.startDate,
-                  locale,
-                ),
-            },
-          )}
-
-          {context.endDate
-            ? ` • ${t(
-                'agreementEndsInline',
-
-                {
-                  date:
-                    formatDate(
-                      context.endDate,
-                      locale,
-                    ),
-                },
-              )}`
-            : ''}
-        </Text>
-      </Card>
-
-      <SectionTitle
-        title={
-          t(
-            'finalMeterReadings',
-          )
-        }
-      />
-
-      <Card>
-        {context.registers.length ===
-        0 ? (
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {t(
-              'noActiveMetersForApartment',
-            )}
-          </Text>
-        ) : (
-          <>
             <Text
               style={
                 styles.muted
               }
             >
-              {t(
-                'finalReadingsOptionalHint',
-              )}
+              Start checkout first. The tenancy remains active until final readings and the deposit settlement are reviewed.
             </Text>
+          </Card>
 
-            {context.registers.map(
-              register => (
-                <View
-                  key={
-                    register.id
-                  }
+          <Field
+            label="Checkout date *"
+            value={
+              checkoutDate
+            }
+            onChangeText={
+              setCheckoutDate
+            }
+            placeholder="YYYY-MM-DD"
+            editable={
+              !busy
+            }
+          />
+
+          <Field
+            label="Notes"
+            value={
+              notes
+            }
+            onChangeText={
+              setNotes
+            }
+            placeholder="Optional move-out notes"
+            editable={
+              !busy
+            }
+            multiline
+          />
+
+          <PrimaryButton
+            title={
+              busy
+                ? 'Starting...'
+                : 'Start checkout'
+            }
+            disabled={
+              busy
+            }
+            onPress={() =>
+              void startCheckout()
+            }
+          />
+        </>
+      ) : null}
+
+      {checkout?.status ===
+      'PENDING' ? (
+        <>
+          <Card>
+            <View
+              style={
+                styles.rowBetween
+              }
+            >
+              <View
+                style={
+                  styles.flex
+                }
+              >
+                <Text
                   style={
-                    styles.readingBlock
+                    styles.title
                   }
                 >
+                  Checkout in progress
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  Move-out date:{' '}
+                  {formatDate(
+                    checkout.checkoutDate,
+                  )}
+                </Text>
+              </View>
+
+              <Badge
+                text="Pending"
+                tone="warning"
+              />
+            </View>
+          </Card>
+
+          <SectionTitle
+            title="Final meter readings"
+          />
+
+          <Card>
+            <View
+              style={
+                styles.rowBetween
+              }
+            >
+              <Text
+                style={
+                  styles.title
+                }
+              >
+                Progress
+              </Text>
+
+              <Badge
+                text={`${submittedCount}/${registers.length}`}
+                tone={
+                  readingsComplete
+                    ? 'success'
+                    : 'warning'
+                }
+              />
+            </View>
+
+            {registers.length ===
+            0 ? (
+              <Text
+                style={
+                  styles.muted
+                }
+              >
+                No metered services require final readings.
+              </Text>
+            ) : null}
+
+            {registers.map(
+              register => {
+                const reading =
+                  readings.find(
+                    item =>
+                      item.meterRegisterId ===
+                      register.id,
+                  );
+
+                const registerCount =
+                  registers.filter(
+                    item =>
+                      item.meterId ===
+                      register.meterId,
+                  ).length;
+
+                return (
                   <View
+                    key={
+                      register.id
+                    }
                     style={
-                      styles.readingHeader
+                      styles.readingRow
                     }
                   >
                     <View
@@ -837,161 +1068,191 @@ export function CheckoutTenantScreen() {
                     >
                       <Text
                         style={
-                          styles.readingTitle
+                          styles.readingName
                         }
                       >
                         {
                           register.meterName
                         }
+
+                        {registerCount >
+                        1
+                          ? ` · ${register.code}`
+                          : ''}
                       </Text>
 
                       <Text
                         style={
-                          styles.helper
+                          styles.muted
                         }
                       >
-                        {
-                          register.registerCode
-                        }
+                        Previous:{' '}
 
-                        {register.registerName
-                          ? ` • ${register.registerName}`
-                          : ''}
+                        {register.lastValue !==
+                        undefined
+                          ? `${register.lastValue} ${register.unit}`
+                          : '—'}
                       </Text>
                     </View>
 
                     <Text
                       style={
-                        styles.unit
+                        styles.readingValue
                       }
                     >
-                      {
-                        register.unit
-                      }
+                      {reading
+                        ? `${reading.value} ${register.unit}`
+                        : 'Not submitted'}
                     </Text>
                   </View>
+                );
+              },
+            )}
+          </Card>
 
-                  <TextInput
+          {hasDeposit ? (
+            <>
+              <SectionTitle
+                title="Security deposit"
+              />
+
+              <Card>
+                <Text
+                  style={
+                    styles.depositAmount
+                  }
+                >
+                  {money(
+                    depositAmount,
+                    depositCurrency,
+                  )}
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  Choose how the deposit is settled before completing checkout.
+                </Text>
+
+                <View
+                  style={
+                    styles.chips
+                  }
+                >
+                  {depositOptions.map(
+                    option => (
+                      <Pressable
+                        key={
+                          option.value
+                        }
+                        disabled={
+                          busy
+                        }
+                        onPress={() =>
+                          setDepositAction(
+                            option.value,
+                          )
+                        }
+                        style={[
+                          styles.chip,
+
+                          depositAction ===
+                            option.value &&
+                            styles.chipActive,
+
+                          busy &&
+                            styles.disabledChip,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+
+                            depositAction ===
+                              option.value &&
+                              styles.chipTextActive,
+                          ]}
+                        >
+                          {
+                            option.label
+                          }
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+
+                {depositAction ===
+                'PARTIALLY_RETURNED' ? (
+                  <Field
+                    label={`Amount returned (${depositCurrency ?? ''})`}
                     value={
-                      readingValues[
-                        register.id
-                      ] ??
-                      ''
+                      partialReturn
                     }
                     onChangeText={
-                      value =>
-                        setReadingValues(
-                          current => ({
-                            ...current,
-
-                            [register.id]:
-                              value,
-                          }),
-                        )
-                    }
-                    placeholder={
-                      t(
-                        'finalReading',
-                      )
-                    }
-                    placeholderTextColor={
-                      colors.muted
+                      setPartialReturn
                     }
                     keyboardType="decimal-pad"
-                    style={
-                      styles.input
+                    placeholder="0"
+                    editable={
+                      !busy
                     }
                   />
-                </View>
-              ),
-            )}
-          </>
-        )}
-      </Card>
+                ) : null}
 
-      <SectionTitle
-        title={
-          t(
-            'notes',
-          )
-        }
-      />
+                <Field
+                  label="Settlement notes"
+                  value={
+                    settlementNotes
+                  }
+                  onChangeText={
+                    setSettlementNotes
+                  }
+                  placeholder="Optional note"
+                  editable={
+                    !busy
+                  }
+                  multiline
+                />
+              </Card>
+            </>
+          ) : null}
 
-      <Card>
-        <TextInput
-          value={
-            notes
-          }
-          onChangeText={
-            setNotes
-          }
-          placeholder={
-            t(
-              'optionalCheckoutNotes',
-            )
-          }
-          placeholderTextColor={
-            colors.muted
-          }
-          multiline
-          style={[
-            styles.input,
-            styles.notesInput,
-          ]}
-        />
-      </Card>
+          <PrimaryButton
+            title={
+              busy
+                ? 'Completing...'
+                : 'Complete checkout'
+            }
+            disabled={
+              busy ||
+              !readingsComplete
+            }
+            onPress={() =>
+              void finishCheckout()
+            }
+          />
 
-      <Card>
-        <Text
-          style={
-            styles.summaryTitle
-          }
-        >
-          {t(
-            'whatHappensNext',
-          )}
-        </Text>
-
-        <Text
-          style={
-            styles.muted
-          }
-        >
-          {t(
-            'checkoutResultDescription',
-          )}
-        </Text>
-
-        <Text
-          style={
-            styles.helper
-          }
-        >
-          {t(
-            'finalReadingsEntered',
-
-            {
-              count:
-                enteredReadingCount,
-            },
-          )}
-        </Text>
-      </Card>
-
-      <PrimaryButton
-        title={
-          saving
-            ? t(
-                'endingRental',
-              )
-            : t(
-                'endRental',
-              )
-        }
-        onPress={
-          submit
-        }
-      />
+          <View
+            style={
+              styles.buttonTop
+            }
+          >
+            <SecondaryButton
+              title={
+                busy
+                  ? 'Please wait...'
+                  : 'Cancel checkout'
+              }
+              onPress={
+                cancelCheckout
+              }
+            />
+          </View>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -1003,24 +1264,119 @@ const styles =
         1,
     },
 
-    label: {
+    rowBetween: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'flex-start',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
+    title: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    muted: {
       color:
         colors.muted,
 
       fontSize:
-        11,
+        12,
+
+      lineHeight:
+        18,
+
+      marginTop:
+        4,
+    },
+
+    readingRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+
+      paddingVertical:
+        12,
+
+      borderTopWidth:
+        StyleSheet.hairlineWidth,
+
+      borderTopColor:
+        colors.border,
+    },
+
+    readingName: {
+      color:
+        colors.text,
+
+      fontSize:
+        14,
 
       fontWeight:
         '700',
-
-      textTransform:
-        'uppercase',
-
-      marginBottom:
-        7,
     },
 
-    input: {
+    readingValue: {
+      color:
+        colors.text,
+
+      fontSize:
+        13,
+
+      fontWeight:
+        '800',
+
+      textAlign:
+        'right',
+    },
+
+    depositAmount: {
+      color:
+        colors.text,
+
+      fontSize:
+        22,
+
+      fontWeight:
+        '900',
+    },
+
+    chips: {
+      flexDirection:
+        'row',
+
+      flexWrap:
+        'wrap',
+
+      gap:
+        8,
+
+      marginVertical:
+        spacing.md,
+    },
+
+    chip: {
       borderWidth:
         1,
 
@@ -1034,105 +1390,23 @@ const styles =
         12,
 
       paddingVertical:
-        11,
-
-      color:
-        colors.text,
-
-      fontSize:
-        14,
+        9,
     },
 
-    notesInput: {
-      minHeight:
-        100,
+    chipActive: {
+      borderColor:
+        colors.primary,
 
-      textAlignVertical:
-        'top',
+      backgroundColor:
+        `${colors.primary}12`,
     },
 
-    helper: {
-      color:
-        colors.muted,
-
-      fontSize:
-        11,
-
-      lineHeight:
-        17,
-
-      marginTop:
-        7,
+    disabledChip: {
+      opacity:
+        0.5,
     },
 
-    muted: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-    },
-
-    warningTitle: {
-      color:
-        colors.text,
-
-      fontSize:
-        15,
-
-      fontWeight:
-        '800',
-
-      marginBottom:
-        5,
-    },
-
-    readingBlock: {
-      paddingTop:
-        spacing.md,
-
-      marginTop:
-        spacing.md,
-
-      borderTopWidth:
-        StyleSheet.hairlineWidth,
-
-      borderTopColor:
-        colors.border,
-    },
-
-    readingHeader: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        spacing.md,
-
-      marginBottom:
-        8,
-    },
-
-    readingTitle: {
-      color:
-        colors.text,
-
-      fontSize:
-        13,
-
-      fontWeight:
-        '800',
-    },
-
-    unit: {
+    chipText: {
       color:
         colors.muted,
 
@@ -1143,17 +1417,13 @@ const styles =
         '700',
     },
 
-    summaryTitle: {
+    chipTextActive: {
       color:
-        colors.text,
+        colors.primary,
+    },
 
-      fontSize:
-        14,
-
-      fontWeight:
-        '800',
-
-      marginBottom:
-        5,
+    buttonTop: {
+      marginTop:
+        spacing.sm,
     },
   });

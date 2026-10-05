@@ -67,6 +67,10 @@ import {
 } from '../screens/TenantStatisticsScreen';
 
 import {
+  TenantCheckoutScreen,
+} from '../screens/TenantCheckoutScreen';
+
+import {
   ReadingsScreen,
 } from '../screens/ReadingsScreen';
 
@@ -349,6 +353,7 @@ function TenantTabs() {
           title:
             t(
               'statistics',
+
               {
                 defaultValue:
                   'Statistics',
@@ -471,6 +476,17 @@ export function RootNavigator() {
               name="Readings"
               component={
                 ReadingsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="TenantCheckout"
+              component={
+                TenantCheckoutScreen
               }
               options={{
                 title:

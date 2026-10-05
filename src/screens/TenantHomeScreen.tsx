@@ -32,6 +32,11 @@ import {
 } from '../components/SubmissionStatusBadge';
 
 import {
+  loadCheckoutSummaries,
+  TenancyCheckout,
+} from '../services/checkoutRepository';
+
+import {
   getApartmentSubmissionStatus,
 } from '../services/meterSubmissionStatus';
 
@@ -108,10 +113,23 @@ export function TenantHomeScreen() {
     >([]);
 
   const [
+    checkouts,
+    setCheckouts,
+  ] =
+    useState<
+      Record<
+        string,
+        TenancyCheckout
+      >
+    >({});
+
+  const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
 
   useFocusEffect(
     useCallback(
@@ -129,11 +147,23 @@ export function TenantHomeScreen() {
               const data =
                 await loadTenantApartments();
 
+              const checkoutData =
+                await loadCheckoutSummaries(
+                  data.map(
+                    apartment =>
+                      apartment.tenancyId,
+                  ),
+                );
+
               if (
                 active
               ) {
                 setApartments(
                   data,
+                );
+
+                setCheckouts(
+                  checkoutData,
                 );
               }
             } catch (
@@ -145,6 +175,7 @@ export function TenantHomeScreen() {
                 Alert.alert(
                   t(
                     'home',
+
                     {
                       defaultValue:
                         'Home',
@@ -187,16 +218,14 @@ export function TenantHomeScreen() {
       apartment:
         TenantApartmentPortal,
     ) => {
-      navigation
-        .getParent()
-        ?.navigate(
-          'TenantApartment',
+      navigation.navigate(
+        'TenantApartment',
 
-          {
-            tenancyId:
-              apartment.tenancyId,
-          },
-        );
+        {
+          tenancyId:
+            apartment.tenancyId,
+        },
+      );
     };
 
   return (
@@ -204,6 +233,7 @@ export function TenantHomeScreen() {
       <Header
         title={t(
           'tenantMyRent',
+
           {
             defaultValue:
               'My rent',
@@ -211,6 +241,7 @@ export function TenantHomeScreen() {
         )}
         subtitle={t(
           'tenantMyRentSubtitle',
+
           {
             defaultValue:
               'Your rental apartments',
@@ -227,6 +258,7 @@ export function TenantHomeScreen() {
           >
             {t(
               'loadingApartments',
+
               {
                 defaultValue:
                   'Loading apartments...',
@@ -247,6 +279,7 @@ export function TenantHomeScreen() {
           >
             {t(
               'noActiveTenancy',
+
               {
                 defaultValue:
                   'No active tenancy',
@@ -261,6 +294,7 @@ export function TenantHomeScreen() {
           >
             {t(
               'tenantHomeEmpty',
+
               {
                 defaultValue:
                   'When you accept an apartment invitation, it will appear here.',
@@ -272,9 +306,16 @@ export function TenantHomeScreen() {
 
       {apartments.map(
         apartment => {
+          const checkout =
+            checkouts[
+              apartment.tenancyId
+            ];
+
           const checkoutPending =
+            checkout?.status ===
+              'PENDING' ||
             apartment.status ===
-            'CHECKOUT_PENDING';
+              'CHECKOUT_PENDING';
 
           const submission =
             getApartmentSubmissionStatus(
@@ -339,10 +380,11 @@ export function TenantHomeScreen() {
                   {checkoutPending ? (
                     <Badge
                       text={t(
-                        'pending',
+                        'checkoutPending',
+
                         {
                           defaultValue:
-                            'Pending',
+                            'Checkout',
                         },
                       )}
                       tone="warning"
@@ -366,6 +408,23 @@ export function TenantHomeScreen() {
                     styles.footer
                   }
                 >
+                  {checkoutPending ? (
+                    <Text
+                      style={
+                        styles.checkoutHint
+                      }
+                    >
+                      {t(
+                        'checkoutFinalReadingsRequired',
+
+                        {
+                          defaultValue:
+                            'Checkout is in progress. Submit final meter readings.',
+                        },
+                      )}
+                    </Text>
+                  ) : null}
+
                   {!checkoutPending &&
                   submission.state ===
                     'DUE' ? (
@@ -376,6 +435,7 @@ export function TenantHomeScreen() {
                     >
                       {t(
                         'tenantReadingsDueHint',
+
                         {
                           defaultValue:
                             'Send meter readings by the 5th.',
@@ -394,6 +454,7 @@ export function TenantHomeScreen() {
                     >
                       {t(
                         'tenantReadingsOverdueHint',
+
                         {
                           defaultValue:
                             'Meter readings are overdue.',
@@ -412,6 +473,7 @@ export function TenantHomeScreen() {
                     >
                       {t(
                         'tenantReadingsCompleteHint',
+
                         {
                           defaultValue:
                             'All readings for this month are submitted.',
@@ -420,7 +482,8 @@ export function TenantHomeScreen() {
                     </Text>
                   ) : null}
 
-                  {submission.state ===
+                  {!checkoutPending &&
+                  submission.state ===
                     'NOT_REQUIRED' ? (
                     <Text
                       style={
@@ -429,6 +492,7 @@ export function TenantHomeScreen() {
                     >
                       {t(
                         'tenantNoReadingsRequired',
+
                         {
                           defaultValue:
                             'No meter readings are required for this apartment.',
@@ -444,6 +508,7 @@ export function TenantHomeScreen() {
                   >
                     {t(
                       'openDetails',
+
                       {
                         defaultValue:
                           'Open details',
@@ -546,6 +611,20 @@ const styles =
 
       marginTop:
         4,
+    },
+
+    checkoutHint: {
+      color:
+        '#92400E',
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      fontWeight:
+        '700',
     },
 
     dueHint: {
