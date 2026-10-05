@@ -1,182 +1,237 @@
 import {
-  supabase,
-} from '../lib/supabase';
+  Meter,
+} from '../types';
+
+export type SubmissionState =
+  | 'COMPLETE'
+  | 'DUE'
+  | 'OVERDUE'
+  | 'NOT_REQUIRED';
 
 export interface MeterSubmissionStatus {
   meterId: string;
-
-  propertyId: string;
-
-  tenancyId: string;
-
-  billingPeriod: string;
-
-  requiredRegisterCount: number;
-
-  submittedRegisterCount: number;
-
-  requiredPhotoCount: number;
-
-  submittedPhotoCount: number;
-
-  submitted: boolean;
-
-  submittedAt?: string;
-
-  submittedByTenant: boolean;
+  state: SubmissionState;
+  submittedRegisters: number;
+  totalRegisters: number;
 }
 
-function requireSupabase() {
-  if (
-    !supabase
-  ) {
-    throw new Error(
-      'Supabase is not configured.',
-    );
+export interface ApartmentSubmissionStatus {
+  state: SubmissionState;
+  submittedMeters: number;
+  totalMeters: number;
+  meters: MeterSubmissionStatus[];
+}
+
+export function monthKey(
+  value?: string,
+) {
+  if (!value) {
+    return undefined;
   }
 
-  return supabase;
-}
-
-function asNumber(
-  value: unknown,
-): number {
-  const parsed =
-    Number(
-      value,
+  const match =
+    value.match(
+      /^(\d{4})-(\d{2})/,
     );
 
-  return Number.isFinite(
-    parsed,
-  )
-    ? parsed
-    : 0;
-}
-
-export async function loadMeterSubmissionStatuses(
-  propertyId?: string,
-): Promise<
-  MeterSubmissionStatus[]
-> {
-  const client =
-    requireSupabase();
-
-  const {
-    data,
-    error,
-  } =
-    await client.rpc(
-      'get_meter_submission_statuses',
-      {
-        p_property_id:
-          propertyId ??
-          null,
-      },
-    );
-
-  if (
-    error
-  ) {
-    throw error;
+  if (match) {
+    return `${match[1]}-${match[2]}`;
   }
 
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return undefined;
+  }
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1,
+  ).padStart(
+    2,
+    '0',
+  )}`;
+}
+
+export function currentMonthKey(
+  now =
+    new Date(),
+) {
+  return `${now.getFullYear()}-${String(
+    now.getMonth() + 1,
+  ).padStart(
+    2,
+    '0',
+  )}`;
+}
+
+function incompleteState(
+  now =
+    new Date(),
+): SubmissionState {
+  /*
+   * The regular submission window is the 1st through
+   * the 5th, inclusive. Starting on the 6th, an
+   * incomplete reading is overdue.
+   */
+  return now.getDate() <=
+    5
+    ? 'DUE'
+    : 'OVERDUE';
+}
+
+export function registerSubmittedThisMonth(
+  register:
+    Meter['registers'][number],
+
+  now =
+    new Date(),
+) {
+  /*
+   * billing_period is the source of truth.
+   *
+   * tenantPortalRepository reads it from
+   * v_latest_meter_register_readings and exposes it as
+   * lastBillingPeriod.
+   */
   return (
-    data ??
-    []
-  ).map(
-    (
-      row:
-        any,
-    ) => ({
+    monthKey(
+      register.lastBillingPeriod,
+    ) ===
+    currentMonthKey(
+      now,
+    )
+  );
+}
+
+export function getMeterSubmissionStatus(
+  meter:
+    Meter,
+
+  now =
+    new Date(),
+): MeterSubmissionStatus {
+  if (
+    meter.billingMode !==
+      'METERED' ||
+    meter.registers.length ===
+      0
+  ) {
+    return {
       meterId:
-        String(
-          row.meter_id,
-        ),
+        meter.id,
 
-      propertyId:
-        String(
-          row.property_id,
-        ),
+      state:
+        'NOT_REQUIRED',
 
-      tenancyId:
-        String(
-          row.tenancy_id,
-        ),
+      submittedRegisters:
+        0,
 
-      billingPeriod:
-        String(
-          row.billing_period,
-        ),
+      totalRegisters:
+        0,
+    };
+  }
 
-      requiredRegisterCount:
-        asNumber(
-          row.required_register_count,
+  const submittedRegisters =
+    meter.registers.filter(
+      register =>
+        registerSubmittedThisMonth(
+          register,
+          now,
         ),
+    ).length;
 
-      submittedRegisterCount:
-        asNumber(
-          row.submitted_register_count,
-        ),
+  const totalRegisters =
+    meter.registers.length;
 
-      requiredPhotoCount:
-        asNumber(
-          row.required_photo_count,
-        ),
+  return {
+    meterId:
+      meter.id,
 
-      submittedPhotoCount:
-        asNumber(
-          row.submitted_photo_count,
-        ),
+    state:
+      submittedRegisters ===
+      totalRegisters
+        ? 'COMPLETE'
+        : incompleteState(
+            now,
+          ),
 
-      submitted:
-        Boolean(
-          row.submitted,
-        ),
+    submittedRegisters,
 
-      submittedAt:
-        row.submitted_at
-          ? String(
-              row.submitted_at,
-            )
-          : undefined,
-
-      submittedByTenant:
-        Boolean(
-          row.submitted_by_tenant,
-        ),
-    }),
-  );
+    totalRegisters,
+  };
 }
 
-export function findMeterSubmissionStatus(
-  statuses:
-    MeterSubmissionStatus[],
+export function getApartmentSubmissionStatus(
+  meters:
+    Meter[],
 
-  meterId:
-    string,
-):
-  | MeterSubmissionStatus
-  | undefined {
-  return statuses.find(
-    status =>
-      status.meterId ===
-      meterId,
-  );
-}
-
-export function getCurrentMeterDueText():
-string {
-  const now =
-    new Date();
-
-  const month =
-    now.toLocaleDateString(
-      undefined,
-      {
-        month:
-          'short',
-      },
+  now =
+    new Date(),
+): ApartmentSubmissionStatus {
+  const metered =
+    meters.filter(
+      meter =>
+        meter.billingMode ===
+          'METERED' &&
+        meter.registers.length >
+          0,
     );
 
-  return `Send before 5 ${month}`;
+  if (
+    metered.length ===
+    0
+  ) {
+    return {
+      state:
+        'NOT_REQUIRED',
+
+      submittedMeters:
+        0,
+
+      totalMeters:
+        0,
+
+      meters:
+        [],
+    };
+  }
+
+  const meterStatuses =
+    metered.map(
+      meter =>
+        getMeterSubmissionStatus(
+          meter,
+          now,
+        ),
+    );
+
+  const submittedMeters =
+    meterStatuses.filter(
+      status =>
+        status.state ===
+        'COMPLETE',
+    ).length;
+
+  return {
+    state:
+      submittedMeters ===
+      metered.length
+        ? 'COMPLETE'
+        : incompleteState(
+            now,
+          ),
+
+    submittedMeters,
+
+    totalMeters:
+      metered.length,
+
+    meters:
+      meterStatuses,
+  };
 }

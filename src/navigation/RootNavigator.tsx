@@ -59,6 +59,14 @@ import {
 } from '../screens/TenantHomeScreen';
 
 import {
+  TenantApartmentScreen,
+} from '../screens/TenantApartmentScreen';
+
+import {
+  TenantStatisticsScreen,
+} from '../screens/TenantStatisticsScreen';
+
+import {
   ReadingsScreen,
 } from '../screens/ReadingsScreen';
 
@@ -144,8 +152,8 @@ const icons:
   Home:
     '⌂',
 
-  Readings:
-    '⌁',
+  Statistics:
+    '▥',
 };
 
 const linking = {
@@ -165,8 +173,11 @@ function TabIcon({
   routeName,
   focused,
 }: {
-  routeName: string;
-  focused: boolean;
+  routeName:
+    string;
+
+  focused:
+    boolean;
 }) {
   return (
     <Text
@@ -330,14 +341,18 @@ function TenantTabs() {
       />
 
       <Tab.Screen
-        name="Readings"
+        name="Statistics"
         component={
-          ReadingsScreen
+          TenantStatisticsScreen
         }
         options={{
           title:
             t(
-              'readings',
+              'statistics',
+              {
+                defaultValue:
+                  'Statistics',
+              },
             ),
         }}
       />
@@ -438,6 +453,28 @@ export function RootNavigator() {
               options={{
                 headerShown:
                   false,
+              }}
+            />
+
+            <Stack.Screen
+              name="TenantApartment"
+              component={
+                TenantApartmentScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="Readings"
+              component={
+                ReadingsScreen
+              }
+              options={{
+                title:
+                  '',
               }}
             />
 

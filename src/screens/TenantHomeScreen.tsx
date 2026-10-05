@@ -5,6 +5,7 @@ import React, {
 
 import {
   Alert,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -16,13 +17,23 @@ import {
 } from '@react-navigation/native';
 
 import {
+  useTranslation,
+} from 'react-i18next';
+
+import {
   Badge,
   Card,
   Header,
   Screen,
-  SecondaryButton,
-  SectionTitle,
 } from '../components/ui';
+
+import {
+  SubmissionStatusBadge,
+} from '../components/SubmissionStatusBadge';
+
+import {
+  getApartmentSubmissionStatus,
+} from '../services/meterSubmissionStatus';
 
 import {
   loadTenantApartments,
@@ -30,87 +41,63 @@ import {
 } from '../services/tenantPortalRepository';
 
 import {
-  loadTenantFinanceBalances,
-  TenantFinanceBalance,
-} from '../services/financeRepository';
-
-import {
   colors,
   spacing,
 } from '../theme';
 
-function formatDate(
-  value?: string,
-) {
-  if (!value) {
-    return '—';
-  }
+function submissionText(
+  state:
+    ReturnType<
+      typeof getApartmentSubmissionStatus
+    >['state'],
 
-  const date =
-    new Date(
-      `${value}T00:00:00`,
-    );
+  submitted:
+    number,
+
+  total:
+    number,
+) {
+  if (
+    state ===
+    'COMPLETE'
+  ) {
+    return total >
+      0
+      ? `${submitted}/${total} submitted`
+      : 'Submitted';
+  }
 
   if (
-    Number.isNaN(
-      date.getTime(),
-    )
+    state ===
+    'DUE'
   ) {
-    return value;
+    return total >
+      0
+      ? `${submitted}/${total} submitted`
+      : 'Readings due';
   }
 
-  return date.toLocaleDateString(
-    undefined,
-    {
-      day:
-        '2-digit',
-      month:
-        'short',
-      year:
-        'numeric',
-    },
-  );
-}
+  if (
+    state ===
+    'OVERDUE'
+  ) {
+    return total >
+      0
+      ? `${submitted}/${total} overdue`
+      : 'Overdue';
+  }
 
-function latestMeterText(
-  apartment:
-    TenantApartmentPortal,
-) {
-  const values =
-    apartment.meters
-      .filter(
-        meter =>
-          meter.billingMode ===
-          'METERED',
-      )
-      .flatMap(
-        meter =>
-          meter.registers
-            .filter(
-              register =>
-                register.lastValue !==
-                undefined,
-            )
-            .map(
-              register =>
-                `${meter.name}${
-                  meter.registers.length >
-                  1
-                    ? ` ${register.code}`
-                    : ''
-                }: ${register.lastValue} ${register.unit}`,
-            ),
-      );
-
-  return values.slice(
-    0,
-    3,
-  );
+  return 'No readings required';
 }
 
 export function TenantHomeScreen() {
   const navigation =
     useNavigation<any>();
+
+  const {
+    t,
+  } =
+    useTranslation();
 
   const [
     apartments,
@@ -119,17 +106,6 @@ export function TenantHomeScreen() {
     useState<
       TenantApartmentPortal[]
     >([]);
-
-  const [
-    balances,
-    setBalances,
-  ] =
-    useState<
-      Record<
-        string,
-        TenantFinanceBalance
-      >
-    >({});
 
   const [
     loading,
@@ -153,41 +129,38 @@ export function TenantHomeScreen() {
               const data =
                 await loadTenantApartments();
 
-              const finance =
-                await loadTenantFinanceBalances(
-                  data.map(
-                    apartment =>
-                      apartment.tenancyId,
-                  ),
-                );
-
-              if (active) {
+              if (
+                active
+              ) {
                 setApartments(
                   data,
                 );
-
-                setBalances(
-                  Object.fromEntries(
-                    finance.map(
-                      item => [
-                        item.tenancyId,
-                        item,
-                      ],
-                    ),
-                  ),
-                );
               }
-            } catch (error) {
-              if (active) {
+            } catch (
+              error
+            ) {
+              if (
+                active
+              ) {
                 Alert.alert(
-                  'Tenant home',
-                  error instanceof Error
+                  t(
+                    'home',
+                    {
+                      defaultValue:
+                        'Home',
+                    },
+                  ),
+
+                  error instanceof
+                  Error
                     ? error.message
-                    : 'Unable to load your apartment.',
+                    : 'Unable to load your apartments.',
                 );
               }
             } finally {
-              if (active) {
+              if (
+                active
+              ) {
                 setLoading(
                   false,
                 );
@@ -202,15 +175,47 @@ export function TenantHomeScreen() {
             false;
         };
       },
-      [],
+
+      [
+        t,
+      ],
     ),
   );
+
+  const openApartment =
+    (
+      apartment:
+        TenantApartmentPortal,
+    ) => {
+      navigation
+        .getParent()
+        ?.navigate(
+          'TenantApartment',
+
+          {
+            tenancyId:
+              apartment.tenancyId,
+          },
+        );
+    };
 
   return (
     <Screen>
       <Header
-        title="Home"
-        subtitle="Your rental apartments"
+        title={t(
+          'tenantMyRent',
+          {
+            defaultValue:
+              'My rent',
+          },
+        )}
+        subtitle={t(
+          'tenantMyRentSubtitle',
+          {
+            defaultValue:
+              'Your rental apartments',
+          },
+        )}
       />
 
       {loading ? (
@@ -220,7 +225,13 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            Loading apartment...
+            {t(
+              'loadingApartments',
+              {
+                defaultValue:
+                  'Loading apartments...',
+              },
+            )}
           </Text>
         </Card>
       ) : null}
@@ -234,7 +245,13 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            No active tenancy
+            {t(
+              'noActiveTenancy',
+              {
+                defaultValue:
+                  'No active tenancy',
+              },
+            )}
           </Text>
 
           <Text
@@ -242,36 +259,46 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            When you accept an apartment invitation, the rental
-            will appear here.
+            {t(
+              'tenantHomeEmpty',
+              {
+                defaultValue:
+                  'When you accept an apartment invitation, it will appear here.',
+              },
+            )}
           </Text>
         </Card>
       ) : null}
 
       {apartments.map(
         apartment => {
-          const latest =
-            latestMeterText(
-              apartment,
-            );
+          const checkoutPending =
+            apartment.status ===
+            'CHECKOUT_PENDING';
 
-          const financeBalance =
-            balances[
-              apartment.tenancyId
-            ];
-
-          const hasDebt =
-            Boolean(
-              financeBalance &&
-              financeBalance.outstanding >
-                0.009,
+          const submission =
+            getApartmentSubmissionStatus(
+              apartment.meters,
             );
 
           return (
-            <React.Fragment
+            <Pressable
               key={
                 apartment.tenancyId
               }
+              onPress={() =>
+                openApartment(
+                  apartment,
+                )
+              }
+              style={({
+                pressed,
+              }) => [
+                styles.pressable,
+
+                pressed &&
+                  styles.pressed,
+              ]}
             >
               <Card>
                 <View
@@ -309,399 +336,124 @@ export function TenantHomeScreen() {
                     </Text>
                   </View>
 
-                  <Badge
-                    text={
-                      hasDebt
-                        ? 'Debt'
-                        : 'Active'
-                    }
-                    tone={
-                      hasDebt
-                        ? 'warning'
-                        : 'success'
-                    }
-                  />
+                  {checkoutPending ? (
+                    <Badge
+                      text={t(
+                        'pending',
+                        {
+                          defaultValue:
+                            'Pending',
+                        },
+                      )}
+                      tone="warning"
+                    />
+                  ) : (
+                    <SubmissionStatusBadge
+                      state={
+                        submission.state
+                      }
+                      text={submissionText(
+                        submission.state,
+                        submission.submittedMeters,
+                        submission.totalMeters,
+                      )}
+                    />
+                  )}
                 </View>
 
                 <View
                   style={
-                    styles.separator
-                  }
-                />
-
-                <View
-                  style={
-                    styles.infoGrid
+                    styles.footer
                   }
                 >
-                  <View
-                    style={
-                      styles.infoCell
-                    }
-                  >
+                  {!checkoutPending &&
+                  submission.state ===
+                    'DUE' ? (
                     <Text
                       style={
-                        styles.label
+                        styles.dueHint
                       }
                     >
-                      Rent
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.value
-                      }
-                    >
-                      {
-                        apartment.rentAmount
-                      }{' '}
-                      {
-                        apartment.currency
-                      }
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.infoCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      Payment due
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.value
-                      }
-                    >
-                      Day{' '}
-                      {
-                        apartment.paymentDueDay
-                      }
-                    </Text>
-                  </View>
-                </View>
-
-                <View
-                  style={
-                    styles.infoGrid
-                  }
-                >
-                  <View
-                    style={
-                      styles.infoCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      Started
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.valueSmall
-                      }
-                    >
-                      {formatDate(
-                        apartment.startDate,
+                      {t(
+                        'tenantReadingsDueHint',
+                        {
+                          defaultValue:
+                            'Send meter readings by the 5th.',
+                        },
                       )}
                     </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.infoCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      End date
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.valueSmall
-                      }
-                    >
-                      {apartment.endDate
-                        ? formatDate(
-                            apartment.endDate,
-                          )
-                        : 'Open-ended'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View
-                  style={
-                    styles.balanceBox
-                  }
-                >
-                  <View
-                    style={
-                      styles.balanceRow
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.balanceLabel
-                      }
-                    >
-                      Debt
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.balanceValue,
-
-                        hasDebt &&
-                          styles.debtValue,
-                      ]}
-                    >
-                      {financeBalance
-                        ? `${financeBalance.outstanding.toLocaleString()} ${
-                            financeBalance.currency ??
-                            apartment.currency
-                          }`
-                        : '—'}
-                    </Text>
-                  </View>
-
-                  {financeBalance &&
-                  financeBalance.advance >
-                    0.009 ? (
-                    <View
-                      style={
-                        styles.balanceRow
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.balanceLabel
-                        }
-                      >
-                        Advance
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.advanceValue
-                        }
-                      >
-                        {financeBalance.advance.toLocaleString()}{' '}
-                        {financeBalance.currency ??
-                          apartment.currency}
-                      </Text>
-                    </View>
                   ) : null}
 
-                  {financeBalance &&
-                  financeBalance.openInvoices >
-                    0 ? (
+                  {!checkoutPending &&
+                  submission.state ===
+                    'OVERDUE' ? (
                     <Text
                       style={
-                        styles.balanceHint
+                        styles.overdueHint
                       }
                     >
-                      {financeBalance.openInvoices}{' '}
-                      open invoice
-                      {financeBalance.openInvoices ===
-                      1
-                        ? ''
-                        : 's'}
+                      {t(
+                        'tenantReadingsOverdueHint',
+                        {
+                          defaultValue:
+                            'Meter readings are overdue.',
+                        },
+                      )}
                     </Text>
                   ) : null}
-                </View>
 
-                {apartment.depositAmount !==
-                undefined ? (
-                  <View
-                    style={
-                      styles.deposit
-                    }
-                  >
+                  {!checkoutPending &&
+                  submission.state ===
+                    'COMPLETE' ? (
                     <Text
                       style={
-                        styles.label
+                        styles.completeHint
                       }
                     >
-                      Security deposit
+                      {t(
+                        'tenantReadingsCompleteHint',
+                        {
+                          defaultValue:
+                            'All readings for this month are submitted.',
+                        },
+                      )}
                     </Text>
+                  ) : null}
 
+                  {submission.state ===
+                    'NOT_REQUIRED' ? (
                     <Text
                       style={
-                        styles.valueSmall
+                        styles.muted
                       }
                     >
-                      {
-                        apartment.depositAmount
-                      }{' '}
-                      {apartment.depositCurrency ??
-                        apartment.currency}
+                      {t(
+                        'tenantNoReadingsRequired',
+                        {
+                          defaultValue:
+                            'No meter readings are required for this apartment.',
+                        },
+                      )}
                     </Text>
-                  </View>
-                ) : null}
-              </Card>
+                  ) : null}
 
-              <SectionTitle
-                title="Meters & services"
-              />
-
-              {apartment.meters.length ===
-              0 ? (
-                <Card>
                   <Text
                     style={
-                      styles.muted
+                      styles.openText
                     }
                   >
-                    No meters or services have been configured yet.
+                    {t(
+                      'openDetails',
+                      {
+                        defaultValue:
+                          'Open details',
+                      },
+                    )}{' '}
+                    ›
                   </Text>
-                </Card>
-              ) : (
-                <Card>
-                  {apartment.meters.map(
-                    (
-                      meter,
-                      index,
-                    ) => (
-                      <View
-                        key={
-                          meter.id
-                        }
-                      >
-                        {index >
-                        0 ? (
-                          <View
-                            style={
-                              styles.smallSeparator
-                            }
-                          />
-                        ) : null}
-
-                        <View
-                          style={
-                            styles.meterRow
-                          }
-                        >
-                          <View
-                            style={
-                              styles.flex
-                            }
-                          >
-                            <Text
-                              style={
-                                styles.meterName
-                              }
-                            >
-                              {
-                                meter.name
-                              }
-                            </Text>
-
-                            {meter.billingMode ===
-                            'FIXED' ? (
-                              <Text
-                                style={
-                                  styles.muted
-                                }
-                              >
-                                {
-                                  meter.fixedAmount
-                                }{' '}
-                                {
-                                  meter.billingCurrency
-                                }{' '}
-                                / month
-                              </Text>
-                            ) : null}
-
-                            {meter.billingMode ===
-                              'VARIABLE' &&
-                            meter.lastAmount !==
-                              undefined ? (
-                              <Text
-                                style={
-                                  styles.muted
-                                }
-                              >
-                                Last value:{' '}
-                                {
-                                  meter.lastAmount
-                                }{' '}
-                                {
-                                  meter.billingCurrency
-                                }
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          <Badge
-                            text={
-                              meter.billingMode ===
-                              'METERED'
-                                ? 'Meter'
-                                : meter.billingMode ===
-                                    'FIXED'
-                                  ? 'Fixed'
-                                  : 'Variable'
-                            }
-                            tone="neutral"
-                          />
-                        </View>
-                      </View>
-                    ),
-                  )}
-                </Card>
-              )}
-
-              {latest.length >
-              0 ? (
-                <>
-                  <SectionTitle
-                    title="Last readings"
-                  />
-
-                  <Card>
-                    {latest.map(
-                      (
-                        text,
-                        index,
-                      ) => (
-                        <Text
-                          key={`${text}-${index}`}
-                          style={
-                            styles.lastReading
-                          }
-                        >
-                          {text}
-                        </Text>
-                      ),
-                    )}
-                  </Card>
-                </>
-              ) : null}
-
-              <SecondaryButton
-                title="Open readings"
-                onPress={() =>
-                  navigation.navigate(
-                    'Readings',
-                  )
-                }
-              />
-            </React.Fragment>
+                </View>
+              </Card>
+            </Pressable>
           );
         },
       )}
@@ -711,6 +463,16 @@ export function TenantHomeScreen() {
 
 const styles =
   StyleSheet.create({
+    pressable: {
+      marginBottom:
+        spacing.sm,
+    },
+
+    pressed: {
+      opacity:
+        0.72,
+    },
+
     flex: {
       flex:
         1,
@@ -719,10 +481,13 @@ const styles =
     rowBetween: {
       flexDirection:
         'row',
+
       alignItems:
         'flex-start',
+
       justifyContent:
         'space-between',
+
       gap:
         spacing.md,
     },
@@ -730,8 +495,10 @@ const styles =
     propertyName: {
       color:
         colors.text,
+
       fontSize:
-        20,
+        19,
+
       fontWeight:
         '800',
     },
@@ -739,172 +506,86 @@ const styles =
     address: {
       color:
         colors.muted,
+
       fontSize:
         13,
+
       lineHeight:
         18,
+
       marginTop:
         4,
     },
 
-    separator: {
-      height:
-        StyleSheet.hairlineWidth,
-      backgroundColor:
-        colors.border,
-      marginVertical:
-        spacing.md,
-    },
-
-    smallSeparator: {
-      height:
-        StyleSheet.hairlineWidth,
-      backgroundColor:
-        colors.border,
-      marginVertical:
-        spacing.sm,
-    },
-
-    infoGrid: {
-      flexDirection:
-        'row',
-      gap:
-        spacing.md,
-      marginBottom:
-        spacing.md,
-    },
-
-    infoCell: {
-      flex:
-        1,
-    },
-
-    label: {
-      color:
-        colors.muted,
-      fontSize:
-        11,
-      fontWeight:
-        '700',
-      textTransform:
-        'uppercase',
-    },
-
-    value: {
-      color:
-        colors.text,
-      fontSize:
-        18,
-      fontWeight:
-        '800',
-      marginTop:
-        4,
-    },
-
-    valueSmall: {
-      color:
-        colors.text,
-      fontSize:
-        14,
-      fontWeight:
-        '700',
-      marginTop:
-        4,
-    },
-
-    balanceBox: {
+    footer: {
       borderTopWidth:
         StyleSheet.hairlineWidth,
+
       borderTopColor:
         colors.border,
+
+      marginTop:
+        spacing.md,
+
       paddingTop:
         spacing.md,
-      marginTop:
-        2,
+
       gap:
-        8,
+        6,
     },
 
-    balanceRow: {
-      flexDirection:
-        'row',
-      alignItems:
-        'center',
-      justifyContent:
-        'space-between',
-      gap:
-        spacing.md,
-    },
-
-    balanceLabel: {
-      color:
-        colors.muted,
-      fontSize:
-        12,
-      fontWeight:
-        '700',
-    },
-
-    balanceValue: {
-      color:
-        colors.text,
-      fontSize:
-        15,
-      fontWeight:
-        '800',
-    },
-
-    debtValue: {
-      color:
-        colors.text,
-    },
-
-    advanceValue: {
+    openText: {
       color:
         colors.primary,
+
       fontSize:
-        14,
+        13,
+
       fontWeight:
         '800',
-    },
 
-    balanceHint: {
-      color:
-        colors.muted,
-      fontSize:
-        11,
-    },
-
-    deposit: {
       marginTop:
-        spacing.md,
+        4,
     },
 
-    meterRow: {
-      flexDirection:
-        'row',
-      alignItems:
-        'center',
-      gap:
-        spacing.md,
-    },
-
-    meterName: {
+    dueHint: {
       color:
-        colors.text,
+        '#92400E',
+
       fontSize:
-        14,
+        12,
+
+      lineHeight:
+        18,
+
+      fontWeight:
+        '600',
+    },
+
+    overdueHint: {
+      color:
+        '#B42318',
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
       fontWeight:
         '700',
     },
 
-    lastReading: {
+    completeHint: {
       color:
-        colors.text,
+        '#166534',
+
       fontSize:
-        13,
+        12,
+
       lineHeight:
-        22,
+        18,
+
       fontWeight:
         '600',
     },
@@ -912,20 +593,25 @@ const styles =
     muted: {
       color:
         colors.muted,
+
       fontSize:
         12,
+
       lineHeight:
         18,
-      marginTop:
-        4,
     },
 
     emptyTitle: {
       color:
         colors.text,
+
       fontSize:
         16,
+
       fontWeight:
         '800',
+
+      marginBottom:
+        4,
     },
   });
