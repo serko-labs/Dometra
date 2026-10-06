@@ -47,8 +47,8 @@ import {
 } from '../screens/PropertiesScreen';
 
 import {
-  PaymentsScreen,
-} from '../screens/PaymentsScreen';
+  LandlordStatisticsScreen,
+} from '../screens/LandlordStatisticsScreen';
 
 import {
   SettingsScreen,
@@ -155,17 +155,14 @@ const icons:
   Properties:
     '▦',
 
-  Payments:
-    '$',
+  Statistics:
+    '▥',
 
   Settings:
     '⚙',
 
   Home:
     '⌂',
-
-  Statistics:
-    '▥',
 };
 
 const linking = {
@@ -256,6 +253,10 @@ function LandlordTabs() {
           title:
             t(
               'dashboard',
+              {
+                defaultValue:
+                  'Home',
+              },
             ),
         }}
       />
@@ -269,19 +270,27 @@ function LandlordTabs() {
           title:
             t(
               'properties',
+              {
+                defaultValue:
+                  'Properties',
+              },
             ),
         }}
       />
 
       <Tab.Screen
-        name="Payments"
+        name="Statistics"
         component={
-          PaymentsScreen
+          LandlordStatisticsScreen
         }
         options={{
           title:
             t(
-              'payments',
+              'statistics',
+              {
+                defaultValue:
+                  'Statistics',
+              },
             ),
         }}
       />
