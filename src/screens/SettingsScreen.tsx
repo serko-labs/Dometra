@@ -1,7 +1,10 @@
-import React from 'react';
+import React, {
+  useState,
+} from 'react';
 
 import {
   Alert,
+  Pressable,
   StyleSheet,
   Switch,
   Text,
@@ -19,11 +22,8 @@ import {
 import {
   Card,
   Header,
-  PrimaryButton,
   Screen,
-  SecondaryButton,
   SectionTitle,
-  TextButton,
 } from '../components/ui';
 
 import {
@@ -31,126 +31,345 @@ import {
 } from '../context/AppContext';
 
 import {
-  scheduleTestReminder,
-} from '../services/notifications';
-
-import {
   colors,
   spacing,
 } from '../theme';
 
 import {
+  AppMode,
   LanguageCode,
 } from '../types';
 
-const languageLabels:
-  Record<
+function languageName(
+  language:
     LanguageCode,
-    string
-  > = {
-  uk:
-    'Українська',
+) {
+  switch (
+    language
+  ) {
+    case 'uk':
+      return 'Українська';
 
-  ru:
-    'Русский',
+    case 'ru':
+      return 'Русский';
 
-  en:
-    'English',
+    case 'de':
+      return 'Deutsch';
 
-  de:
-    'Deutsch',
-};
+    case 'en':
+    default:
+      return 'English';
+  }
+}
+
+function ModeButton({
+  title,
+  selected,
+  onPress,
+}: {
+  title:
+    string;
+
+  selected:
+    boolean;
+
+  onPress:
+    () => void;
+}) {
+  return (
+    <Pressable
+      onPress={
+        onPress
+      }
+      style={({
+        pressed,
+      }) => [
+        styles.modeButton,
+
+        selected &&
+          styles.modeButtonSelected,
+
+        pressed &&
+          styles.pressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.modeButtonText,
+
+          selected &&
+            styles.modeButtonTextSelected,
+        ]}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
 
 export function SettingsScreen() {
+  const navigation =
+    useNavigation<any>();
+
   const {
     t,
   } =
     useTranslation();
 
-  const navigation =
-    useNavigation<any>();
-
   const {
     state,
     session,
     setMode,
-    logout,
     setPushEnabled,
+    logout,
   } =
     useApp();
 
-  const testNotification =
-    async () => {
-      try {
-        const ok =
-          await scheduleTestReminder();
+  const [
+    pushSaving,
+    setPushSaving,
+  ] =
+    useState(
+      false,
+    );
 
-        Alert.alert(
-          'Dometra',
-          ok
-            ? t(
-                'notificationScheduled',
-              )
-            : t(
-                'notificationPermissionDenied',
-              ),
+  const [
+    modeSaving,
+    setModeSaving,
+  ] =
+    useState(
+      false,
+    );
+
+  const changeMode =
+    async (
+      mode:
+        AppMode,
+    ) => {
+      if (
+        mode ===
+          state.settings
+            .activeMode ||
+        modeSaving
+      ) {
+        return;
+      }
+
+      setModeSaving(
+        true,
+      );
+
+      try {
+        await setMode(
+          mode,
         );
       } catch (
         error
       ) {
         Alert.alert(
           'Dometra',
-          error instanceof Error
+
+          error instanceof
+          Error
             ? error.message
-            : t(
-                'notificationPermissionDenied',
-              ),
+            : 'Unable to change app mode.',
+        );
+      } finally {
+        setModeSaving(
+          false,
         );
       }
+    };
+
+  const changePush =
+    async (
+      enabled:
+        boolean,
+    ) => {
+      if (
+        pushSaving
+      ) {
+        return;
+      }
+
+      setPushSaving(
+        true,
+      );
+
+      try {
+        await setPushEnabled(
+          enabled,
+        );
+      } catch (
+        error
+      ) {
+        Alert.alert(
+          t(
+            'notifications',
+            {
+              defaultValue:
+                'Notifications',
+            },
+          ),
+
+          error instanceof
+          Error
+            ? error.message
+            : 'Unable to update notification settings.',
+        );
+      } finally {
+        setPushSaving(
+          false,
+        );
+      }
+    };
+
+  const openLanguage =
+    () => {
+      navigation
+        .getParent()
+        ?.navigate(
+          'Language',
+        );
+    };
+
+  const confirmLogout =
+    () => {
+      Alert.alert(
+        t(
+          'signOut',
+          {
+            defaultValue:
+              'Sign out',
+          },
+        ),
+
+        t(
+          'signOutConfirm',
+          {
+            defaultValue:
+              'Are you sure you want to sign out?',
+          },
+        ),
+
+        [
+          {
+            text:
+              t(
+                'cancel',
+                {
+                  defaultValue:
+                    'Cancel',
+                },
+              ),
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              t(
+                'signOut',
+                {
+                  defaultValue:
+                    'Sign out',
+                },
+              ),
+
+            style:
+              'destructive',
+
+            onPress:
+              () => {
+                void logout();
+              },
+          },
+        ],
+      );
     };
 
   return (
     <Screen>
       <Header
-        title={
-          t(
-            'settings',
-          )
-        }
+        title={t(
+          'settings',
+          {
+            defaultValue:
+              'Settings',
+          },
+        )}
         subtitle={
-          session?.user
-            .email ??
-          ''
+          session?.user.email ??
+          undefined
         }
       />
 
       <SectionTitle
-        title={
-          t(
-            'roleMode',
-          )
-        }
+        title={t(
+          'appMode',
+          {
+            defaultValue:
+              'App mode',
+          },
+        )}
       />
 
       <Card>
-        <View
+        <Text
           style={
-            styles.segment
+            styles.sectionDescription
           }
         >
-          <SecondaryButton
-            title={`${state.settings.activeMode === 'LANDLORD' ? '✓ ' : ''}${t('landlord')}`}
+          {t(
+            'appModeDescription',
+            {
+              defaultValue:
+                'Switch between landlord and tenant views.',
+            },
+          )}
+        </Text>
+
+        <View
+          style={
+            styles.modeRow
+          }
+        >
+          <ModeButton
+            title={t(
+              'landlord',
+              {
+                defaultValue:
+                  'Landlord',
+              },
+            )}
+            selected={
+              state.settings
+                .activeMode ===
+              'LANDLORD'
+            }
             onPress={() =>
-              void setMode(
+              void changeMode(
                 'LANDLORD',
               )
             }
           />
 
-          <SecondaryButton
-            title={`${state.settings.activeMode === 'TENANT' ? '✓ ' : ''}${t('tenant')}`}
+          <ModeButton
+            title={t(
+              'tenant',
+              {
+                defaultValue:
+                  'Tenant',
+              },
+            )}
+            selected={
+              state.settings
+                .activeMode ===
+              'TENANT'
+            }
             onPress={() =>
-              void setMode(
+              void changeMode(
                 'TENANT',
               )
             }
@@ -159,101 +378,116 @@ export function SettingsScreen() {
       </Card>
 
       <SectionTitle
-        title={
-          t(
-            'language',
-          )
-        }
+        title={t(
+          'preferences',
+          {
+            defaultValue:
+              'Preferences',
+          },
+        )}
       />
 
       <Card>
-        <View
-          style={
-            styles.rowBetween
+        <Pressable
+          onPress={
+            openLanguage
           }
+          style={({
+            pressed,
+          }) => [
+            styles.settingRow,
+
+            pressed &&
+              styles.pressed,
+          ]}
         >
           <View
             style={
-              styles.flex
+              styles.settingContent
             }
           >
             <Text
               style={
-                styles.title
+                styles.settingTitle
               }
             >
               {t(
                 'language',
+                {
+                  defaultValue:
+                    'Language',
+                },
               )}
             </Text>
 
             <Text
               style={
-                styles.muted
+                styles.settingSubtitle
               }
             >
-              {
-                languageLabels[
-                  state.settings
-                    .language
-                ]
-              }
-              {' • '}
-              {state.settings.region}
+              {languageName(
+                state.settings
+                  .language,
+              )}
             </Text>
           </View>
 
-          <TextButton
-            title={
-              t(
-                'change',
-              )
+          <Text
+            style={
+              styles.chevron
             }
-            onPress={() =>
-              navigation.navigate(
-                'Language',
-              )
-            }
-          />
-        </View>
+          >
+            ›
+          </Text>
+        </Pressable>
       </Card>
 
       <SectionTitle
-        title={
-          t(
-            'notifications',
-          )
-        }
+        title={t(
+          'notifications',
+          {
+            defaultValue:
+              'Notifications',
+          },
+        )}
       />
 
       <Card>
         <View
           style={
-            styles.rowBetween
+            styles.settingRow
           }
         >
           <View
             style={
-              styles.flex
+              styles.settingContent
             }
           >
             <Text
               style={
-                styles.title
+                styles.settingTitle
               }
             >
               {t(
-                'push',
+                'pushNotifications',
+                {
+                  defaultValue:
+                    'Push notifications',
+                },
               )}
             </Text>
 
             <Text
               style={
-                styles.muted
+                styles.settingSubtitle
               }
             >
               {t(
-                'notificationDescription',
+                'pushNotificationsDescription',
+                {
+                  defaultValue:
+                    'Payment, meter reading, rent and tenancy updates.',
+                },
               )}
             </Text>
           </View>
@@ -263,79 +497,87 @@ export function SettingsScreen() {
               state.settings
                 .pushEnabled
             }
+            disabled={
+              pushSaving
+            }
             onValueChange={
-              value =>
-                void setPushEnabled(
-                  value,
+              enabled =>
+                void changePush(
+                  enabled,
                 )
-            }
-          />
-        </View>
-
-        <View
-          style={
-            styles.gapTop
-          }
-        >
-          <SecondaryButton
-            title={
-              t(
-                'pushTest',
-              )
-            }
-            onPress={() =>
-              void testNotification()
             }
           />
         </View>
       </Card>
 
       <SectionTitle
-        title={
-          t(
-            'account',
-          )
-        }
+        title={t(
+          'account',
+          {
+            defaultValue:
+              'Account',
+          },
+        )}
       />
 
       <Card>
-        <Text
-          style={
-            styles.title
+        <Pressable
+          onPress={
+            confirmLogout
           }
-        >
-          {session?.user
-            .email}
-        </Text>
+          style={({
+            pressed,
+          }) => [
+            styles.logoutRow,
 
-        <Text
-          style={
-            styles.muted
-          }
+            pressed &&
+              styles.pressed,
+          ]}
         >
-          {t(
-            'signedInWithSupabase',
-          )}
-        </Text>
+          <Text
+            style={
+              styles.logoutText
+            }
+          >
+            {t(
+              'signOut',
+              {
+                defaultValue:
+                  'Sign out',
+              },
+            )}
+          </Text>
+
+          <Text
+            style={
+              styles.logoutChevron
+            }
+          >
+            ›
+          </Text>
+        </Pressable>
       </Card>
-
-      <PrimaryButton
-        title={
-          t(
-            'logout',
-          )
-        }
-        onPress={() =>
-          void logout()
-        }
-      />
     </Screen>
   );
 }
 
 const styles =
   StyleSheet.create({
-    segment: {
+    sectionDescription: {
+      color:
+        colors.muted,
+
+      fontSize:
+        13,
+
+      lineHeight:
+        19,
+
+      marginBottom:
+        spacing.md,
+    },
+
+    modeRow: {
       flexDirection:
         'row',
 
@@ -343,26 +585,82 @@ const styles =
         spacing.sm,
     },
 
-    rowBetween: {
-      flexDirection:
-        'row',
+    modeButton: {
+      flex:
+        1,
 
-      justifyContent:
-        'space-between',
+      minHeight:
+        46,
 
       alignItems:
         'center',
+
+      justifyContent:
+        'center',
+
+      borderWidth:
+        1,
+
+      borderColor:
+        colors.border,
+
+      borderRadius:
+        12,
+
+      paddingHorizontal:
+        spacing.md,
+    },
+
+    modeButtonSelected: {
+      borderColor:
+        colors.primary,
+
+      backgroundColor:
+        `${colors.primary}12`,
+    },
+
+    modeButtonText: {
+      color:
+        colors.muted,
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '700',
+    },
+
+    modeButtonTextSelected: {
+      color:
+        colors.primary,
+
+      fontWeight:
+        '800',
+    },
+
+    settingRow: {
+      minHeight:
+        58,
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
 
       gap:
         spacing.md,
     },
 
-    flex: {
+    settingContent: {
       flex:
         1,
     },
 
-    title: {
+    settingTitle: {
       color:
         colors.text,
 
@@ -370,25 +668,69 @@ const styles =
         15,
 
       fontWeight:
-        '800',
+        '700',
     },
 
-    muted: {
+    settingSubtitle: {
       color:
         colors.muted,
 
       fontSize:
         12,
 
-      marginTop:
-        5,
-
       lineHeight:
-        17,
+        18,
+
+      marginTop:
+        3,
     },
 
-    gapTop: {
-      marginTop:
-        spacing.md,
+    chevron: {
+      color:
+        colors.muted,
+
+      fontSize:
+        24,
+
+      fontWeight:
+        '400',
+    },
+
+    logoutRow: {
+      minHeight:
+        52,
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+    },
+
+    logoutText: {
+      color:
+        '#B42318',
+
+      fontSize:
+        15,
+
+      fontWeight:
+        '700',
+    },
+
+    logoutChevron: {
+      color:
+        '#B42318',
+
+      fontSize:
+        24,
+    },
+
+    pressed: {
+      opacity:
+        0.65,
     },
   });

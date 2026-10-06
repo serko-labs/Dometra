@@ -2,20 +2,21 @@
   "expo": {
     "name": "Dometra",
     "slug": "dometra",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "scheme": "dometra",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.dometra"
+      "bundleIdentifier": "com.serkolabs.dometra"
     },
     "android": {
       "package": "com.example.dometra",
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#325BE6"
+      }
     },
     "plugins": [
       [
@@ -36,15 +37,11 @@
         "expo-build-properties",
         {
           "ios": {
+            "deploymentTarget": "17.0",
             "enableSceneSupport": true
           }
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "b0c857bf-adc5-425c-8bb9-5d657b6ca1d2"
-      }
-    }
+    ]
   }
 }

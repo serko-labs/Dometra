@@ -32,11 +32,10 @@ import {
 } from '../components/PaymentStatusBadge';
 
 import {
-  billingErrorMessage,
   currentBillingPeriod,
   getTenantPaymentState,
-  loadTenantBillingSummary,
-  TenantBillingSummary,
+  loadPaymentClaims,
+  TenantPaymentClaim,
 } from '../services/billingRepository';
 
 import {
@@ -50,105 +49,9 @@ import {
 } from '../services/tenantPortalRepository';
 
 import {
-  Meter,
-} from '../types';
-
-import {
   colors,
   spacing,
 } from '../theme';
-
-function isServiceSubmitted(
-  meter:
-    Meter,
-
-  billing:
-    TenantBillingSummary | undefined,
-) {
-  if (
-    meter.billingMode ===
-    'FIXED'
-  ) {
-    return true;
-  }
-
-  if (
-    !billing
-  ) {
-    return false;
-  }
-
-  const kind =
-    meter.billingMode ===
-    'METERED'
-      ? 'METERED'
-      : 'VARIABLE';
-
-  const lines =
-    billing.lines.filter(
-      line =>
-        line.kind ===
-          kind &&
-        line.propertyServiceId ===
-          meter.serviceId,
-    );
-
-  if (
-    lines.length ===
-    0
-  ) {
-    return false;
-  }
-
-  if (
-    meter.billingMode ===
-    'METERED'
-  ) {
-    return lines.every(
-      line =>
-        Boolean(
-          line.meterRegisterReadingId,
-        ),
-    );
-  }
-
-  return lines.every(
-    line =>
-      line.amount !==
-      undefined,
-  );
-}
-
-function submissionSummary(
-  apartment:
-    TenantApartmentPortal,
-
-  billing:
-    TenantBillingSummary | undefined,
-) {
-  const required =
-    apartment.meters.filter(
-      meter =>
-        meter.billingMode ===
-          'METERED' ||
-        meter.billingMode ===
-          'VARIABLE',
-    );
-
-  return {
-    total:
-      required.length,
-
-    submitted:
-      required.filter(
-        meter =>
-          isServiceSubmitted(
-            meter,
-            billing,
-          ),
-      ).length,
-  };
-}
 
 export function TenantHomeScreen() {
   const navigation =
@@ -168,6 +71,17 @@ export function TenantHomeScreen() {
     >([]);
 
   const [
+    paymentClaims,
+    setPaymentClaims,
+  ] =
+    useState<
+      Record<
+        string,
+        TenantPaymentClaim
+      >
+    >({});
+
+  const [
     checkouts,
     setCheckouts,
   ] =
@@ -179,17 +93,6 @@ export function TenantHomeScreen() {
     >({});
 
   const [
-    billingByTenancy,
-    setBillingByTenancy,
-  ] =
-    useState<
-      Record<
-        string,
-        TenantBillingSummary
-      >
-    >({});
-
-  const [
     loading,
     setLoading,
   ] =
@@ -197,123 +100,88 @@ export function TenantHomeScreen() {
       true,
     );
 
+  const reload =
+    useCallback(
+      async () => {
+        setLoading(
+          true,
+        );
+
+        try {
+          const apartmentData =
+            await loadTenantApartments();
+
+          const tenancyIds =
+            apartmentData.map(
+              apartment =>
+                apartment.tenancyId,
+            );
+
+          const billingPeriod =
+            currentBillingPeriod();
+
+          const [
+            claims,
+            checkoutData,
+          ] =
+            await Promise.all([
+              loadPaymentClaims(
+                tenancyIds,
+                billingPeriod,
+              ),
+
+              loadCheckoutSummaries(
+                tenancyIds,
+              ),
+            ]);
+
+          setApartments(
+            apartmentData,
+          );
+
+          setPaymentClaims(
+            claims,
+          );
+
+          setCheckouts(
+            checkoutData,
+          );
+        } catch (
+          error
+        ) {
+          Alert.alert(
+            t(
+              'home',
+              {
+                defaultValue:
+                  'Home',
+              },
+            ),
+
+            error instanceof
+            Error
+              ? error.message
+              : 'Unable to load your apartments.',
+          );
+        } finally {
+          setLoading(
+            false,
+          );
+        }
+      },
+      [
+        t,
+      ],
+    );
+
   useFocusEffect(
     useCallback(
       () => {
-        let active =
-          true;
-
-        const load =
-          async () => {
-            setLoading(
-              true,
-            );
-
-            try {
-              const data =
-                await loadTenantApartments();
-
-              const tenancyIds =
-                data.map(
-                  apartment =>
-                    apartment.tenancyId,
-                );
-
-              const [
-                checkoutData,
-                billingRows,
-              ] =
-                await Promise.all([
-                  loadCheckoutSummaries(
-                    tenancyIds,
-                  ),
-
-                  Promise.all(
-                    tenancyIds.map(
-                      tenancyId =>
-                        loadTenantBillingSummary(
-                          tenancyId,
-                          currentBillingPeriod(),
-                        ),
-                    ),
-                  ),
-                ]);
-
-              if (
-                !active
-              ) {
-                return;
-              }
-
-              const nextBilling:
-                Record<
-                  string,
-                  TenantBillingSummary
-                > = {};
-
-              for (
-                const billing
-                of billingRows
-              ) {
-                nextBilling[
-                  billing.tenancyId
-                ] =
-                  billing;
-              }
-
-              setApartments(
-                data,
-              );
-
-              setCheckouts(
-                checkoutData,
-              );
-
-              setBillingByTenancy(
-                nextBilling,
-              );
-            } catch (
-              error
-            ) {
-              if (
-                active
-              ) {
-                Alert.alert(
-                  t(
-                    'home',
-                    {
-                      defaultValue:
-                        'Home',
-                    },
-                  ),
-
-                  billingErrorMessage(
-                    error,
-                    'Unable to load your apartments.',
-                  ),
-                );
-              }
-            } finally {
-              if (
-                active
-              ) {
-                setLoading(
-                  false,
-                );
-              }
-            }
-          };
-
-        void load();
-
-        return () => {
-          active =
-            false;
-        };
+        void reload();
       },
 
       [
-        t,
+        reload,
       ],
     ),
   );
@@ -323,13 +191,16 @@ export function TenantHomeScreen() {
       apartment:
         TenantApartmentPortal,
     ) => {
-      navigation.navigate(
-        'TenantApartment',
-        {
-          tenancyId:
-            apartment.tenancyId,
-        },
-      );
+      navigation
+        .getParent()
+        ?.navigate(
+          'TenantApartment',
+
+          {
+            tenancyId:
+              apartment.tenancyId,
+          },
+        );
     };
 
   return (
@@ -358,7 +229,13 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            Loading apartments...
+            {t(
+              'loadingApartments',
+              {
+                defaultValue:
+                  'Loading apartments...',
+              },
+            )}
           </Text>
         </Card>
       ) : null}
@@ -372,7 +249,13 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            No active tenancy
+            {t(
+              'noActiveTenancy',
+              {
+                defaultValue:
+                  'No active tenancy',
+              },
+            )}
           </Text>
 
           <Text
@@ -380,7 +263,13 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            When you accept an apartment invitation, it will appear here.
+            {t(
+              'tenantHomeEmpty',
+              {
+                defaultValue:
+                  'When you accept an apartment invitation, it will appear here.',
+              },
+            )}
           </Text>
         </Card>
       ) : null}
@@ -394,36 +283,22 @@ export function TenantHomeScreen() {
 
           const checkoutPending =
             checkout?.status ===
-              'PENDING' ||
-            apartment.status ===
-              'CHECKOUT_PENDING';
+            'PENDING';
 
-          const billing =
-            billingByTenancy[
+          const claim =
+            paymentClaims[
               apartment.tenancyId
-            ];
+            ] ??
+            null;
 
           const paymentState =
             getTenantPaymentState(
-              billing?.claim ??
-                null,
+              claim,
 
               currentBillingPeriod(),
 
               apartment.paymentDueDay,
             );
-
-          const submission =
-            submissionSummary(
-              apartment,
-              billing,
-            );
-
-          const allSubmitted =
-            submission.total ===
-              0 ||
-            submission.submitted ===
-              submission.total;
 
           return (
             <Pressable
@@ -480,18 +355,12 @@ export function TenantHomeScreen() {
                     </Text>
                   </View>
 
-                  <View
-                    style={
-                      styles.badges
-                    }
-                  >
-                    {checkoutPending ? (
-                      <Badge
-                        text="Checkout"
-                        tone="warning"
-                      />
-                    ) : null}
-
+                  {checkoutPending ? (
+                    <Badge
+                      text="Checkout"
+                      tone="warning"
+                    />
+                  ) : (
                     <PaymentStatusBadge
                       state={
                         paymentState
@@ -500,14 +369,82 @@ export function TenantHomeScreen() {
                         paymentState ===
                         'PAID'
                           ? 'Paid'
-
                           : paymentState ===
                               'OVERDUE'
-                            ? 'Payment overdue'
-
-                            : 'Payment due'
+                            ? 'Overdue'
+                            : 'Pending'
                       }
                     />
+                  )}
+                </View>
+
+                <View
+                  style={
+                    styles.infoRow
+                  }
+                >
+                  <View
+                    style={
+                      styles.infoCell
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.label
+                      }
+                    >
+                      {t(
+                        'rent',
+                        {
+                          defaultValue:
+                            'Rent',
+                        },
+                      )}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.value
+                      }
+                    >
+                      {
+                        apartment.rentAmount
+                      }{' '}
+                      {
+                        apartment.currency
+                      }
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.infoCell
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.label
+                      }
+                    >
+                      {t(
+                        'paymentDue',
+                        {
+                          defaultValue:
+                            'Payment due',
+                        },
+                      )}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.value
+                      }
+                    >
+                      Day{' '}
+                      {
+                        apartment.paymentDueDay
+                      }
+                    </Text>
                   </View>
                 </View>
 
@@ -516,82 +453,19 @@ export function TenantHomeScreen() {
                     styles.footer
                   }
                 >
-                  <View
-                    style={
-                      styles.statusRow
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.statusLabel
-                      }
-                    >
-                      Monthly values
-                    </Text>
-
-                    <Badge
-                      text={
-                        allSubmitted
-                          ? 'Submitted'
-                          : `${submission.submitted}/${submission.total} submitted`
-                      }
-                      tone={
-                        allSubmitted
-                          ? 'success'
-                          : 'warning'
-                      }
-                    />
-                  </View>
-
-                  {checkoutPending ? (
-                    <Text
-                      style={
-                        styles.checkoutHint
-                      }
-                    >
-                      Checkout is in progress. Submit final meter readings.
-                    </Text>
-                  ) : null}
-
-                  {!checkoutPending &&
-                  !allSubmitted ? (
-                    <Text
-                      style={
-                        styles.dueHint
-                      }
-                    >
-                      Some meter readings or variable expenses are still missing.
-                    </Text>
-                  ) : null}
-
-                  {paymentState ===
-                  'OVERDUE' ? (
-                    <Text
-                      style={
-                        styles.overdueHint
-                      }
-                    >
-                      The monthly payment is overdue. Open the apartment to review the bill.
-                    </Text>
-                  ) : null}
-
-                  {paymentState ===
-                  'PAID' ? (
-                    <Text
-                      style={
-                        styles.completeHint
-                      }
-                    >
-                      Payment was marked as paid for this month.
-                    </Text>
-                  ) : null}
-
                   <Text
                     style={
                       styles.openText
                     }
                   >
-                    Open details ›
+                    {t(
+                      'openDetails',
+                      {
+                        defaultValue:
+                          'Open details',
+                      },
+                    )}{' '}
+                    ›
                   </Text>
                 </View>
               </Card>
@@ -634,14 +508,6 @@ const styles =
         spacing.md,
     },
 
-    badges: {
-      alignItems:
-        'flex-end',
-
-      gap:
-        6,
-    },
-
     propertyName: {
       color:
         colors.text,
@@ -667,7 +533,13 @@ const styles =
         4,
     },
 
-    footer: {
+    infoRow: {
+      flexDirection:
+        'row',
+
+      gap:
+        spacing.md,
+
       borderTopWidth:
         StyleSheet.hairlineWidth,
 
@@ -679,26 +551,14 @@ const styles =
 
       paddingTop:
         spacing.md,
-
-      gap:
-        6,
     },
 
-    statusRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        spacing.md,
+    infoCell: {
+      flex:
+        1,
     },
 
-    statusLabel: {
+    label: {
       color:
         colors.muted,
 
@@ -712,6 +572,25 @@ const styles =
         'uppercase',
     },
 
+    value: {
+      color:
+        colors.text,
+
+      fontSize:
+        15,
+
+      fontWeight:
+        '800',
+
+      marginTop:
+        4,
+    },
+
+    footer: {
+      marginTop:
+        spacing.md,
+    },
+
     openText: {
       color:
         colors.primary,
@@ -721,65 +600,6 @@ const styles =
 
       fontWeight:
         '800',
-
-      marginTop:
-        4,
-    },
-
-    checkoutHint: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '700',
-    },
-
-    dueHint: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
-    },
-
-    overdueHint: {
-      color:
-        '#B42318',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '700',
-    },
-
-    completeHint: {
-      color:
-        '#166534',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
     },
 
     muted: {

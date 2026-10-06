@@ -43,10 +43,6 @@ import {
 } from '../screens/DashboardScreen';
 
 import {
-  PropertiesScreen,
-} from '../screens/PropertiesScreen';
-
-import {
   LandlordStatisticsScreen,
 } from '../screens/LandlordStatisticsScreen';
 
@@ -77,6 +73,10 @@ import {
 import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
+
+import {
+  PropertyIconScreen,
+} from '../screens/PropertyIconScreen';
 
 import {
   ReadingsScreen,
@@ -152,17 +152,14 @@ const icons:
   Dashboard:
     '⌂',
 
-  Properties:
-    '▦',
+  Home:
+    '⌂',
 
   Statistics:
     '▥',
 
   Settings:
     '⚙',
-
-  Home:
-    '⌂',
 };
 
 const linking = {
@@ -192,12 +189,15 @@ function TabIcon({
     <Text
       style={{
         fontSize:
-          20,
+          25,
+
+        lineHeight:
+          28,
 
         opacity:
           focused
             ? 1
-            : 0.45,
+            : 0.5,
       }}
     >
       {icons[
@@ -205,6 +205,47 @@ function TabIcon({
       ] ?? '•'}
     </Text>
   );
+}
+
+function commonTabOptions(
+  route:
+    any,
+) {
+  return {
+    headerShown:
+      false,
+
+    tabBarActiveTintColor:
+      colors.primary,
+
+    tabBarInactiveTintColor:
+      colors.muted,
+
+    tabBarStyle:
+      styles.tabBar,
+
+    tabBarLabelStyle:
+      styles.tabBarLabel,
+
+    tabBarIconStyle:
+      styles.tabBarIcon,
+
+    tabBarIcon: ({
+      focused,
+    }: {
+      focused:
+        boolean;
+    }) => (
+      <TabIcon
+        routeName={
+          route.name
+        }
+        focused={
+          focused
+        }
+      />
+    ),
+  };
 }
 
 function LandlordTabs() {
@@ -217,32 +258,11 @@ function LandlordTabs() {
     <Tab.Navigator
       screenOptions={({
         route,
-      }) => ({
-        headerShown:
-          false,
-
-        tabBarActiveTintColor:
-          colors.primary,
-
-        tabBarInactiveTintColor:
-          colors.muted,
-
-        tabBarStyle:
-          styles.tabBar,
-
-        tabBarIcon: ({
-          focused,
-        }) => (
-          <TabIcon
-            routeName={
-              route.name
-            }
-            focused={
-              focused
-            }
-          />
-        ),
-      })}
+      }) =>
+        commonTabOptions(
+          route,
+        )
+      }
     >
       <Tab.Screen
         name="Dashboard"
@@ -252,27 +272,10 @@ function LandlordTabs() {
         options={{
           title:
             t(
-              'dashboard',
+              'home',
               {
                 defaultValue:
                   'Home',
-              },
-            ),
-        }}
-      />
-
-      <Tab.Screen
-        name="Properties"
-        component={
-          PropertiesScreen
-        }
-        options={{
-          title:
-            t(
-              'properties',
-              {
-                defaultValue:
-                  'Properties',
               },
             ),
         }}
@@ -304,6 +307,10 @@ function LandlordTabs() {
           title:
             t(
               'settings',
+              {
+                defaultValue:
+                  'Settings',
+              },
             ),
         }}
       />
@@ -321,32 +328,11 @@ function TenantTabs() {
     <Tab.Navigator
       screenOptions={({
         route,
-      }) => ({
-        headerShown:
-          false,
-
-        tabBarActiveTintColor:
-          colors.primary,
-
-        tabBarInactiveTintColor:
-          colors.muted,
-
-        tabBarStyle:
-          styles.tabBar,
-
-        tabBarIcon: ({
-          focused,
-        }) => (
-          <TabIcon
-            routeName={
-              route.name
-            }
-            focused={
-              focused
-            }
-          />
-        ),
-      })}
+      }) =>
+        commonTabOptions(
+          route,
+        )
+      }
     >
       <Tab.Screen
         name="Home"
@@ -357,6 +343,10 @@ function TenantTabs() {
           title:
             t(
               'home',
+              {
+                defaultValue:
+                  'Home',
+              },
             ),
         }}
       />
@@ -387,6 +377,10 @@ function TenantTabs() {
           title:
             t(
               'settings',
+              {
+                defaultValue:
+                  'Settings',
+              },
             ),
         }}
       />
@@ -503,6 +497,17 @@ export function RootNavigator() {
               name="VariableExpense"
               component={
                 VariableExpenseScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="PropertyIcon"
+              component={
+                PropertyIconScreen
               }
               options={{
                 title:
@@ -696,16 +701,32 @@ const styles =
   StyleSheet.create({
     tabBar: {
       height:
-        66,
+        82,
 
       paddingTop:
-        7,
+        9,
 
       paddingBottom:
-        8,
+        12,
 
       borderTopColor:
         colors.border,
+    },
+
+    tabBarLabel: {
+      fontSize:
+        12,
+
+      lineHeight:
+        16,
+
+      fontWeight:
+        '700',
+    },
+
+    tabBarIcon: {
+      marginTop:
+        2,
     },
 
     loader: {
