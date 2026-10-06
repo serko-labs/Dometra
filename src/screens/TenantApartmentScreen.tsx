@@ -1,5 +1,6 @@
 import React, {
   useCallback,
+  useMemo,
   useState,
 } from 'react';
 
@@ -24,14 +25,25 @@ import {
   Badge,
   Card,
   Header,
+  PrimaryButton,
   Screen,
   SecondaryButton,
   SectionTitle,
 } from '../components/ui';
 
 import {
-  SubmissionStatusBadge,
-} from '../components/SubmissionStatusBadge';
+  PaymentStatusBadge,
+} from '../components/PaymentStatusBadge';
+
+import {
+  BillingPreviewLine,
+  billingErrorMessage,
+  currentBillingPeriod,
+  getTenantPaymentState,
+  loadTenantBillingSummary,
+  reportTenantPayment,
+  TenantBillingSummary,
+} from '../services/billingRepository';
 
 import {
   loadTenancyCheckout,
@@ -42,11 +54,6 @@ import {
   loadTenantFinanceBalances,
   TenantFinanceBalance,
 } from '../services/financeRepository';
-
-import {
-  getApartmentSubmissionStatus,
-  getMeterSubmissionStatus,
-} from '../services/meterSubmissionStatus';
 
 import {
   loadTenantApartments,
@@ -94,7 +101,6 @@ function formatDate(
 
   return date.toLocaleDateString(
     undefined,
-
     {
       day:
         '2-digit',
@@ -130,40 +136,119 @@ function latestReadingText(
     );
 }
 
-function meterStatusText(
+function formatMoney(
+  value:
+    number,
+
+  currency:
+    string,
+) {
+  return `${value.toLocaleString(
+    undefined,
+    {
+      maximumFractionDigits:
+        2,
+    },
+  )} ${currency}`;
+}
+
+function billingLinesForMeter(
   meter:
     Meter,
+
+  billing:
+    TenantBillingSummary | null,
+): BillingPreviewLine[] {
+  if (
+    !billing
+  ) {
+    return [];
+  }
+
+  const kind =
+    meter.billingMode ===
+    'METERED'
+      ? 'METERED'
+      : meter.billingMode ===
+          'VARIABLE'
+        ? 'VARIABLE'
+        : 'FIXED';
+
+  return billing.lines.filter(
+    line =>
+      line.kind ===
+        kind &&
+      line.propertyServiceId ===
+        meter.serviceId,
+  );
+}
+
+function isMeterValueSubmitted(
+  meter:
+    Meter,
+
+  billing:
+    TenantBillingSummary | null,
 ) {
-  const status =
-    getMeterSubmissionStatus(
+  if (
+    meter.billingMode ===
+    'FIXED'
+  ) {
+    return true;
+  }
+
+  const lines =
+    billingLinesForMeter(
       meter,
+      billing,
     );
 
   if (
-    status.state ===
-    'COMPLETE'
+    lines.length ===
+    0
   ) {
-    return status.totalRegisters >
-      1
-      ? `${status.submittedRegisters}/${status.totalRegisters} submitted`
-      : 'Submitted';
+    return false;
   }
 
   if (
-    status.state ===
-    'DUE'
+    meter.billingMode ===
+    'METERED'
   ) {
-    return 'Due';
+    return lines.every(
+      line =>
+        Boolean(
+          line.meterRegisterReadingId,
+        ),
+    );
   }
 
+  return lines.every(
+    line =>
+      line.amount !==
+      undefined,
+  );
+}
+
+function serviceStatusText(
+  meter:
+    Meter,
+
+  billing:
+    TenantBillingSummary | null,
+) {
   if (
-    status.state ===
-    'OVERDUE'
+    meter.billingMode ===
+    'FIXED'
   ) {
-    return 'Overdue';
+    return 'Included';
   }
 
-  return 'Not required';
+  return isMeterValueSubmitted(
+    meter,
+    billing,
+  )
+    ? 'Submitted'
+    : 'Missing';
 }
 
 export function TenantApartmentScreen() {
@@ -209,6 +294,14 @@ export function TenantApartmentScreen() {
     >(null);
 
   const [
+    billing,
+    setBilling,
+  ] =
+    useState<
+      TenantBillingSummary | null
+    >(null);
+
+  const [
     loading,
     setLoading,
   ] =
@@ -216,117 +309,165 @@ export function TenantApartmentScreen() {
       true,
     );
 
-  useFocusEffect(
+  const [
+    paymentBusy,
+    setPaymentBusy,
+  ] =
+    useState(
+      false,
+    );
+
+  const reload =
     useCallback(
-      () => {
-        let active =
-          true;
+      async () => {
+        setLoading(
+          true,
+        );
 
-        const load =
-          async () => {
-            setLoading(
-              true,
+        try {
+          const apartments =
+            await loadTenantApartments();
+
+          const selected =
+            apartments.find(
+              item =>
+                item.tenancyId ===
+                tenancyId,
+            ) ??
+            null;
+
+          if (
+            !selected
+          ) {
+            throw new Error(
+              'Apartment not found.',
             );
+          }
 
-            try {
-              const apartments =
-                await loadTenantApartments();
+          const [
+            finance,
+            checkoutData,
+            billingData,
+          ] =
+            await Promise.all([
+              loadTenantFinanceBalances(
+                [
+                  selected.tenancyId,
+                ],
+              ),
 
-              const selected =
-                apartments.find(
-                  item =>
-                    item.tenancyId ===
-                    tenancyId,
-                ) ??
-                null;
+              loadTenancyCheckout(
+                selected.tenancyId,
+              ),
 
-              if (
-                !selected
-              ) {
-                throw new Error(
-                  'Apartment not found.',
-                );
-              }
+              loadTenantBillingSummary(
+                selected.tenancyId,
+                currentBillingPeriod(),
+              ),
+            ]);
 
-              const [
-                finance,
-                checkoutData,
-              ] =
-                await Promise.all([
-                  loadTenantFinanceBalances(
-                    [
-                      selected.tenancyId,
-                    ],
-                  ),
+          setApartment(
+            selected,
+          );
 
-                  loadTenancyCheckout(
-                    selected.tenancyId,
-                  ),
-                ]);
+          setBalance(
+            finance[0] ??
+            null,
+          );
 
-              if (
-                active
-              ) {
-                setApartment(
-                  selected,
-                );
+          setCheckout(
+            checkoutData,
+          );
 
-                setBalance(
-                  finance[0] ??
-                  null,
-                );
+          setBilling(
+            billingData,
+          );
+        } catch (
+          error
+        ) {
+          Alert.alert(
+            t(
+              'apartment',
+              {
+                defaultValue:
+                  'Apartment',
+              },
+            ),
 
-                setCheckout(
-                  checkoutData,
-                );
-              }
-            } catch (
-              error
-            ) {
-              if (
-                active
-              ) {
-                Alert.alert(
-                  t(
-                    'apartment',
-
-                    {
-                      defaultValue:
-                        'Apartment',
-                    },
-                  ),
-
-                  error instanceof
-                  Error
-                    ? error.message
-                    : 'Unable to load apartment.',
-                );
-              }
-            } finally {
-              if (
-                active
-              ) {
-                setLoading(
-                  false,
-                );
-              }
-            }
-          };
-
-        void load();
-
-        return () => {
-          active =
-            false;
-        };
+            billingErrorMessage(
+              error,
+              'Unable to load apartment.',
+            ),
+          );
+        } finally {
+          setLoading(
+            false,
+          );
+        }
       },
 
       [
         tenancyId,
         t,
       ],
+    );
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        void reload();
+      },
+
+      [
+        reload,
+      ],
     ),
   );
+
+  const submissionSummary =
+    useMemo(
+      () => {
+        if (
+          !apartment
+        ) {
+          return {
+            submitted:
+              0,
+
+            total:
+              0,
+          };
+        }
+
+        const requiredServices =
+          apartment.meters.filter(
+            meter =>
+              meter.billingMode ===
+                'METERED' ||
+              meter.billingMode ===
+                'VARIABLE',
+          );
+
+        return {
+          total:
+            requiredServices.length,
+
+          submitted:
+            requiredServices.filter(
+              meter =>
+                isMeterValueSubmitted(
+                  meter,
+                  billing,
+                ),
+            ).length,
+        };
+      },
+
+      [
+        apartment,
+        billing,
+      ],
+    );
 
   if (
     loading
@@ -334,22 +475,8 @@ export function TenantApartmentScreen() {
     return (
       <Screen>
         <Header
-          title={t(
-            'apartment',
-
-            {
-              defaultValue:
-                'Apartment',
-            },
-          )}
-          subtitle={t(
-            'loadingApartment',
-
-            {
-              defaultValue:
-                'Loading apartment...',
-            },
-          )}
+          title="Apartment"
+          subtitle="Loading apartment..."
         />
 
         <Card>
@@ -358,14 +485,7 @@ export function TenantApartmentScreen() {
               styles.muted
             }
           >
-            {t(
-              'loadingApartment',
-
-              {
-                defaultValue:
-                  'Loading apartment...',
-              },
-            )}
+            Loading apartment...
           </Text>
         </Card>
       </Screen>
@@ -378,14 +498,7 @@ export function TenantApartmentScreen() {
     return (
       <Screen>
         <Header
-          title={t(
-            'apartment',
-
-            {
-              defaultValue:
-                'Apartment',
-            },
-          )}
+          title="Apartment"
         />
 
         <Card>
@@ -394,14 +507,7 @@ export function TenantApartmentScreen() {
               styles.title
             }
           >
-            {t(
-              'apartmentNotFound',
-
-              {
-                defaultValue:
-                  'Apartment not found',
-              },
-            )}
+            Apartment not found
           </Text>
         </Card>
       </Screen>
@@ -413,11 +519,6 @@ export function TenantApartmentScreen() {
       'PENDING' ||
     apartment.status ===
       'CHECKOUT_PENDING';
-
-  const apartmentStatus =
-    getApartmentSubmissionStatus(
-      apartment.meters,
-    );
 
   const metered =
     apartment.meters.filter(
@@ -433,13 +534,142 @@ export function TenantApartmentScreen() {
         0.009,
     );
 
+  const paymentState =
+    getTenantPaymentState(
+      billing?.claim ??
+        null,
+
+      currentBillingPeriod(),
+
+      apartment.paymentDueDay,
+    );
+
+  const openMonthlyBill =
+    () => {
+      navigation.navigate(
+        'TenantBilling',
+        {
+          tenancyId:
+            apartment.tenancyId,
+
+          propertyName:
+            apartment.propertyName,
+
+          paymentDueDay:
+            apartment.paymentDueDay,
+
+          mode:
+            'TENANT',
+
+          billingPeriod:
+            currentBillingPeriod(),
+        },
+      );
+    };
+
+  const markPaid =
+    () => {
+      if (
+        paymentBusy ||
+        !billing ||
+        billing.claim ||
+        !billing.ready
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        'Mark as paid?',
+
+        'Use this only after you have actually paid the rent and all expenses for this month. Dometra will generate the invoice and notify the landlord.',
+
+        [
+          {
+            text:
+              'Cancel',
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              'Paid',
+
+            onPress:
+              async () => {
+                setPaymentBusy(
+                  true,
+                );
+
+                try {
+                  const result =
+                    await reportTenantPayment(
+                      {
+                        tenancyId:
+                          apartment.tenancyId,
+
+                        billingPeriod:
+                          currentBillingPeriod(),
+                      },
+                    );
+
+                  await reload();
+
+                  Alert.alert(
+                    'Payment recorded',
+
+                    result.invoices.length >
+                    1
+                      ? `${result.invoices.length} invoices were generated because this month contains different currencies.`
+                      : 'The invoice was generated and the landlord was notified.',
+
+                    [
+                      {
+                        text:
+                          'OK',
+                      },
+
+                      {
+                        text:
+                          'View bill',
+
+                        onPress:
+                          openMonthlyBill,
+                      },
+                    ],
+                  );
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to mark as paid',
+
+                    billingErrorMessage(
+                      error,
+                      'Unable to mark this bill as paid.',
+                    ),
+                  );
+                } finally {
+                  setPaymentBusy(
+                    false,
+                  );
+                }
+              },
+          },
+        ],
+      );
+    };
+
   return (
     <Screen>
       <Header
         title={
           apartment.propertyName
         }
-        subtitle={`${apartment.propertyAddress}, ${apartment.propertyCity}`}
+        subtitle={
+          `${apartment.propertyAddress}, ${apartment.propertyCity}`
+        }
       />
 
       <Card>
@@ -483,23 +713,26 @@ export function TenantApartmentScreen() {
               text="Checkout"
               tone="warning"
             />
-          ) : (
-            <SubmissionStatusBadge
-              state={
-                apartmentStatus.state
-              }
+          ) : submissionSummary.total >
+            0 ? (
+            <Badge
               text={
-                apartmentStatus.state ===
-                'COMPLETE'
-                  ? 'Readings sent'
-                  : apartmentStatus.state ===
-                      'DUE'
-                    ? 'Readings due'
-                    : apartmentStatus.state ===
-                        'OVERDUE'
-                      ? 'Overdue'
-                      : 'No readings'
+                submissionSummary.submitted ===
+                submissionSummary.total
+                  ? 'Submitted'
+                  : `${submissionSummary.submitted}/${submissionSummary.total} submitted`
               }
+              tone={
+                submissionSummary.submitted ===
+                submissionSummary.total
+                  ? 'success'
+                  : 'warning'
+              }
+            />
+          ) : (
+            <Badge
+              text="No inputs"
+              tone="neutral"
             />
           )}
         </View>
@@ -551,7 +784,6 @@ export function TenantApartmentScreen() {
               onPress={() =>
                 navigation.navigate(
                   'TenantCheckout',
-
                   {
                     tenancyId:
                       apartment.tenancyId,
@@ -564,14 +796,161 @@ export function TenantApartmentScreen() {
       ) : null}
 
       <SectionTitle
-        title={t(
-          'rentTerms',
+        title="Monthly payment"
+      />
 
-          {
-            defaultValue:
-              'Rent & tenancy',
-          },
+      <Card>
+        <View
+          style={
+            styles.rowBetween
+          }
+        >
+          <View
+            style={
+              styles.flex
+            }
+          >
+            <Text
+              style={
+                styles.title
+              }
+            >
+              Current month
+            </Text>
+
+            <Text
+              style={
+                styles.muted
+              }
+            >
+              Rent, metered utilities, fixed fees and variable expenses are included in this payment.
+            </Text>
+          </View>
+
+          <PaymentStatusBadge
+            state={
+              paymentState
+            }
+          />
+        </View>
+
+        {billing &&
+        !billing.ready &&
+        !billing.claim ? (
+          <Text
+            style={
+              styles.paymentWarning
+            }
+          >
+            {billing.missingCount}{' '}
+            billing item
+            {billing.missingCount ===
+            1
+              ? ''
+              : 's'}{' '}
+            still need a value or tariff before payment can be completed.
+          </Text>
+        ) : null}
+
+        {billing?.totals.map(
+          total => (
+            <View
+              key={
+                total.currency
+              }
+              style={
+                styles.paymentTotalRow
+              }
+            >
+              <Text
+                style={
+                  styles.label
+                }
+              >
+                Total{' '}
+                {
+                  total.currency
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.valueSmall
+                }
+              >
+                {formatMoney(
+                  total.total,
+                  total.currency,
+                )}
+              </Text>
+            </View>
+          ),
         )}
+
+        {!billing?.claim ? (
+          <View
+            style={
+              styles.buttonTop
+            }
+          >
+            <PrimaryButton
+              title={
+                paymentBusy
+                  ? 'Saving...'
+                  : 'Paid'
+              }
+              disabled={
+                paymentBusy ||
+                !billing?.ready
+              }
+              onPress={
+                markPaid
+              }
+            />
+          </View>
+        ) : null}
+
+        {!billing?.claim &&
+        !billing?.ready ? (
+          <Text
+            style={
+              styles.disabledHint
+            }
+          >
+            Paid becomes available after all required monthly values are present.
+          </Text>
+        ) : null}
+
+        {billing?.claim ? (
+          <Text
+            style={
+              styles.paidHint
+            }
+          >
+            You marked this month as paid. You can add or review payment proof in the bill details.
+          </Text>
+        ) : null}
+
+        <View
+          style={
+            styles.buttonTop
+          }
+        >
+          <SecondaryButton
+            title={
+              billing?.claim
+                ? 'View paid bill'
+                : 'View bill details'
+            }
+            onPress={
+              openMonthlyBill
+            }
+          />
+        </View>
+      </Card>
+
+      <SectionTitle
+        title="Rent & tenancy"
       />
 
       <Card>
@@ -590,14 +969,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'rent',
-
-                {
-                  defaultValue:
-                    'Rent',
-                },
-              )}
+              Rent
             </Text>
 
             <Text
@@ -624,14 +996,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'paymentDue',
-
-                {
-                  defaultValue:
-                    'Payment due',
-                },
-              )}
+              Payment due
             </Text>
 
             <Text
@@ -639,17 +1004,10 @@ export function TenantApartmentScreen() {
                 styles.value
               }
             >
-              {t(
-                'dayNumber',
-
-                {
-                  defaultValue:
-                    'Day {{day}}',
-
-                  day:
-                    apartment.paymentDueDay,
-                },
-              )}
+              Day{' '}
+              {
+                apartment.paymentDueDay
+              }
             </Text>
           </View>
         </View>
@@ -669,14 +1027,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'startDate',
-
-                {
-                  defaultValue:
-                    'Start date',
-                },
-              )}
+              Start date
             </Text>
 
             <Text
@@ -700,14 +1051,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'endDate',
-
-                {
-                  defaultValue:
-                    'End date',
-                },
-              )}
+              End date
             </Text>
 
             <Text
@@ -720,18 +1064,13 @@ export function TenantApartmentScreen() {
                 ? formatDate(
                     checkout.checkoutDate,
                   )
+
                 : apartment.endDate
                   ? formatDate(
                       apartment.endDate,
                     )
-                  : t(
-                      'openEnded',
 
-                      {
-                        defaultValue:
-                          'Open-ended',
-                      },
-                    )}
+                  : 'Open-ended'}
             </Text>
           </View>
         </View>
@@ -751,14 +1090,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'securityDeposit',
-
-                {
-                  defaultValue:
-                    'Security deposit',
-                },
-              )}
+              Security deposit
             </Text>
 
             <Text
@@ -772,6 +1104,7 @@ export function TenantApartmentScreen() {
                     apartment.depositCurrency ??
                     apartment.currency
                   }`
+
                 : '—'}
             </Text>
           </View>
@@ -786,14 +1119,7 @@ export function TenantApartmentScreen() {
                 styles.label
               }
             >
-              {t(
-                'agreement',
-
-                {
-                  defaultValue:
-                    'Agreement',
-                },
-              )}
+              Agreement
             </Text>
 
             <Text
@@ -802,36 +1128,15 @@ export function TenantApartmentScreen() {
               }
             >
               {apartment.agreementPath
-                ? t(
-                    'agreementAvailable',
-
-                    {
-                      defaultValue:
-                        'Available',
-                    },
-                  )
-                : t(
-                    'notAttached',
-
-                    {
-                      defaultValue:
-                        'Not attached',
-                    },
-                  )}
+                ? 'Available'
+                : 'Not attached'}
             </Text>
           </View>
         </View>
       </Card>
 
       <SectionTitle
-        title={t(
-          'paymentStatus',
-
-          {
-            defaultValue:
-              'Payment status',
-          },
-        )}
+        title="Financial balance"
       />
 
       <Card>
@@ -845,14 +1150,7 @@ export function TenantApartmentScreen() {
               styles.balanceLabel
             }
           >
-            {t(
-              'outstanding',
-
-              {
-                defaultValue:
-                  'Outstanding',
-              },
-            )}
+            Outstanding
           </Text>
 
           <Text
@@ -868,6 +1166,7 @@ export function TenantApartmentScreen() {
                   balance.currency ??
                   apartment.currency
                 }`
+
               : '—'}
           </Text>
         </View>
@@ -882,14 +1181,7 @@ export function TenantApartmentScreen() {
               styles.balanceLabel
             }
           >
-            {t(
-              'advance',
-
-              {
-                defaultValue:
-                  'Advance',
-              },
-            )}
+            Advance
           </Text>
 
           <Text
@@ -902,6 +1194,7 @@ export function TenantApartmentScreen() {
                   balance.currency ??
                   apartment.currency
                 }`
+
               : '—'}
           </Text>
         </View>
@@ -925,14 +1218,7 @@ export function TenantApartmentScreen() {
       </Card>
 
       <SectionTitle
-        title={t(
-          'metersAndServices',
-
-          {
-            defaultValue:
-              'Meters & services',
-          },
-        )}
+        title="Meters & services"
       />
 
       {apartment.meters.length ===
@@ -943,27 +1229,34 @@ export function TenantApartmentScreen() {
               styles.muted
             }
           >
-            {t(
-              'noMetersOrServices',
-
-              {
-                defaultValue:
-                  'No meters or services have been configured yet.',
-              },
-            )}
+            No meters or services have been configured yet.
           </Text>
         </Card>
       ) : (
         apartment.meters.map(
           meter => {
-            const status =
-              getMeterSubmissionStatus(
-                meter,
-              );
-
             const latest =
               latestReadingText(
                 meter,
+              );
+
+            const billingLines =
+              billingLinesForMeter(
+                meter,
+                billing,
+              );
+
+            const submitted =
+              isMeterValueSubmitted(
+                meter,
+                billing,
+              );
+
+            const variableLine =
+              billingLines.find(
+                line =>
+                  line.kind ===
+                  'VARIABLE',
               );
 
             return (
@@ -1028,51 +1321,47 @@ export function TenantApartmentScreen() {
                     ) : null}
 
                     {meter.billingMode ===
-                      'VARIABLE' &&
-                    meter.lastAmount !==
-                      undefined ? (
+                    'VARIABLE' ? (
                       <Text
                         style={
                           styles.muted
                         }
                       >
-                        Last amount:{' '}
-                        {
-                          meter.lastAmount
-                        }{' '}
-                        {
-                          meter.billingCurrency
-                        }
+                        {variableLine?.amount !==
+                        undefined
+                          ? `This month: ${formatMoney(
+                              variableLine.amount,
+                              variableLine.currency,
+                            )}`
+
+                          : 'Variable monthly expense not entered yet'}
                       </Text>
                     ) : null}
                   </View>
 
-                  {meter.billingMode ===
-                  'METERED' ? (
-                    checkoutPending ? (
-                      <Badge
-                        text="Final required"
-                        tone="warning"
-                      />
-                    ) : (
-                      <SubmissionStatusBadge
-                        state={
-                          status.state
-                        }
-                        text={meterStatusText(
-                          meter,
-                        )}
-                      />
-                    )
+                  {checkoutPending &&
+                  meter.billingMode ===
+                    'METERED' ? (
+                    <Badge
+                      text="Final required"
+                      tone="warning"
+                    />
                   ) : (
                     <Badge
                       text={
+                        serviceStatusText(
+                          meter,
+                          billing,
+                        )
+                      }
+                      tone={
                         meter.billingMode ===
                         'FIXED'
-                          ? 'Fixed'
-                          : 'Variable'
+                          ? 'neutral'
+                          : submitted
+                            ? 'success'
+                            : 'warning'
                       }
-                      tone="neutral"
                     />
                   )}
                 </View>
@@ -1090,14 +1379,7 @@ export function TenantApartmentScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'lastReadings',
-
-                        {
-                          defaultValue:
-                            'Last readings',
-                        },
-                      )}
+                      Last readings
                     </Text>
 
                     <Text
@@ -1107,6 +1389,44 @@ export function TenantApartmentScreen() {
                     >
                       {latest}
                     </Text>
+                  </View>
+                ) : null}
+
+                {meter.billingMode ===
+                'VARIABLE' ? (
+                  <View
+                    style={
+                      styles.buttonTop
+                    }
+                  >
+                    <SecondaryButton
+                      title={
+                        submitted
+                          ? 'Edit expense'
+                          : 'Enter expense'
+                      }
+                      onPress={() =>
+                        navigation.navigate(
+                          'VariableExpense',
+                          {
+                            tenancyId:
+                              apartment.tenancyId,
+
+                            propertyServiceId:
+                              meter.serviceId,
+
+                            serviceName:
+                              meter.name,
+
+                            currency:
+                              meter.billingCurrency,
+
+                            billingPeriod:
+                              currentBillingPeriod(),
+                          },
+                        )
+                      }
+                    />
                   </View>
                 ) : null}
               </Card>
@@ -1119,18 +1439,10 @@ export function TenantApartmentScreen() {
       metered.length >
         0 ? (
         <SecondaryButton
-          title={t(
-            'openReadings',
-
-            {
-              defaultValue:
-                'Open readings',
-            },
-          )}
+          title="Open readings"
           onPress={() =>
             navigation.navigate(
               'Readings',
-
               {
                 tenancyId:
                   apartment.tenancyId,
@@ -1223,6 +1535,74 @@ const styles =
 
       marginTop:
         spacing.sm,
+    },
+
+    paymentWarning: {
+      color:
+        '#92400E',
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      fontWeight:
+        '600',
+
+      marginTop:
+        spacing.md,
+    },
+
+    paymentTotalRow: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+
+      marginTop:
+        spacing.md,
+    },
+
+    disabledHint: {
+      color:
+        '#92400E',
+
+      fontSize:
+        11,
+
+      lineHeight:
+        17,
+
+      marginTop:
+        spacing.sm,
+
+      textAlign:
+        'center',
+    },
+
+    paidHint: {
+      color:
+        '#166534',
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      fontWeight:
+        '600',
+
+      marginTop:
+        spacing.md,
     },
 
     infoGrid: {

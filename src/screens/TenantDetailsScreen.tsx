@@ -28,6 +28,12 @@ import {
 } from '../components/ui';
 
 import {
+  currentBillingPeriod,
+  loadTenantBillingSummary,
+  TenantBillingSummary,
+} from '../services/billingRepository';
+
+import {
   loadTenancyCheckout,
   TenancyCheckout,
 } from '../services/checkoutRepository';
@@ -68,7 +74,6 @@ function formatDate(
 
   return date.toLocaleDateString(
     undefined,
-
     {
       day:
         '2-digit',
@@ -151,6 +156,14 @@ export function TenantDetailsScreen() {
     >(null);
 
   const [
+    billing,
+    setBilling,
+  ] =
+    useState<
+      TenantBillingSummary | null
+    >(null);
+
+  const [
     loading,
     setLoading,
   ] =
@@ -171,12 +184,43 @@ export function TenantDetailsScreen() {
               propertyId,
             );
 
-          const checkoutData =
-            data
-              ? await loadTenancyCheckout(
-                  data.id,
-                )
-              : null;
+          if (
+            !data
+          ) {
+            setTenancy(
+              null,
+            );
+
+            setCheckout(
+              null,
+            );
+
+            setBilling(
+              null,
+            );
+
+            return;
+          }
+
+          const [
+            checkoutData,
+            billingData,
+          ] =
+            await Promise.all([
+              loadTenancyCheckout(
+                data.id,
+              ),
+
+              data.status ===
+              'ACTIVE'
+                ? loadTenantBillingSummary(
+                    data.id,
+                    currentBillingPeriod(),
+                  )
+                : Promise.resolve(
+                    null,
+                  ),
+            ]);
 
           setTenancy(
             data,
@@ -184,6 +228,10 @@ export function TenantDetailsScreen() {
 
           setCheckout(
             checkoutData,
+          );
+
+          setBilling(
+            billingData,
           );
         } catch (
           error
@@ -276,9 +324,11 @@ export function TenantDetailsScreen() {
   const tenantName =
     tenancy.tenant
       ? `${tenancy.tenant.firstName} ${tenancy.tenant.lastName}`
+
       : tenancy.tenantType ===
           'INVITED'
         ? 'Invited tenant'
+
         : 'Tenant';
 
   const checkoutPending =
@@ -302,9 +352,11 @@ export function TenantDetailsScreen() {
             text={
               checkoutPending
                 ? 'Checkout'
+
                 : tenancy.status ===
                     'PENDING'
                   ? 'Pending'
+
                   : 'Active'
             }
             tone={
@@ -312,6 +364,7 @@ export function TenantDetailsScreen() {
               tenancy.status ===
                 'PENDING'
                 ? 'warning'
+
                 : 'success'
             }
           />
@@ -350,7 +403,6 @@ export function TenantDetailsScreen() {
               onPress={() =>
                 navigation.navigate(
                   'CheckoutTenant',
-
                   {
                     propertyId,
 
@@ -362,6 +414,108 @@ export function TenantDetailsScreen() {
             />
           </View>
         </Card>
+      ) : null}
+
+      {tenancy.status ===
+      'ACTIVE' ? (
+        <>
+          <SectionTitle
+            title="Monthly billing"
+          />
+
+          <Card>
+            <View
+              style={
+                styles.rowBetween
+              }
+            >
+              <View
+                style={
+                  styles.flex
+                }
+              >
+                <Text
+                  style={
+                    styles.title
+                  }
+                >
+                  Current month
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  Review rent, meter charges, fixed fees and variable expenses. Both landlord and linked tenant can enter variable expenses.
+                </Text>
+              </View>
+
+              <Badge
+                text={
+                  billing?.claim
+                    ? 'Paid'
+
+                    : billing?.ready
+                      ? 'Ready'
+
+                      : 'Preparing'
+                }
+                tone={
+                  billing?.claim
+                    ? 'success'
+                    : 'warning'
+                }
+              />
+            </View>
+
+            {billing &&
+            !billing.ready &&
+            !billing.claim ? (
+              <Text
+                style={
+                  styles.billingWarning
+                }
+              >
+                {billing.missingCount}{' '}
+                required billing item
+                {billing.missingCount ===
+                1
+                  ? ''
+                  : 's'}{' '}
+                still need data.
+              </Text>
+            ) : null}
+
+            <View
+              style={
+                styles.buttonTop
+              }
+            >
+              <SecondaryButton
+                title="Open monthly billing"
+                onPress={() =>
+                  navigation.navigate(
+                    'TenantBilling',
+                    {
+                      tenancyId:
+                        tenancy.id,
+
+                      paymentDueDay:
+                        tenancy.paymentDueDay,
+
+                      mode:
+                        'LANDLORD',
+
+                      billingPeriod:
+                        currentBillingPeriod(),
+                    },
+                  )
+                }
+              />
+            </View>
+          </Card>
+        </>
       ) : null}
 
       <SectionTitle
@@ -424,7 +578,8 @@ export function TenantDetailsScreen() {
               <Image
                 source={{
                   uri:
-                    tenancy.tenant.passportPhotoUri,
+                    tenancy.tenant
+                      .passportPhotoUri,
                 }}
                 style={
                   styles.document
@@ -451,9 +606,11 @@ export function TenantDetailsScreen() {
       <Card>
         <DetailRow
           label="Start date"
-          value={formatDate(
-            tenancy.startDate,
-          )}
+          value={
+            formatDate(
+              tenancy.startDate,
+            )
+          }
         />
 
         <DetailRow
@@ -463,24 +620,30 @@ export function TenantDetailsScreen() {
               ? formatDate(
                   checkout.checkoutDate,
                 )
+
               : tenancy.endDate
                 ? formatDate(
                     tenancy.endDate,
                   )
+
                 : 'Open-ended'
           }
         />
 
         <DetailRow
           label="Rent"
-          value={`${tenancy.rentAmount} ${tenancy.currency}`}
+          value={
+            `${tenancy.rentAmount} ${tenancy.currency}`
+          }
         />
 
         <DetailRow
           label="Payment due day"
-          value={String(
-            tenancy.paymentDueDay,
-          )}
+          value={
+            String(
+              tenancy.paymentDueDay,
+            )
+          }
         />
 
         <DetailRow
@@ -492,6 +655,7 @@ export function TenantDetailsScreen() {
                   tenancy.depositCurrency ??
                   tenancy.currency
                 }`
+
               : '—'
           }
         />
@@ -602,7 +766,6 @@ export function TenantDetailsScreen() {
           onPress={() =>
             navigation.navigate(
               'TenantProfile',
-
               {
                 mode:
                   'EDIT_MANUAL',
@@ -627,7 +790,6 @@ export function TenantDetailsScreen() {
             onPress={() =>
               navigation.navigate(
                 'CheckoutTenant',
-
                 {
                   propertyId,
 
@@ -661,6 +823,20 @@ const styles =
         1,
     },
 
+    rowBetween: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'flex-start',
+
+      justifyContent:
+        'space-between',
+
+      gap:
+        spacing.md,
+    },
+
     title: {
       color:
         colors.text,
@@ -681,6 +857,23 @@ const styles =
 
       fontWeight:
         '800',
+    },
+
+    billingWarning: {
+      color:
+        '#92400E',
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      fontWeight:
+        '600',
+
+      marginTop:
+        spacing.md,
     },
 
     detailRow: {

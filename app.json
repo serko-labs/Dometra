@@ -11,7 +11,11 @@
       "bundleIdentifier": "com.example.dometra"
     },
     "android": {
-      "package": "com.example.dometra"
+      "package": "com.example.dometra",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -27,7 +31,20 @@
         }
       ],
       "expo-localization",
-      "expo-notifications"
-    ]
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b0c857bf-adc5-425c-8bb9-5d657b6ca1d2"
+      }
+    }
   }
 }

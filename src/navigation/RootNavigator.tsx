@@ -71,6 +71,14 @@ import {
 } from '../screens/TenantCheckoutScreen';
 
 import {
+  TenantBillingScreen,
+} from '../screens/TenantBillingScreen';
+
+import {
+  VariableExpenseScreen,
+} from '../screens/VariableExpenseScreen';
+
+import {
   ReadingsScreen,
 } from '../screens/ReadingsScreen';
 
@@ -353,7 +361,6 @@ function TenantTabs() {
           title:
             t(
               'statistics',
-
               {
                 defaultValue:
                   'Statistics',
@@ -465,6 +472,28 @@ export function RootNavigator() {
               name="TenantApartment"
               component={
                 TenantApartmentScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="TenantBilling"
+              component={
+                TenantBillingScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="VariableExpense"
+              component={
+                VariableExpenseScreen
               }
               options={{
                 title:
