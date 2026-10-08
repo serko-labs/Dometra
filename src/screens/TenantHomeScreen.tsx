@@ -117,9 +117,6 @@ export function TenantHomeScreen() {
                 apartment.tenancyId,
             );
 
-          const billingPeriod =
-            currentBillingPeriod();
-
           const [
             claims,
             checkoutData,
@@ -127,7 +124,7 @@ export function TenantHomeScreen() {
             await Promise.all([
               loadPaymentClaims(
                 tenancyIds,
-                billingPeriod,
+                currentBillingPeriod(),
               ),
 
               loadCheckoutSummaries(
@@ -169,6 +166,7 @@ export function TenantHomeScreen() {
           );
         }
       },
+
       [
         t,
       ],
@@ -195,7 +193,6 @@ export function TenantHomeScreen() {
         .getParent()
         ?.navigate(
           'TenantApartment',
-
           {
             tenancyId:
               apartment.tenancyId,
@@ -229,13 +226,7 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            {t(
-              'loadingApartments',
-              {
-                defaultValue:
-                  'Loading apartments...',
-              },
-            )}
+            Loading apartments...
           </Text>
         </Card>
       ) : null}
@@ -249,13 +240,7 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            {t(
-              'noActiveTenancy',
-              {
-                defaultValue:
-                  'No active tenancy',
-              },
-            )}
+            No active tenancy
           </Text>
 
           <Text
@@ -263,13 +248,7 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            {t(
-              'tenantHomeEmpty',
-              {
-                defaultValue:
-                  'When you accept an apartment invitation, it will appear here.',
-              },
-            )}
+            When you accept an apartment invitation, it will appear here.
           </Text>
         </Card>
       ) : null}
@@ -369,10 +348,16 @@ export function TenantHomeScreen() {
                         paymentState ===
                         'PAID'
                           ? 'Paid'
+
                           : paymentState ===
-                              'OVERDUE'
-                            ? 'Overdue'
-                            : 'Pending'
+                              'AWAITING'
+                            ? 'Awaiting'
+
+                            : paymentState ===
+                                'OVERDUE'
+                              ? 'Overdue'
+
+                              : 'Pending'
                       }
                     />
                   )}
@@ -393,13 +378,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'rent',
-                        {
-                          defaultValue:
-                            'Rent',
-                        },
-                      )}
+                      Rent
                     </Text>
 
                     <Text
@@ -426,13 +405,7 @@ export function TenantHomeScreen() {
                         styles.label
                       }
                     >
-                      {t(
-                        'paymentDue',
-                        {
-                          defaultValue:
-                            'Payment due',
-                        },
-                      )}
+                      Payment due
                     </Text>
 
                     <Text
@@ -458,14 +431,7 @@ export function TenantHomeScreen() {
                       styles.openText
                     }
                   >
-                    {t(
-                      'openDetails',
-                      {
-                        defaultValue:
-                          'Open details',
-                      },
-                    )}{' '}
-                    ›
+                    Open details ›
                   </Text>
                 </View>
               </Card>

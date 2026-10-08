@@ -581,7 +581,7 @@ export function TenantApartmentScreen() {
       Alert.alert(
         'Mark as paid?',
 
-        'Use this only after you have actually paid the rent and all expenses for this month. Dometra will generate the invoice and notify the landlord.',
+        'Use this only after you have actually paid the rent and all expenses for this month. The landlord will be asked to confirm the payment.',
 
         [
           {
@@ -603,41 +603,22 @@ export function TenantApartmentScreen() {
                 );
 
                 try {
-                  const result =
-                    await reportTenantPayment(
-                      {
-                        tenancyId:
-                          apartment.tenancyId,
+                  await reportTenantPayment(
+                    {
+                      tenancyId:
+                        apartment.tenancyId,
 
-                        billingPeriod:
-                          currentBillingPeriod(),
-                      },
-                    );
+                      billingPeriod:
+                        currentBillingPeriod(),
+                    },
+                  );
 
                   await reload();
 
                   Alert.alert(
-                    'Payment recorded',
+                    'Payment reported',
 
-                    result.invoices.length >
-                    1
-                      ? `${result.invoices.length} invoices were generated because this month contains different currencies.`
-                      : 'The invoice was generated and the landlord was notified.',
-
-                    [
-                      {
-                        text:
-                          'OK',
-                      },
-
-                      {
-                        text:
-                          'View bill',
-
-                        onPress:
-                          openMonthlyBill,
-                      },
-                    ],
+                    'The landlord has been notified and will confirm the payment.',
                   );
                 } catch (
                   error
@@ -823,7 +804,7 @@ export function TenantApartmentScreen() {
                 styles.muted
               }
             >
-              Rent, metered utilities, fixed fees and variable expenses are included in this payment.
+              Rent, metered utilities, fixed fees and variable expenses.
             </Text>
           </View>
 
@@ -848,7 +829,7 @@ export function TenantApartmentScreen() {
             1
               ? ''
               : 's'}{' '}
-            still need a value or tariff before payment can be completed.
+            still need a value or tariff.
           </Text>
         ) : null}
 
@@ -910,38 +891,13 @@ export function TenantApartmentScreen() {
           </View>
         ) : null}
 
-        {!billing?.claim &&
-        !billing?.ready ? (
-          <Text
-            style={
-              styles.disabledHint
-            }
-          >
-            Paid becomes available after all required monthly values are present.
-          </Text>
-        ) : null}
-
-        {billing?.claim ? (
-          <Text
-            style={
-              styles.paidHint
-            }
-          >
-            You marked this month as paid. You can add or review payment proof in the bill details.
-          </Text>
-        ) : null}
-
         <View
           style={
             styles.buttonTop
           }
         >
           <SecondaryButton
-            title={
-              billing?.claim
-                ? 'View paid bill'
-                : 'View bill details'
-            }
+            title="View bill details"
             onPress={
               openMonthlyBill
             }
@@ -1198,23 +1154,6 @@ export function TenantApartmentScreen() {
               : '—'}
           </Text>
         </View>
-
-        {balance &&
-        balance.openInvoices >
-          0 ? (
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {balance.openInvoices}{' '}
-            open invoice
-            {balance.openInvoices ===
-            1
-              ? ''
-              : 's'}
-          </Text>
-        ) : null}
       </Card>
 
       <SectionTitle
@@ -1566,40 +1505,6 @@ const styles =
 
       gap:
         spacing.md,
-
-      marginTop:
-        spacing.md,
-    },
-
-    disabledHint: {
-      color:
-        '#92400E',
-
-      fontSize:
-        11,
-
-      lineHeight:
-        17,
-
-      marginTop:
-        spacing.sm,
-
-      textAlign:
-        'center',
-    },
-
-    paidHint: {
-      color:
-        '#166534',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
 
       marginTop:
         spacing.md,

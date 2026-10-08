@@ -28,10 +28,14 @@ export function PaymentStatusBadge({
         ? 'Paid'
 
         : state ===
-            'OVERDUE'
-          ? 'Payment overdue'
+            'AWAITING'
+          ? 'Awaiting confirmation'
 
-          : 'Payment due'
+          : state ===
+              'OVERDUE'
+            ? 'Payment overdue'
+
+            : 'Payment pending'
     );
 
   return (
@@ -42,6 +46,10 @@ export function PaymentStatusBadge({
         state ===
           'PAID' &&
           styles.paid,
+
+        state ===
+          'AWAITING' &&
+          styles.awaiting,
 
         state ===
           'DUE' &&
@@ -59,6 +67,10 @@ export function PaymentStatusBadge({
           state ===
             'PAID' &&
             styles.paidText,
+
+          state ===
+            'AWAITING' &&
+            styles.awaitingText,
 
           state ===
             'DUE' &&
@@ -107,6 +119,16 @@ const styles =
     paidText: {
       color:
         '#166534',
+    },
+
+    awaiting: {
+      backgroundColor:
+        '#FFEDD5',
+    },
+
+    awaitingText: {
+      color:
+        '#C2410C',
     },
 
     due: {

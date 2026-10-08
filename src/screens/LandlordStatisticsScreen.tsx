@@ -79,15 +79,11 @@ function collectionRate(
 function Metric({
   label,
   value,
-  hint,
 }: {
   label:
     string;
 
   value:
-    string;
-
-  hint?:
     string;
 }) {
   return (
@@ -111,16 +107,6 @@ function Metric({
       >
         {value}
       </Text>
-
-      {hint ? (
-        <Text
-          style={
-            styles.metricHint
-          }
-        >
-          {hint}
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -150,13 +136,10 @@ export function LandlordStatisticsScreen() {
         );
 
         try {
-          const data =
+          setStatistics(
             await loadLandlordPortfolioStatistics(
               currentBillingPeriod(),
-            );
-
-          setStatistics(
-            data,
+            ),
           );
         } catch (
           error
@@ -167,7 +150,7 @@ export function LandlordStatisticsScreen() {
             error instanceof
             Error
               ? error.message
-              : 'Unable to load landlord statistics.',
+              : 'Unable to load statistics.',
           );
         } finally {
           setLoading(
@@ -245,19 +228,19 @@ export function LandlordStatisticsScreen() {
               />
 
               <Metric
-                label="Vacant"
+                label="Paid"
                 value={
                   String(
-                    statistics.vacantProperties,
+                    statistics.paidProperties,
                   )
                 }
               />
 
               <Metric
-                label="Paid"
+                label="Awaiting"
                 value={
                   String(
-                    statistics.paidProperties,
+                    statistics.awaitingProperties,
                   )
                 }
               />
@@ -282,49 +265,9 @@ export function LandlordStatisticsScreen() {
             </View>
           </Card>
 
-          {statistics.incompleteBills >
-          0 ? (
-            <Card>
-              <Text
-                style={
-                  styles.warningTitle
-                }
-              >
-                Billing data incomplete
-              </Text>
-
-              <Text
-                style={
-                  styles.warningText
-                }
-              >
-                {statistics.incompleteBills}{' '}
-                occupied apartment
-                {statistics.incompleteBills ===
-                1
-                  ? ''
-                  : 's'}{' '}
-                still have missing readings, variable expenses or tariffs. Expected totals may increase after those values are entered.
-              </Text>
-            </Card>
-          ) : null}
-
           <SectionTitle
             title="This month"
           />
-
-          {statistics.currencies.length ===
-          0 ? (
-            <Card>
-              <Text
-                style={
-                  styles.muted
-                }
-              >
-                No monthly billing data yet.
-              </Text>
-            </Card>
-          ) : null}
 
           {statistics.currencies.map(
             stats => (
@@ -361,171 +304,131 @@ export function LandlordStatisticsScreen() {
 
                 <View
                   style={
-                    styles.metricRows
+                    styles.row
                   }
                 >
-                  <View
+                  <Text
                     style={
-                      styles.row
+                      styles.rowLabel
                     }
                   >
-                    <Text
-                      style={
-                        styles.rowLabel
-                      }
-                    >
-                      Expected this month
-                    </Text>
+                    Expected
+                  </Text>
 
-                    <Text
-                      style={
-                        styles.rowValue
-                      }
-                    >
-                      {money(
-                        stats.expected,
-                        stats.currency,
-                      )}
-                    </Text>
-                  </View>
-
-                  <View
+                  <Text
                     style={
-                      styles.row
+                      styles.rowValue
                     }
                   >
-                    <Text
-                      style={
-                        styles.rowLabel
-                      }
-                    >
-                      Received
-                    </Text>
+                    {money(
+                      stats.expected,
+                      stats.currency,
+                    )}
+                  </Text>
+                </View>
 
-                    <Text
-                      style={
-                        styles.receivedValue
-                      }
-                    >
-                      {money(
-                        stats.received,
-                        stats.currency,
-                      )}
-                    </Text>
-                  </View>
-
-                  <View
+                <View
+                  style={
+                    styles.row
+                  }
+                >
+                  <Text
                     style={
-                      styles.row
+                      styles.rowLabel
                     }
                   >
-                    <Text
-                      style={
-                        styles.rowLabel
-                      }
-                    >
-                      Pending
-                    </Text>
+                    Received
+                  </Text>
 
-                    <Text
-                      style={
-                        styles.pendingValue
-                      }
-                    >
-                      {money(
-                        stats.pending,
-                        stats.currency,
-                      )}
-                    </Text>
-                  </View>
-
-                  <View
+                  <Text
                     style={
-                      styles.row
+                      styles.receivedValue
                     }
                   >
-                    <Text
-                      style={
-                        styles.rowLabel
-                      }
-                    >
-                      Debt
-                    </Text>
+                    {money(
+                      stats.received,
+                      stats.currency,
+                    )}
+                  </Text>
+                </View>
 
-                    <Text
-                      style={
-                        styles.debtValue
-                      }
-                    >
-                      {money(
-                        stats.debt,
-                        stats.currency,
-                      )}
-                    </Text>
-                  </View>
+                <View
+                  style={
+                    styles.row
+                  }
+                >
+                  <Text
+                    style={
+                      styles.rowLabel
+                    }
+                  >
+                    Awaiting confirmation
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.awaitingValue
+                    }
+                  >
+                    {money(
+                      stats.awaiting,
+                      stats.currency,
+                    )}
+                  </Text>
+                </View>
+
+                <View
+                  style={
+                    styles.row
+                  }
+                >
+                  <Text
+                    style={
+                      styles.rowLabel
+                    }
+                  >
+                    Pending
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.pendingValue
+                    }
+                  >
+                    {money(
+                      stats.pending,
+                      stats.currency,
+                    )}
+                  </Text>
+                </View>
+
+                <View
+                  style={
+                    styles.row
+                  }
+                >
+                  <Text
+                    style={
+                      styles.rowLabel
+                    }
+                  >
+                    Debt
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.debtValue
+                    }
+                  >
+                    {money(
+                      stats.debt,
+                      stats.currency,
+                    )}
+                  </Text>
                 </View>
               </Card>
             ),
           )}
-
-          <SectionTitle
-            title="Rent forecast"
-          />
-
-          <Card>
-            <Text
-              style={
-                styles.muted
-              }
-            >
-              Contract rent expected from all currently occupied apartments. Utilities and variable expenses are not included in this forecast.
-            </Text>
-
-            {statistics.currencies.length ===
-            0 ? (
-              <Text
-                style={
-                  styles.emptyForecast
-                }
-              >
-                No active rent terms.
-              </Text>
-            ) : (
-              statistics.currencies.map(
-                stats => (
-                  <View
-                    key={
-                      stats.currency
-                    }
-                    style={
-                      styles.forecastRow
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.rowLabel
-                      }
-                    >
-                      {
-                        stats.currency
-                      }
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.forecastValue
-                      }
-                    >
-                      {money(
-                        stats.rentForecast,
-                        stats.currency,
-                      )}
-                    </Text>
-                  </View>
-                ),
-              )
-            )}
-          </Card>
         </>
       ) : null}
     </Screen>
@@ -593,29 +496,12 @@ const styles =
         6,
     },
 
-    metricHint: {
-      color:
-        colors.muted,
-
-      fontSize:
-        10,
-
-      marginTop:
-        3,
-    },
-
     currencyHeader: {
       flexDirection:
         'row',
 
-      alignItems:
-        'center',
-
       justifyContent:
         'space-between',
-
-      gap:
-        spacing.md,
 
       marginBottom:
         spacing.sm,
@@ -643,17 +529,9 @@ const styles =
         '800',
     },
 
-    metricRows: {
-      gap:
-        2,
-    },
-
     row: {
       flexDirection:
         'row',
-
-      alignItems:
-        'center',
 
       justifyContent:
         'space-between',
@@ -704,6 +582,17 @@ const styles =
         '900',
     },
 
+    awaitingValue: {
+      color:
+        '#C2410C',
+
+      fontSize:
+        15,
+
+      fontWeight:
+        '900',
+    },
+
     pendingValue: {
       color:
         '#92400E',
@@ -726,78 +615,11 @@ const styles =
         '900',
     },
 
-    forecastRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        spacing.md,
-
-      paddingTop:
-        spacing.md,
-    },
-
-    forecastValue: {
-      color:
-        colors.text,
-
-      fontSize:
-        18,
-
-      fontWeight:
-        '900',
-    },
-
-    warningTitle: {
-      color:
-        '#92400E',
-
-      fontSize:
-        14,
-
-      fontWeight:
-        '800',
-    },
-
-    warningText: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      marginTop:
-        4,
-    },
-
     muted: {
       color:
         colors.muted,
 
       fontSize:
         12,
-
-      lineHeight:
-        18,
-    },
-
-    emptyForecast: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      marginTop:
-        spacing.md,
     },
   });

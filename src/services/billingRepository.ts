@@ -18,7 +18,14 @@ export type BillingLineKind =
 export type TenantPaymentState =
   | 'DUE'
   | 'OVERDUE'
+  | 'AWAITING'
   | 'PAID';
+
+export type TenantPaymentClaimStatus =
+  | 'REPORTED'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'CANCELLED';
 
 export interface BillingPreviewLine {
   key: string;
@@ -55,8 +62,7 @@ export interface TenantPaymentClaim {
   billingPeriod: string;
 
   status:
-    | 'REPORTED'
-    | 'CANCELLED';
+    TenantPaymentClaimStatus;
 
   invoiceIds:
     string[];
@@ -73,6 +79,16 @@ export interface TenantPaymentClaim {
   reportedBy: string;
 
   reportedAt: string;
+
+  confirmedBy?: string;
+
+  confirmedAt?: string;
+
+  rejectedBy?: string;
+
+  rejectedAt?: string;
+
+  rejectionNote?: string;
 
   invoices:
     GeneratedInvoiceSummary[];
@@ -186,8 +202,7 @@ interface ClaimRow {
     string;
 
   status:
-    | 'REPORTED'
-    | 'CANCELLED';
+    TenantPaymentClaimStatus;
 
   invoice_ids:
     string[] | null;
@@ -206,6 +221,21 @@ interface ClaimRow {
 
   reported_at:
     string;
+
+  confirmed_by:
+    string | null;
+
+  confirmed_at:
+    string | null;
+
+  rejected_by:
+    string | null;
+
+  rejected_at:
+    string | null;
+
+  rejection_note:
+    string | null;
 }
 
 interface InvoiceRow {
@@ -255,6 +285,9 @@ interface ReportPaymentRpcResult {
   claimId:
     string;
 
+  claimStatus?:
+    TenantPaymentClaimStatus;
+
   alreadyReported:
     boolean;
 
@@ -267,6 +300,17 @@ interface ReportPaymentRpcResult {
         | number
         | string;
     }>;
+}
+
+interface ConfirmPaymentRpcResult {
+  claimId:
+    string;
+
+  alreadyConfirmed:
+    boolean;
+
+  paymentIds:
+    string[];
 }
 
 function requireSupabase() {
@@ -317,6 +361,7 @@ export function billingErrorMessage(
       value.message,
       value.details,
       value.hint,
+
       value.code
         ? `Code: ${String(
             value.code,
@@ -528,9 +573,16 @@ export function getTenantPaymentState(
 ): TenantPaymentState {
   if (
     claim?.status ===
-    'REPORTED'
+    'CONFIRMED'
   ) {
     return 'PAID';
+  }
+
+  if (
+    claim?.status ===
+    'REPORTED'
+  ) {
+    return 'AWAITING';
   }
 
   const due =
@@ -754,7 +806,7 @@ async function loadInvoicesForIds(
     (
       data ??
       []
-    ) as InvoiceRow[]
+    ) as unknown as InvoiceRow[]
   ).map(
     row => ({
       id:
@@ -833,6 +885,26 @@ async function mapClaim(
     reportedAt:
       row.reported_at,
 
+    confirmedBy:
+      row.confirmed_by ??
+      undefined,
+
+    confirmedAt:
+      row.confirmed_at ??
+      undefined,
+
+    rejectedBy:
+      row.rejected_by ??
+      undefined,
+
+    rejectedAt:
+      row.rejected_at ??
+      undefined,
+
+    rejectionNote:
+      row.rejection_note ??
+      undefined,
+
     invoices,
   };
 }
@@ -879,6 +951,11 @@ export async function loadPaymentClaims(
           'note',
           'reported_by',
           'reported_at',
+          'confirmed_by',
+          'confirmed_at',
+          'rejected_by',
+          'rejected_at',
+          'rejection_note',
         ].join(
           ',',
         ),
@@ -891,9 +968,12 @@ export async function loadPaymentClaims(
         'billing_period',
         billingPeriod,
       )
-      .eq(
+      .in(
         'status',
-        'REPORTED',
+        [
+          'REPORTED',
+          'CONFIRMED',
+        ],
       );
 
   if (
@@ -916,7 +996,7 @@ export async function loadPaymentClaims(
     of (
       data ??
       []
-    ) as ClaimRow[]
+    ) as unknown as ClaimRow[]
   ) {
     result[
       row.tenancy_id
@@ -999,7 +1079,7 @@ export async function loadTenantBillingSummary(
     (
       previewResult.data ??
       []
-    ) as PreviewRow[];
+    ) as unknown as PreviewRow[];
 
   const mappedLines:
     BillingPreviewLine[] =
@@ -1211,7 +1291,7 @@ export async function loadVariableExpense(
   }
 
   const row =
-    data as VariableExpenseRow;
+    data as unknown as VariableExpenseRow;
 
   return {
     id:
@@ -1409,7 +1489,7 @@ export async function reportTenantPayment(
       'object'
   ) {
     throw new Error(
-      'Payment was not saved because the server returned an invalid response.',
+      'The server returned an invalid payment response.',
     );
   }
 
@@ -1420,7 +1500,7 @@ export async function reportTenantPayment(
     !result.claimId
   ) {
     throw new Error(
-      'Payment was not saved because the server did not return a payment claim ID.',
+      'The server did not return a payment claim ID.',
     );
   }
 
@@ -1440,7 +1520,7 @@ export async function reportTenantPayment(
       notificationResult.error
     ) {
       console.warn(
-        '[Dometra] Payment was saved but landlord push notification failed:',
+        '[Dometra] Payment was saved but landlord notification failed:',
         billingErrorMessage(
           notificationResult.error,
         ),
@@ -1450,7 +1530,7 @@ export async function reportTenantPayment(
     notificationError
   ) {
     console.warn(
-      '[Dometra] Payment was saved but landlord push notification failed:',
+      '[Dometra] Payment was saved but landlord notification failed:',
       billingErrorMessage(
         notificationError,
       ),
@@ -1488,6 +1568,154 @@ export async function reportTenantPayment(
         }),
       ),
   };
+}
+
+export async function confirmTenantPayment(
+  params: {
+    claimId: string;
+    note?: string;
+  },
+) {
+  const client =
+    requireSupabase();
+
+  const {
+    data,
+    error,
+  } =
+    await client.rpc(
+      'confirm_tenant_payment',
+      {
+        p_claim_id:
+          params.claimId,
+
+        p_note:
+          params.note
+            ?.trim() ||
+          null,
+      },
+    );
+
+  if (
+    error
+  ) {
+    throwBillingError(
+      error,
+      'Unable to confirm payment.',
+    );
+  }
+
+  const result =
+    data as ConfirmPaymentRpcResult;
+
+  try {
+    const notificationResult =
+      await client.functions.invoke(
+        'notify-payment-status',
+        {
+          body: {
+            claimId:
+              params.claimId,
+
+            status:
+              'CONFIRMED',
+          },
+        },
+      );
+
+    if (
+      notificationResult.error
+    ) {
+      console.warn(
+        '[Dometra] Payment confirmed but tenant notification failed:',
+        billingErrorMessage(
+          notificationResult.error,
+        ),
+      );
+    }
+  } catch (
+    notificationError
+  ) {
+    console.warn(
+      '[Dometra] Payment confirmed but tenant notification failed:',
+      billingErrorMessage(
+        notificationError,
+      ),
+    );
+  }
+
+  return result;
+}
+
+export async function rejectTenantPayment(
+  params: {
+    claimId: string;
+    note?: string;
+  },
+) {
+  const client =
+    requireSupabase();
+
+  const {
+    error,
+  } =
+    await client.rpc(
+      'reject_tenant_payment',
+      {
+        p_claim_id:
+          params.claimId,
+
+        p_note:
+          params.note
+            ?.trim() ||
+          null,
+      },
+    );
+
+  if (
+    error
+  ) {
+    throwBillingError(
+      error,
+      'Unable to reject payment.',
+    );
+  }
+
+  try {
+    const notificationResult =
+      await client.functions.invoke(
+        'notify-payment-status',
+        {
+          body: {
+            claimId:
+              params.claimId,
+
+            status:
+              'REJECTED',
+          },
+        },
+      );
+
+    if (
+      notificationResult.error
+    ) {
+      console.warn(
+        '[Dometra] Payment rejected but tenant notification failed:',
+        billingErrorMessage(
+          notificationResult.error,
+        ),
+      );
+    }
+  } catch (
+    notificationError
+  ) {
+    console.warn(
+      '[Dometra] Payment rejected but tenant notification failed:',
+      billingErrorMessage(
+        notificationError,
+      ),
+    );
+  }
 }
 
 export async function attachTenantPaymentProof(

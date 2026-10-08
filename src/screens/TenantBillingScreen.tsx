@@ -25,7 +25,9 @@ import {
 import {
   Badge,
   Card,
+  Field,
   Header,
+  PrimaryButton,
   Screen,
   SecondaryButton,
   SectionTitle,
@@ -40,10 +42,12 @@ import {
   billingErrorMessage,
   billingMonthLabel,
   BillingPreviewLine,
+  confirmTenantPayment,
   currentBillingPeriod,
   getTenantPaymentState,
   loadTenantBillingSummary,
   paymentDueDate,
+  rejectTenantPayment,
   removeTenantPaymentProof,
   TenantBillingSummary,
 } from '../services/billingRepository';
@@ -198,6 +202,14 @@ export function TenantBillingScreen() {
     >(null);
 
   const [
+    landlordNote,
+    setLandlordNote,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
     loading,
     setLoading,
   ] =
@@ -347,6 +359,165 @@ export function TenantBillingScreen() {
       );
     };
 
+  const confirmPayment =
+    () => {
+      if (
+        busy ||
+        summary?.claim?.status !==
+          'REPORTED'
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        'Confirm payment?',
+
+        'This will create the real payment records, allocate them to the invoices and mark the invoices as paid.',
+
+        [
+          {
+            text:
+              'Cancel',
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              'Confirm',
+
+            onPress:
+              async () => {
+                setBusy(
+                  true,
+                );
+
+                try {
+                  await confirmTenantPayment(
+                    {
+                      claimId:
+                        summary.claim!.id,
+
+                      note:
+                        landlordNote,
+                    },
+                  );
+
+                  setLandlordNote(
+                    '',
+                  );
+
+                  await load();
+
+                  Alert.alert(
+                    'Payment confirmed',
+
+                    'The invoices are now paid and the tenant has been notified.',
+                  );
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to confirm payment',
+
+                    billingErrorMessage(
+                      error,
+                      'Unable to confirm payment.',
+                    ),
+                  );
+                } finally {
+                  setBusy(
+                    false,
+                  );
+                }
+              },
+          },
+        ],
+      );
+    };
+
+  const rejectPayment =
+    () => {
+      if (
+        busy ||
+        summary?.claim?.status !==
+          'REPORTED'
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        'Reject payment report?',
+
+        'The tenant payment report will be rejected and the bill will return to Pending or Delayed.',
+
+        [
+          {
+            text:
+              'Cancel',
+
+            style:
+              'cancel',
+          },
+
+          {
+            text:
+              'Reject',
+
+            style:
+              'destructive',
+
+            onPress:
+              async () => {
+                setBusy(
+                  true,
+                );
+
+                try {
+                  await rejectTenantPayment(
+                    {
+                      claimId:
+                        summary.claim!.id,
+
+                      note:
+                        landlordNote,
+                    },
+                  );
+
+                  setLandlordNote(
+                    '',
+                  );
+
+                  await load();
+
+                  Alert.alert(
+                    'Payment rejected',
+
+                    'The tenant has been notified.',
+                  );
+                } catch (
+                  error
+                ) {
+                  Alert.alert(
+                    'Unable to reject payment',
+
+                    billingErrorMessage(
+                      error,
+                      'Unable to reject payment.',
+                    ),
+                  );
+                } finally {
+                  setBusy(
+                    false,
+                  );
+                }
+              },
+          },
+        ],
+      );
+    };
+
   const pickPaymentProof =
     async (
       source:
@@ -485,7 +656,7 @@ export function TenantBillingScreen() {
       Alert.alert(
         'Remove payment proof?',
 
-        'The invoice and paid status will remain unchanged.',
+        'The payment report will remain unchanged.',
 
         [
           {
@@ -607,50 +778,8 @@ export function TenantBillingScreen() {
                 state={
                   paymentState
                 }
-                text={
-                  paymentState ===
-                  'PAID'
-                    ? 'Paid'
-
-                    : paymentState ===
-                        'OVERDUE'
-                      ? 'Overdue'
-
-                      : 'Due'
-                }
               />
             </View>
-
-            {!summary.ready &&
-            !summary.claim ? (
-              <View
-                style={
-                  styles.notice
-                }
-              >
-                <Text
-                  style={
-                    styles.noticeTitle
-                  }
-                >
-                  Bill is not ready yet
-                </Text>
-
-                <Text
-                  style={
-                    styles.noticeText
-                  }
-                >
-                  {summary.missingCount}{' '}
-                  billing item
-                  {summary.missingCount ===
-                  1
-                    ? ''
-                    : 's'}{' '}
-                  still need a value or tariff.
-                </Text>
-              </View>
-            ) : null}
           </Card>
 
           <SectionTitle
@@ -722,27 +851,6 @@ export function TenantBillingScreen() {
                           />
                         ) : null}
                       </View>
-
-                      {line.kind ===
-                        'METERED' &&
-                      line.quantity !==
-                        undefined &&
-                      line.unitPrice !==
-                        undefined ? (
-                        <Text
-                          style={
-                            styles.muted
-                          }
-                        >
-                          {line.quantity.toLocaleString()}{' '}
-                          {line.unit ?? ''}{' '}
-                          ×{' '}
-                          {formatMoney(
-                            line.unitPrice,
-                            line.currency,
-                          )}
-                        </Text>
-                      ) : null}
                     </View>
 
                     <View
@@ -765,7 +873,7 @@ export function TenantBillingScreen() {
                         </Text>
                       ) : (
                         <Badge
-                          text="Bill pending"
+                          text="Pending"
                           tone="warning"
                         />
                       )}
@@ -773,7 +881,8 @@ export function TenantBillingScreen() {
                   </View>
 
                   {line.kind ===
-                  'VARIABLE' ? (
+                  'VARIABLE' &&
+                  !summary.claim ? (
                     <View
                       style={
                         styles.buttonTop
@@ -797,7 +906,8 @@ export function TenantBillingScreen() {
                   {line.kind ===
                     'METERED' &&
                   !submitted &&
-                  line.meterId ? (
+                  line.meterId &&
+                  !summary.claim ? (
                     <View
                       style={
                         styles.buttonTop
@@ -823,17 +933,6 @@ export function TenantBillingScreen() {
           />
 
           <Card>
-            {summary.totals.length ===
-            0 ? (
-              <Text
-                style={
-                  styles.muted
-                }
-              >
-                No completed charge totals yet.
-              </Text>
-            ) : null}
-
             {summary.totals.map(
               total => (
                 <View
@@ -867,58 +966,17 @@ export function TenantBillingScreen() {
                 </View>
               ),
             )}
-
-            {summary.totals.length >
-            1 ? (
-              <Text
-                style={
-                  styles.currencyHint
-                }
-              >
-                Different currencies stay separate. Dometra does not combine USD, EUR and UAH into one total.
-              </Text>
-            ) : null}
           </Card>
-
-          {!summary.claim &&
-          mode ===
-            'TENANT' ? (
-            <Card>
-              <Text
-                style={
-                  styles.title
-                }
-              >
-                Payment action
-              </Text>
-
-              <Text
-                style={
-                  styles.muted
-                }
-              >
-                The Paid button is on the apartment screen. This screen is only for reviewing all bill components and attaching proof after payment.
-              </Text>
-
-              <View
-                style={
-                  styles.buttonTop
-                }
-              >
-                <SecondaryButton
-                  title="Back to apartment"
-                  onPress={() =>
-                    navigation.goBack()
-                  }
-                />
-              </View>
-            </Card>
-          ) : null}
 
           {summary.claim ? (
             <>
               <SectionTitle
-                title="Payment record"
+                title={
+                  mode ===
+                  'LANDLORD'
+                    ? 'Tenant payment'
+                    : 'Payment'
+                }
               />
 
               <Card>
@@ -937,7 +995,10 @@ export function TenantBillingScreen() {
                         styles.title
                       }
                     >
-                      Payment marked as paid
+                      {summary.claim.status ===
+                      'CONFIRMED'
+                        ? 'Payment confirmed'
+                        : 'Payment reported'}
                     </Text>
 
                     <Text
@@ -945,12 +1006,20 @@ export function TenantBillingScreen() {
                         styles.muted
                       }
                     >
-                      The landlord has been notified. This status is based on the tenant payment report.
+                      {summary.claim.status ===
+                      'CONFIRMED'
+                        ? 'The payment has been confirmed and allocated to the invoices.'
+                        : 'The tenant reported that this bill has been paid.'}
                     </Text>
                   </View>
 
                   <PaymentStatusBadge
-                    state="PAID"
+                    state={
+                      summary.claim.status ===
+                      'CONFIRMED'
+                        ? 'PAID'
+                        : 'AWAITING'
+                    }
                   />
                 </View>
 
@@ -984,7 +1053,6 @@ export function TenantBillingScreen() {
                             styles.muted
                           }
                         >
-                          Invoice ·{' '}
                           {
                             invoice.currency
                           }
@@ -1006,120 +1074,189 @@ export function TenantBillingScreen() {
                 )}
               </Card>
 
-              {mode ===
-              'TENANT' ? (
-                <Card>
-                  <Text
+              <Card>
+                <Text
+                  style={
+                    styles.title
+                  }
+                >
+                  Payment proof
+                </Text>
+
+                {summary.claim.proofUri ? (
+                  <Image
+                    source={{
+                      uri:
+                        summary.claim
+                          .proofUri,
+                    }}
                     style={
-                      styles.title
+                      styles.proofPhoto
                     }
-                  >
-                    Payment proof
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.muted
-                    }
-                  >
-                    Optional. Add a screenshot, receipt, bank transfer confirmation or photo of the payment document.
-                  </Text>
-
-                  {summary.claim.proofUri ? (
-                    <Image
-                      source={{
-                        uri:
-                          summary.claim
-                            .proofUri,
-                      }}
-                      style={
-                        styles.proofPhoto
-                      }
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View
-                      style={
-                        styles.emptyProof
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.emptyProofIcon
-                        }
-                      >
-                        ▧
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.emptyProofText
-                        }
-                      >
-                        No payment proof attached
-                      </Text>
-                    </View>
-                  )}
-
+                    resizeMode="cover"
+                  />
+                ) : (
                   <View
                     style={
-                      styles.proofActions
+                      styles.emptyProof
                     }
                   >
-                    <View
+                    <Text
                       style={
-                        styles.flex
+                        styles.emptyProofText
                       }
                     >
-                      <SecondaryButton
-                        title={
-                          summary.claim
-                            .proofUri
-                            ? 'Retake'
-                            : 'Take photo'
-                        }
-                        onPress={() =>
-                          void pickPaymentProof(
-                            'CAMERA',
-                          )
-                        }
-                      />
-                    </View>
-
-                    <View
-                      style={
-                        styles.flex
-                      }
-                    >
-                      <SecondaryButton
-                        title="Gallery"
-                        onPress={() =>
-                          void pickPaymentProof(
-                            'GALLERY',
-                          )
-                        }
-                      />
-                    </View>
+                      No proof attached
+                    </Text>
                   </View>
+                )}
 
-                  {summary.claim.proofPath ? (
-                    <Pressable
-                      onPress={
-                        removePaymentProof
+                {mode ===
+                'TENANT' ? (
+                  <>
+                    <View
+                      style={
+                        styles.proofActions
                       }
                     >
-                      <Text
+                      <View
                         style={
-                          styles.removeProof
+                          styles.flex
                         }
                       >
-                        Remove proof
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </Card>
-              ) : null}
+                        <SecondaryButton
+                          title="Take photo"
+                          onPress={() =>
+                            void pickPaymentProof(
+                              'CAMERA',
+                            )
+                          }
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.flex
+                        }
+                      >
+                        <SecondaryButton
+                          title="Gallery"
+                          onPress={() =>
+                            void pickPaymentProof(
+                              'GALLERY',
+                            )
+                          }
+                        />
+                      </View>
+                    </View>
+
+                    {summary.claim.proofPath ? (
+                      <Pressable
+                        onPress={
+                          removePaymentProof
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.removeProof
+                          }
+                        >
+                          Remove proof
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : null}
+              </Card>
             </>
+          ) : null}
+
+          {mode ===
+            'LANDLORD' &&
+          summary.claim?.status ===
+            'REPORTED' ? (
+            <>
+              <SectionTitle
+                title="Confirmation"
+              />
+
+              <Card>
+                <Text
+                  style={
+                    styles.title
+                  }
+                >
+                  Did you receive this payment?
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  Confirm only after the money has actually been received.
+                </Text>
+
+                <Field
+                  label="Note"
+                  value={
+                    landlordNote
+                  }
+                  onChangeText={
+                    setLandlordNote
+                  }
+                  placeholder="Optional confirmation or rejection note"
+                  editable={
+                    !busy
+                  }
+                  multiline
+                />
+
+                <PrimaryButton
+                  title={
+                    busy
+                      ? 'Saving...'
+                      : 'Confirm payment'
+                  }
+                  disabled={
+                    busy
+                  }
+                  onPress={
+                    confirmPayment
+                  }
+                />
+
+                <Pressable
+                  onPress={
+                    rejectPayment
+                  }
+                  style={
+                    styles.rejectButton
+                  }
+                >
+                  <Text
+                    style={
+                      styles.rejectText
+                    }
+                  >
+                    Reject / Not received
+                  </Text>
+                </Pressable>
+              </Card>
+            </>
+          ) : null}
+
+          {mode ===
+            'TENANT' &&
+          !summary.claim ? (
+            <Card>
+              <SecondaryButton
+                title="Back to apartment"
+                onPress={() =>
+                  navigation.goBack()
+                }
+              />
+            </Card>
           ) : null}
         </>
       ) : null}
@@ -1184,45 +1321,6 @@ const styles =
         4,
     },
 
-    notice: {
-      marginTop:
-        spacing.md,
-
-      padding:
-        spacing.md,
-
-      borderRadius:
-        radius.sm,
-
-      backgroundColor:
-        '#FEF3C7',
-    },
-
-    noticeTitle: {
-      color:
-        '#92400E',
-
-      fontSize:
-        13,
-
-      fontWeight:
-        '800',
-    },
-
-    noticeText: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      marginTop:
-        3,
-    },
-
     lineTitleRow: {
       flexDirection:
         'row',
@@ -1262,9 +1360,6 @@ const styles =
 
       fontWeight:
         '900',
-
-      textAlign:
-        'right',
     },
 
     buttonTop: {
@@ -1278,9 +1373,6 @@ const styles =
 
       justifyContent:
         'space-between',
-
-      alignItems:
-        'center',
 
       paddingVertical:
         10,
@@ -1314,26 +1406,9 @@ const styles =
         '900',
     },
 
-    currencyHint: {
-      color:
-        colors.muted,
-
-      fontSize:
-        11,
-
-      lineHeight:
-        17,
-
-      marginTop:
-        spacing.md,
-    },
-
     invoiceRow: {
       flexDirection:
         'row',
-
-      alignItems:
-        'center',
 
       justifyContent:
         'space-between',
@@ -1395,7 +1470,13 @@ const styles =
 
     emptyProof: {
       height:
-        150,
+        120,
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
 
       borderWidth:
         1,
@@ -1409,25 +1490,8 @@ const styles =
       borderRadius:
         radius.sm,
 
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      gap:
-        6,
-
       marginVertical:
         spacing.md,
-    },
-
-    emptyProofIcon: {
-      color:
-        colors.muted,
-
-      fontSize:
-        30,
     },
 
     emptyProofText: {
@@ -1464,5 +1528,42 @@ const styles =
 
       marginTop:
         spacing.md,
+    },
+
+    rejectButton: {
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      minHeight:
+        46,
+
+      marginTop:
+        spacing.sm,
+
+      borderRadius:
+        radius.sm,
+
+      borderWidth:
+        1,
+
+      borderColor:
+        '#FCA5A5',
+
+      backgroundColor:
+        '#FEF2F2',
+    },
+
+    rejectText: {
+      color:
+        '#B42318',
+
+      fontSize:
+        14,
+
+      fontWeight:
+        '800',
     },
   });

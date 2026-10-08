@@ -8,6 +8,7 @@ import {
 
 export type LandlordPaymentState =
   | 'PAID'
+  | 'AWAITING'
   | 'PENDING'
   | 'DELAYED'
   | 'VACANT';
@@ -37,6 +38,7 @@ export interface LandlordCurrencyStatistics {
   currency: string;
   expected: number;
   received: number;
+  awaiting: number;
   pending: number;
   debt: number;
   rentForecast: number;
@@ -56,6 +58,7 @@ export interface LandlordPortfolioStatistics {
   vacantProperties: number;
 
   paidProperties: number;
+  awaitingProperties: number;
   pendingProperties: number;
   delayedProperties: number;
 
@@ -78,9 +81,7 @@ interface TenancyRow {
   id: string;
   property_id: string;
   start_date: string;
-
-  end_date:
-    string | null;
+  end_date: string | null;
 }
 
 interface RentTermRow {
@@ -96,12 +97,15 @@ interface RentTermRow {
 
   valid_from: string;
 
-  valid_to:
-    string | null;
+  valid_to: string | null;
 }
 
 interface PaymentClaimRow {
   tenancy_id: string;
+
+  status:
+    | 'REPORTED'
+    | 'CONFIRMED';
 }
 
 interface InvoiceRow {
@@ -290,8 +294,9 @@ function paymentDueDate(
 }
 
 function resolvePaymentState(
-  paid:
-    boolean,
+  claimStatus:
+    PaymentClaimRow['status']
+    | undefined,
 
   billingPeriod:
     string,
@@ -303,9 +308,17 @@ function resolvePaymentState(
     new Date(),
 ): LandlordPaymentState {
   if (
-    paid
+    claimStatus ===
+    'CONFIRMED'
   ) {
     return 'PAID';
+  }
+
+  if (
+    claimStatus ===
+    'REPORTED'
+  ) {
+    return 'AWAITING';
   }
 
   return now.getTime() >
@@ -436,7 +449,7 @@ export async function loadLandlordPortfolioStatistics(
     (
       propertyData ??
       []
-    ) as PropertyRow[];
+    ) as unknown as PropertyRow[];
 
   if (
     properties.length ===
@@ -461,6 +474,9 @@ export async function loadLandlordPortfolioStatistics(
         0,
 
       paidProperties:
+        0,
+
+      awaitingProperties:
         0,
 
       pendingProperties:
@@ -523,7 +539,7 @@ export async function loadLandlordPortfolioStatistics(
     (
       tenancyData ??
       []
-    ) as TenancyRow[];
+    ) as unknown as TenancyRow[];
 
   const activeTenancyByProperty =
     new Map<
@@ -603,7 +619,7 @@ export async function loadLandlordPortfolioStatistics(
             'tenant_payment_claims',
           )
           .select(
-            'tenancy_id',
+            'tenancy_id,status',
           )
           .in(
             'tenancy_id',
@@ -613,9 +629,12 @@ export async function loadLandlordPortfolioStatistics(
             'billing_period',
             billingPeriod,
           )
-          .eq(
+          .in(
             'status',
-            'REPORTED',
+            [
+              'REPORTED',
+              'CONFIRMED',
+            ],
           ),
 
         client
@@ -643,8 +662,7 @@ export async function loadLandlordPortfolioStatistics(
       rentResult.error
     ) {
       throw new Error(
-        rentResult.error.message ??
-        'Unable to load rent terms.',
+        rentResult.error.message,
       );
     }
 
@@ -652,8 +670,7 @@ export async function loadLandlordPortfolioStatistics(
       claimResult.error
     ) {
       throw new Error(
-        claimResult.error.message ??
-        'Unable to load tenant payment statuses.',
+        claimResult.error.message,
       );
     }
 
@@ -661,8 +678,7 @@ export async function loadLandlordPortfolioStatistics(
       invoiceResult.error
     ) {
       throw new Error(
-        invoiceResult.error.message ??
-        'Unable to load paid invoices.',
+        invoiceResult.error.message,
       );
     }
 
@@ -670,28 +686,36 @@ export async function loadLandlordPortfolioStatistics(
       (
         rentResult.data ??
         []
-      ) as RentTermRow[];
+      ) as unknown as RentTermRow[];
 
     claims =
       (
         claimResult.data ??
         []
-      ) as PaymentClaimRow[];
+      ) as unknown as PaymentClaimRow[];
 
     invoices =
       (
         invoiceResult.data ??
         []
-      ) as InvoiceRow[];
+      ) as unknown as InvoiceRow[];
   }
 
-  const paidTenancyIds =
-    new Set(
-      claims.map(
-        claim =>
-          claim.tenancy_id,
-      ),
+  const claimByTenancy =
+    new Map<
+      string,
+      PaymentClaimRow['status']
+    >();
+
+  for (
+    const claim
+    of claims
+  ) {
+    claimByTenancy.set(
+      claim.tenancy_id,
+      claim.status,
     );
+  }
 
   const paidInvoiceTotalsByTenancy =
     new Map<
@@ -759,8 +783,7 @@ export async function loadLandlordPortfolioStatistics(
           error
         ) {
           throw new Error(
-            error.message ??
-            'Unable to load monthly billing preview.',
+            error.message,
           );
         }
 
@@ -770,7 +793,7 @@ export async function loadLandlordPortfolioStatistics(
           (
             data ??
             []
-          ) as BillingPreviewRow[],
+          ) as unknown as BillingPreviewRow[],
         );
       },
     ),
@@ -783,6 +806,12 @@ export async function loadLandlordPortfolioStatistics(
     >();
 
   const receivedByCurrency =
+    new Map<
+      string,
+      number
+    >();
+
+  const awaitingByCurrency =
     new Map<
       string,
       number
@@ -811,6 +840,9 @@ export async function loadLandlordPortfolioStatistics(
     [];
 
   let paidProperties =
+    0;
+
+  let awaitingProperties =
     0;
 
   let pendingProperties =
@@ -888,7 +920,7 @@ export async function loadLandlordPortfolioStatistics(
 
     const paymentState =
       resolvePaymentState(
-        paidTenancyIds.has(
+        claimByTenancy.get(
           tenancy.id,
         ),
 
@@ -902,6 +934,12 @@ export async function loadLandlordPortfolioStatistics(
       'PAID'
     ) {
       paidProperties +=
+        1;
+    } else if (
+      paymentState ===
+      'AWAITING'
+    ) {
+      awaitingProperties +=
         1;
     } else if (
       paymentState ===
@@ -993,6 +1031,19 @@ export async function loadLandlordPortfolioStatistics(
 
       if (
         paymentState ===
+        'AWAITING'
+      ) {
+        addToCurrencyMap(
+          awaitingByCurrency,
+
+          row.currency_code,
+
+          amount,
+        );
+      }
+
+      if (
+        paymentState ===
         'PENDING'
       ) {
         addToCurrencyMap(
@@ -1028,9 +1079,7 @@ export async function loadLandlordPortfolioStatistics(
         );
 
       if (
-        invoiceTotals &&
-        invoiceTotals.size >
-          0
+        invoiceTotals
       ) {
         for (
           const [
@@ -1038,22 +1087,6 @@ export async function loadLandlordPortfolioStatistics(
             total,
           ]
           of invoiceTotals.entries()
-        ) {
-          addToCurrencyMap(
-            receivedByCurrency,
-
-            currency,
-
-            total,
-          );
-        }
-      } else {
-        for (
-          const [
-            currency,
-            total,
-          ]
-          of expectedForProperty.entries()
         ) {
           addToCurrencyMap(
             receivedByCurrency,
@@ -1125,6 +1158,7 @@ export async function loadLandlordPortfolioStatistics(
     of [
       expectedByCurrency,
       receivedByCurrency,
+      awaitingByCurrency,
       pendingByCurrency,
       debtByCurrency,
       rentForecastByCurrency,
@@ -1150,64 +1184,40 @@ export async function loadLandlordPortfolioStatistics(
           currency,
 
           expected:
-            Math.round(
-              (
-                expectedByCurrency.get(
-                  currency,
-                ) ??
-                0
-              ) *
-                100,
-            ) /
-            100,
+            expectedByCurrency.get(
+              currency,
+            ) ??
+            0,
 
           received:
-            Math.round(
-              (
-                receivedByCurrency.get(
-                  currency,
-                ) ??
-                0
-              ) *
-                100,
-            ) /
-            100,
+            receivedByCurrency.get(
+              currency,
+            ) ??
+            0,
+
+          awaiting:
+            awaitingByCurrency.get(
+              currency,
+            ) ??
+            0,
 
           pending:
-            Math.round(
-              (
-                pendingByCurrency.get(
-                  currency,
-                ) ??
-                0
-              ) *
-                100,
-            ) /
-            100,
+            pendingByCurrency.get(
+              currency,
+            ) ??
+            0,
 
           debt:
-            Math.round(
-              (
-                debtByCurrency.get(
-                  currency,
-                ) ??
-                0
-              ) *
-                100,
-            ) /
-            100,
+            debtByCurrency.get(
+              currency,
+            ) ??
+            0,
 
           rentForecast:
-            Math.round(
-              (
-                rentForecastByCurrency.get(
-                  currency,
-                ) ??
-                0
-              ) *
-                100,
-            ) /
-            100,
+            rentForecastByCurrency.get(
+              currency,
+            ) ??
+            0,
         }),
       );
 
@@ -1236,6 +1246,8 @@ export async function loadLandlordPortfolioStatistics(
       ),
 
     paidProperties,
+
+    awaitingProperties,
 
     pendingProperties,
 

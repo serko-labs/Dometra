@@ -84,6 +84,18 @@ function paymentBadge(
 
   if (
     property.paymentState ===
+    'AWAITING'
+  ) {
+    return (
+      <PaymentStatusBadge
+        state="AWAITING"
+        text="Awaiting"
+      />
+    );
+  }
+
+  if (
+    property.paymentState ===
     'DELAYED'
   ) {
     return (
@@ -305,41 +317,6 @@ export function DashboardScreen() {
       ],
     );
 
-  const openProperty =
-    (
-      propertyId:
-        string,
-    ) => {
-      navigation.navigate(
-        'PropertyDetails',
-
-        {
-          propertyId,
-        },
-      );
-    };
-
-  const openPropertyIcon =
-    (
-      property:
-        LandlordPropertyPaymentSummary,
-    ) => {
-      navigation.navigate(
-        'PropertyIcon',
-
-        {
-          propertyId:
-            property.propertyId,
-
-          propertyName:
-            property.propertyName,
-
-          propertyAddress:
-            `${property.propertyAddress}, ${property.propertyCity}`,
-        },
-      );
-    };
-
   return (
     <Screen>
       <Header
@@ -418,54 +395,6 @@ export function DashboardScreen() {
       ) : null}
 
       {!loading &&
-      portfolio &&
-      portfolio.properties.length ===
-        0 ? (
-        <Card>
-          <Text
-            style={
-              styles.emptyTitle
-            }
-          >
-            No properties yet
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            Add your first apartment to start managing tenants, meters and monthly payments.
-          </Text>
-        </Card>
-      ) : null}
-
-      {!loading &&
-      portfolio &&
-      portfolio.properties.length >
-        0 &&
-      properties.length ===
-        0 ? (
-        <Card>
-          <Text
-            style={
-              styles.emptyTitle
-            }
-          >
-            No properties
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            There are no apartments matching this filter.
-          </Text>
-        </Card>
-      ) : null}
-
-      {!loading &&
       properties.map(
         property => (
           <Pressable
@@ -473,8 +402,12 @@ export function DashboardScreen() {
               property.propertyId
             }
             onPress={() =>
-              openProperty(
-                property.propertyId,
+              navigation.navigate(
+                'PropertyDetails',
+                {
+                  propertyId:
+                    property.propertyId,
+                },
               )
             }
             style={({
@@ -497,22 +430,21 @@ export function DashboardScreen() {
                     event => {
                       event.stopPropagation();
 
-                      openPropertyIcon(
-                        property,
+                      navigation.navigate(
+                        'PropertyIcon',
+                        {
+                          propertyId:
+                            property.propertyId,
+
+                          propertyName:
+                            property.propertyName,
+
+                          propertyAddress:
+                            `${property.propertyAddress}, ${property.propertyCity}`,
+                        },
                       );
                     }
                   }
-                  hitSlop={
-                    8
-                  }
-                  style={({
-                    pressed,
-                  }) => [
-                    styles.thumbnailButton,
-
-                    pressed &&
-                      styles.thumbnailPressed,
-                  ]}
                 >
                   <PropertyThumbnail
                     uri={
@@ -565,34 +497,6 @@ export function DashboardScreen() {
                           property.propertyCity
                         }
                       </Text>
-
-                      {property.areaM2 >
-                      0 ? (
-                        <Text
-                          style={
-                            styles.meta
-                          }
-                        >
-                          {
-                            property.areaM2
-                          }{' '}
-                          m²
-                          {'  •  '}
-                          {property.tenancyId
-                            ? 'Occupied'
-                            : 'No active tenant'}
-                        </Text>
-                      ) : (
-                        <Text
-                          style={
-                            styles.meta
-                          }
-                        >
-                          {property.tenancyId
-                            ? 'Occupied'
-                            : 'No active tenant'}
-                        </Text>
-                      )}
                     </View>
 
                     {paymentBadge(
@@ -663,40 +567,8 @@ export function DashboardScreen() {
                       </Text>
                     </View>
                   </View>
-
-                  {!property.billingReady ? (
-                    <Text
-                      style={
-                        styles.billingHint
-                      }
-                    >
-                      {property.billingMissingCount}{' '}
-                      billing item
-                      {property.billingMissingCount ===
-                      1
-                        ? ''
-                        : 's'}{' '}
-                      still need data for this month.
-                    </Text>
-                  ) : null}
                 </>
-              ) : (
-                <>
-                  <View
-                    style={
-                      styles.separator
-                    }
-                  />
-
-                  <Text
-                    style={
-                      styles.muted
-                    }
-                  >
-                    Open the apartment to add or invite a tenant.
-                  </Text>
-                </>
-              )}
+              ) : null}
 
               <Text
                 style={
@@ -730,10 +602,7 @@ const styles =
       gap:
         8,
 
-      marginTop:
-        spacing.md,
-
-      marginBottom:
+      marginVertical:
         spacing.md,
     },
 
@@ -791,16 +660,6 @@ const styles =
         0.72,
     },
 
-    thumbnailPressed: {
-      opacity:
-        0.72,
-    },
-
-    thumbnailButton: {
-      alignSelf:
-        'flex-start',
-    },
-
     topRow: {
       flexDirection:
         'row',
@@ -849,17 +708,6 @@ const styles =
 
       marginTop:
         4,
-    },
-
-    meta: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      marginTop:
-        6,
     },
 
     separator: {
@@ -917,23 +765,6 @@ const styles =
         4,
     },
 
-    billingHint: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
-
-      marginTop:
-        spacing.md,
-    },
-
     openText: {
       color:
         colors.primary,
@@ -954,22 +785,5 @@ const styles =
 
       fontSize:
         12,
-
-      lineHeight:
-        18,
-    },
-
-    emptyTitle: {
-      color:
-        colors.text,
-
-      fontSize:
-        16,
-
-      fontWeight:
-        '800',
-
-      marginBottom:
-        4,
     },
   });
