@@ -29,14 +29,7 @@ import {
 
 import {
   currentBillingPeriod,
-  loadTenantBillingSummary,
-  TenantBillingSummary,
 } from '../services/billingRepository';
-
-import {
-  loadTenancyCheckout,
-  TenancyCheckout,
-} from '../services/checkoutRepository';
 
 import {
   getPropertyTenancy,
@@ -59,9 +52,16 @@ function formatDate(
     return '—';
   }
 
+  const normalized =
+    value.includes(
+      'T',
+    )
+      ? value
+      : `${value}T00:00:00`;
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      normalized,
     );
 
   if (
@@ -139,28 +139,18 @@ export function TenantDetailsScreen() {
     route.params
       ?.propertyId as string;
 
+  const propertyName =
+    route.params
+      ?.propertyName as
+      | string
+      | undefined;
+
   const [
     tenancy,
     setTenancy,
   ] =
     useState<
       PropertyTenancySummary | null
-    >(null);
-
-  const [
-    checkout,
-    setCheckout,
-  ] =
-    useState<
-      TenancyCheckout | null
-    >(null);
-
-  const [
-    billing,
-    setBilling,
-  ] =
-    useState<
-      TenantBillingSummary | null
     >(null);
 
   const [
@@ -171,99 +161,67 @@ export function TenantDetailsScreen() {
       true,
     );
 
-  const reload =
+  useFocusEffect(
     useCallback(
-      async () => {
-        setLoading(
-          true,
-        );
+      () => {
+        let active =
+          true;
 
-        try {
-          const data =
-            await getPropertyTenancy(
-              propertyId,
+        const load =
+          async () => {
+            setLoading(
+              true,
             );
 
-          if (
-            !data
-          ) {
-            setTenancy(
-              null,
-            );
+            try {
+              const result =
+                await getPropertyTenancy(
+                  propertyId,
+                );
 
-            setCheckout(
-              null,
-            );
+              if (
+                active
+              ) {
+                setTenancy(
+                  result,
+                );
+              }
+            } catch (
+              error
+            ) {
+              if (
+                active
+              ) {
+                Alert.alert(
+                  'Tenant',
 
-            setBilling(
-              null,
-            );
+                  error instanceof
+                  Error
+                    ? error.message
+                    : 'Unable to load tenant.',
+                );
+              }
+            } finally {
+              if (
+                active
+              ) {
+                setLoading(
+                  false,
+                );
+              }
+            }
+          };
 
-            return;
-          }
+        void load();
 
-          const [
-            checkoutData,
-            billingData,
-          ] =
-            await Promise.all([
-              loadTenancyCheckout(
-                data.id,
-              ),
-
-              data.status ===
-              'ACTIVE'
-                ? loadTenantBillingSummary(
-                    data.id,
-                    currentBillingPeriod(),
-                  )
-                : Promise.resolve(
-                    null,
-                  ),
-            ]);
-
-          setTenancy(
-            data,
-          );
-
-          setCheckout(
-            checkoutData,
-          );
-
-          setBilling(
-            billingData,
-          );
-        } catch (
-          error
-        ) {
-          Alert.alert(
-            'Tenant',
-
-            error instanceof
-            Error
-              ? error.message
-              : 'Unable to load tenant.',
-          );
-        } finally {
-          setLoading(
-            false,
-          );
-        }
+        return () => {
+          active =
+            false;
+        };
       },
 
       [
         propertyId,
-      ],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
-
-      [
-        reload,
       ],
     ),
   );
@@ -275,18 +233,8 @@ export function TenantDetailsScreen() {
       <Screen>
         <Header
           title="Tenant"
-          subtitle="Loading tenant..."
+          subtitle="Loading tenant information..."
         />
-
-        <Card>
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            Loading tenant...
-          </Text>
-        </Card>
       </Screen>
     );
   }
@@ -298,314 +246,213 @@ export function TenantDetailsScreen() {
       <Screen>
         <Header
           title="Tenant"
+          subtitle="No active tenancy"
         />
 
         <Card>
           <Text
             style={
-              styles.title
-            }
-          >
-            No active tenant
-          </Text>
-
-          <Text
-            style={
               styles.muted
             }
           >
-            This apartment does not currently have an active tenancy.
+            There is no active tenant for this apartment.
           </Text>
         </Card>
       </Screen>
     );
   }
 
-  const tenantName =
-    tenancy.tenant
-      ? `${tenancy.tenant.firstName} ${tenancy.tenant.lastName}`
+  const tenant =
+    tenancy.tenant;
 
-      : tenancy.tenantType ===
-          'INVITED'
-        ? 'Invited tenant'
+  const fullName =
+    tenant
+      ? `${tenant.firstName} ${tenant.lastName}`
+      : 'Tenant invitation';
 
-        : 'Tenant';
+  const openCurrentBill =
+    () => {
+      navigation.navigate(
+        'TenantBilling',
+        {
+          tenancyId:
+            tenancy.id,
 
-  const checkoutPending =
-    checkout?.status ===
-    'PENDING';
+          propertyName:
+            propertyName ??
+            'Apartment',
+
+          paymentDueDay:
+            tenancy.paymentDueDay,
+
+          mode:
+            'LANDLORD',
+
+          billingPeriod:
+            currentBillingPeriod(),
+        },
+      );
+    };
+
+  const openBillingHistory =
+    () => {
+      navigation.navigate(
+        'BillingHistory',
+        {
+          tenancyId:
+            tenancy.id,
+
+          propertyName:
+            propertyName ??
+            'Apartment',
+
+          mode:
+            'LANDLORD',
+        },
+      );
+    };
 
   return (
     <Screen>
       <Header
         title={
-          tenantName
+          fullName
         }
         subtitle={
           tenancy.tenantType ===
           'MANUAL'
             ? 'Manual tenant'
-            : 'Dometra tenant'
+            : tenancy.tenantType ===
+                'DOMETRA'
+              ? 'Dometra tenant'
+              : 'Invitation pending'
         }
         right={
           <Badge
             text={
-              checkoutPending
-                ? 'Checkout'
-
-                : tenancy.status ===
-                    'PENDING'
-                  ? 'Pending'
-
-                  : 'Active'
+              tenancy.status ===
+                'ACTIVE'
+                ? 'Active'
+                : 'Pending'
             }
             tone={
-              checkoutPending ||
               tenancy.status ===
-                'PENDING'
-                ? 'warning'
-
-                : 'success'
+                'ACTIVE'
+                ? 'success'
+                : 'warning'
             }
           />
         }
       />
 
-      {checkoutPending ? (
-        <Card>
-          <Text
-            style={
-              styles.checkoutTitle
-            }
-          >
-            Checkout in progress
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            Move-out date:{' '}
-            {formatDate(
-              checkout.checkoutDate,
-            )}
-            . Waiting for final readings and landlord confirmation.
-          </Text>
-
-          <View
-            style={
-              styles.buttonTop
-            }
-          >
-            <PrimaryButton
-              title="Continue checkout"
-              onPress={() =>
-                navigation.navigate(
-                  'CheckoutTenant',
-                  {
-                    propertyId,
-
-                    tenancyId:
-                      tenancy.id,
-                  },
-                )
-              }
-            />
-          </View>
-        </Card>
-      ) : null}
-
-      {tenancy.status ===
-      'ACTIVE' ? (
+      {tenant ? (
         <>
           <SectionTitle
-            title="Monthly billing"
+            title="Contact"
           />
 
           <Card>
-            <View
-              style={
-                styles.rowBetween
-              }
-            >
-              <View
-                style={
-                  styles.flex
-                }
-              >
-                <Text
-                  style={
-                    styles.title
-                  }
-                >
-                  Current month
-                </Text>
-
-                <Text
-                  style={
-                    styles.muted
-                  }
-                >
-                  Review rent, meter charges, fixed fees and variable expenses. Both landlord and linked tenant can enter variable expenses.
-                </Text>
-              </View>
-
-              <Badge
-                text={
-                  billing?.claim
-                    ? 'Paid'
-
-                    : billing?.ready
-                      ? 'Ready'
-
-                      : 'Preparing'
-                }
-                tone={
-                  billing?.claim
-                    ? 'success'
-                    : 'warning'
-                }
-              />
-            </View>
-
-            {billing &&
-            !billing.ready &&
-            !billing.claim ? (
-              <Text
-                style={
-                  styles.billingWarning
-                }
-              >
-                {billing.missingCount}{' '}
-                required billing item
-                {billing.missingCount ===
-                1
-                  ? ''
-                  : 's'}{' '}
-                still need data.
-              </Text>
-            ) : null}
-
-            <View
-              style={
-                styles.buttonTop
-              }
-            >
-              <SecondaryButton
-                title="Open monthly billing"
-                onPress={() =>
-                  navigation.navigate(
-                    'TenantBilling',
-                    {
-                      tenancyId:
-                        tenancy.id,
-
-                      paymentDueDay:
-                        tenancy.paymentDueDay,
-
-                      mode:
-                        'LANDLORD',
-
-                      billingPeriod:
-                        currentBillingPeriod(),
-                    },
-                  )
-                }
-              />
-            </View>
-          </Card>
-        </>
-      ) : null}
-
-      <SectionTitle
-        title="Profile"
-      />
-
-      <Card>
-        {tenancy.tenant ? (
-          <>
             <DetailRow
               label="First name"
               value={
-                tenancy.tenant.firstName
+                tenant.firstName
               }
             />
 
             <DetailRow
               label="Last name"
               value={
-                tenancy.tenant.lastName
+                tenant.lastName
               }
             />
 
             <DetailRow
               label="Phone"
               value={
-                tenancy.tenant.phone
+                tenant.phone
               }
             />
 
             <DetailRow
               label="Email"
               value={
-                tenancy.tenant.email
-              }
-            />
-
-            <DetailRow
-              label="Passport / ID"
-              value={
-                tenancy.tenant.passportIdNumber
+                tenant.email
               }
             />
 
             <DetailRow
               label="Emergency contact"
               value={
-                tenancy.tenant.emergencyContact
+                tenant.emergencyContact
               }
             />
+          </Card>
 
-            <DetailRow
-              label="Notes"
-              value={
-                tenancy.tenant.notes
-              }
-            />
-
-            {tenancy.tenant.passportPhotoUri ? (
-              <Image
-                source={{
-                  uri:
-                    tenancy.tenant
-                      .passportPhotoUri,
-                }}
-                style={
-                  styles.document
-                }
-                resizeMode="contain"
+          {(tenant.passportIdNumber ||
+            tenant.passportPhotoUri) ? (
+            <>
+              <SectionTitle
+                title="Identification"
               />
-            ) : null}
-          </>
-        ) : (
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            The tenant has not accepted the invitation yet.
-          </Text>
-        )}
-      </Card>
+
+              <Card>
+                <DetailRow
+                  label="Passport / ID"
+                  value={
+                    tenant.passportIdNumber
+                  }
+                />
+
+                {tenant.passportPhotoUri ? (
+                  <Image
+                    source={{
+                      uri:
+                        tenant.passportPhotoUri,
+                    }}
+                    style={
+                      styles.document
+                    }
+                    resizeMode="cover"
+                  />
+                ) : null}
+              </Card>
+            </>
+          ) : null}
+
+          {tenant.notes ? (
+            <>
+              <SectionTitle
+                title="Notes"
+              />
+
+              <Card>
+                <Text
+                  style={
+                    styles.notes
+                  }
+                >
+                  {
+                    tenant.notes
+                  }
+                </Text>
+              </Card>
+            </>
+          ) : null}
+        </>
+      ) : null}
 
       <SectionTitle
-        title="Tenancy"
+        title="Rental"
       />
 
       <Card>
         <DetailRow
-          label="Start date"
+          label="Rent"
+          value={`${tenancy.rentAmount} ${tenancy.currency} / month`}
+        />
+
+        <DetailRow
+          label="Started"
           value={
             formatDate(
               tenancy.startDate,
@@ -614,50 +461,19 @@ export function TenantDetailsScreen() {
         />
 
         <DetailRow
-          label="End date"
+          label="Agreement ends"
           value={
-            checkoutPending
+            tenancy.endDate
               ? formatDate(
-                  checkout.checkoutDate,
+                  tenancy.endDate,
                 )
-
-              : tenancy.endDate
-                ? formatDate(
-                    tenancy.endDate,
-                  )
-
-                : 'Open-ended'
+              : 'Open-ended'
           }
         />
 
         <DetailRow
-          label="Rent"
-          value={
-            `${tenancy.rentAmount} ${tenancy.currency}`
-          }
-        />
-
-        <DetailRow
-          label="Payment due day"
-          value={
-            String(
-              tenancy.paymentDueDay,
-            )
-          }
-        />
-
-        <DetailRow
-          label="Deposit"
-          value={
-            tenancy.depositAmount !==
-            undefined
-              ? `${tenancy.depositAmount} ${
-                  tenancy.depositCurrency ??
-                  tenancy.currency
-                }`
-
-              : '—'
-          }
+          label="Payment due"
+          value={`Day ${tenancy.paymentDueDay} of each month`}
         />
 
         <DetailRow
@@ -668,13 +484,77 @@ export function TenantDetailsScreen() {
               : 'Disabled'
           }
         />
+
+        {tenancy.depositAmount !==
+        undefined ? (
+          <DetailRow
+            label="Security deposit"
+            value={`${tenancy.depositAmount} ${
+              tenancy.depositCurrency ??
+              tenancy.currency
+            }`}
+          />
+        ) : null}
       </Card>
+
+      {tenancy.status ===
+      'ACTIVE' ? (
+        <>
+          <SectionTitle
+            title="Billing"
+          />
+
+          <Card>
+            <Text
+              style={
+                styles.billingTitle
+              }
+            >
+              Monthly billing
+            </Text>
+
+            <Text
+              style={
+                styles.muted
+              }
+            >
+              Review the current rent and expenses, confirm tenant payments or browse previous months.
+            </Text>
+
+            <View
+              style={
+                styles.buttonTop
+              }
+            >
+              <PrimaryButton
+                title="Current month"
+                onPress={
+                  openCurrentBill
+                }
+              />
+            </View>
+
+            <View
+              style={
+                styles.buttonTop
+              }
+            >
+              <SecondaryButton
+                title="Billing history"
+                onPress={
+                  openBillingHistory
+                }
+              />
+            </View>
+          </Card>
+        </>
+      ) : null}
 
       {tenancy.openingReadings.length >
       0 ? (
         <>
           <SectionTitle
-            title="Move-in readings"
+            title="Opening meter readings"
           />
 
           <Card>
@@ -695,7 +575,7 @@ export function TenantDetailsScreen() {
                   >
                     <Text
                       style={
-                        styles.readingName
+                        styles.readingTitle
                       }
                     >
                       {
@@ -703,7 +583,7 @@ export function TenantDetailsScreen() {
                       }
 
                       {reading.registerCode
-                        ? ` · ${reading.registerCode}`
+                        ? ` • ${reading.registerCode}`
                         : ''}
                     </Text>
 
@@ -712,7 +592,7 @@ export function TenantDetailsScreen() {
                         styles.muted
                       }
                     >
-                      Move-in ·{' '}
+                      Move-in •{' '}
                       {formatDate(
                         reading.date,
                       )}
@@ -777,33 +657,8 @@ export function TenantDetailsScreen() {
         />
       ) : null}
 
-      {tenancy.status ===
-        'ACTIVE' &&
-      !checkoutPending ? (
-        <View
-          style={
-            styles.buttonTop
-          }
-        >
-          <SecondaryButton
-            title="Checkout tenant"
-            onPress={() =>
-              navigation.navigate(
-                'CheckoutTenant',
-                {
-                  propertyId,
-
-                  tenancyId:
-                    tenancy.id,
-                },
-              )
-            }
-          />
-        </View>
-      ) : null}
-
       {tenancy.tenantType ===
-      'DOMETRA' ? (
+        'DOMETRA' ? (
         <Text
           style={
             styles.footerHint
@@ -821,59 +676,6 @@ const styles =
     flex: {
       flex:
         1,
-    },
-
-    rowBetween: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        spacing.md,
-    },
-
-    title: {
-      color:
-        colors.text,
-
-      fontSize:
-        16,
-
-      fontWeight:
-        '800',
-    },
-
-    checkoutTitle: {
-      color:
-        '#92400E',
-
-      fontSize:
-        16,
-
-      fontWeight:
-        '800',
-    },
-
-    billingWarning: {
-      color:
-        '#92400E',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
-
-      marginTop:
-        spacing.md,
     },
 
     detailRow: {
@@ -915,6 +717,22 @@ const styles =
         4,
     },
 
+    billingTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    buttonTop: {
+      marginTop:
+        spacing.md,
+    },
+
     document: {
       width:
         '100%',
@@ -943,6 +761,31 @@ const styles =
         radius.sm,
     },
 
+    notes: {
+      color:
+        colors.text,
+
+      fontSize:
+        13,
+
+      lineHeight:
+        20,
+    },
+
+    muted: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      lineHeight:
+        18,
+
+      marginTop:
+        3,
+    },
+
     readingRow: {
       flexDirection:
         'row',
@@ -957,16 +800,10 @@ const styles =
         spacing.md,
 
       paddingVertical:
-        10,
-
-      borderBottomWidth:
-        StyleSheet.hairlineWidth,
-
-      borderBottomColor:
-        colors.border,
+        9,
     },
 
-    readingName: {
+    readingTitle: {
       color:
         colors.text,
 
@@ -982,29 +819,10 @@ const styles =
         colors.text,
 
       fontSize:
-        13,
+        14,
 
       fontWeight:
         '800',
-    },
-
-    muted: {
-      color:
-        colors.muted,
-
-      fontSize:
-        12,
-
-      lineHeight:
-        18,
-
-      marginTop:
-        4,
-    },
-
-    buttonTop: {
-      marginTop:
-        spacing.md,
     },
 
     footerHint: {
@@ -1019,11 +837,5 @@ const styles =
 
       textAlign:
         'center',
-
-      marginTop:
-        spacing.md,
-
-      marginBottom:
-        spacing.md,
     },
   });

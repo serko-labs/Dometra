@@ -71,6 +71,10 @@ import {
 } from '../screens/TenantBillingScreen';
 
 import {
+  BillingHistoryScreen,
+} from '../screens/BillingHistoryScreen';
+
+import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
 
@@ -486,6 +490,17 @@ export function RootNavigator() {
               name="TenantBilling"
               component={
                 TenantBillingScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="BillingHistory"
+              component={
+                BillingHistoryScreen
               }
               options={{
                 title:

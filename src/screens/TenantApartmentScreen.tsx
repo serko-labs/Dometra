@@ -567,6 +567,23 @@ export function TenantApartmentScreen() {
       );
     };
 
+  const openBillingHistory =
+    () => {
+      navigation.navigate(
+        'BillingHistory',
+        {
+          tenancyId:
+            apartment.tenancyId,
+
+          propertyName:
+            apartment.propertyName,
+
+          mode:
+            'TENANT',
+        },
+      );
+    };
+
   const markPaid =
     () => {
       if (
@@ -900,6 +917,19 @@ export function TenantApartmentScreen() {
             title="View bill details"
             onPress={
               openMonthlyBill
+            }
+          />
+        </View>
+
+        <View
+          style={
+            styles.buttonTop
+          }
+        >
+          <SecondaryButton
+            title="Billing history"
+            onPress={
+              openBillingHistory
             }
           />
         </View>
