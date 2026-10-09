@@ -91,6 +91,10 @@ import {
 } from '../screens/CheckoutFinalBillScreen';
 
 import {
+  CheckoutSettlementScreen,
+} from '../screens/CheckoutSettlementScreen';
+
+import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
 
@@ -561,6 +565,17 @@ export function RootNavigator() {
               name="CheckoutFinalBill"
               component={
                 CheckoutFinalBillScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="CheckoutSettlement"
+              component={
+                CheckoutSettlementScreen
               }
               options={{
                 title:

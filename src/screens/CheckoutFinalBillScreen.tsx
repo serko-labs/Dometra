@@ -234,25 +234,19 @@ export function CheckoutFinalBillScreen() {
           Alert.alert(
             'Final checkout bill',
 
-            error instanceof
-            Error
-              ? error.message
-              : (
-                  error &&
-                  typeof error ===
-                    'object' &&
-                  'message' in
-                    error
+            error &&
+            typeof error ===
+              'object' &&
+            'message' in error
+              ? String(
+                  (
+                    error as {
+                      message:
+                        unknown;
+                    }
+                  ).message,
                 )
-                ? String(
-                    (
-                      error as {
-                        message:
-                          unknown;
-                      }
-                    ).message,
-                  )
-                : 'Unable to load final checkout bill.',
+              : 'Unable to load final checkout bill.',
           );
         } finally {
           setLoading(
@@ -306,25 +300,19 @@ export function CheckoutFinalBillScreen() {
         Alert.alert(
           'Unable to create final invoice',
 
-          error instanceof
-          Error
-            ? error.message
-            : (
-                error &&
-                typeof error ===
-                  'object' &&
-                'message' in
-                  error
+          error &&
+          typeof error ===
+            'object' &&
+          'message' in error
+            ? String(
+                (
+                  error as {
+                    message:
+                      unknown;
+                  }
+                ).message,
               )
-              ? String(
-                  (
-                    error as {
-                      message:
-                        unknown;
-                    }
-                  ).message,
-                )
-              : 'Unknown error.',
+            : 'Unknown error.',
         );
       } finally {
         setBusy(
@@ -336,10 +324,13 @@ export function CheckoutFinalBillScreen() {
   const continueCheckout =
     () => {
       navigation.navigate(
-        'CheckoutTenant',
+        'CheckoutSettlement',
         {
           tenancyId,
+
           propertyId,
+
+          propertyName,
         },
       );
     };
@@ -423,9 +414,7 @@ export function CheckoutFinalBillScreen() {
             tone={
               generated
                 ? 'success'
-                : summary.ready
-                  ? 'warning'
-                  : 'warning'
+                : 'warning'
             }
           />
         }
@@ -785,7 +774,7 @@ export function CheckoutFinalBillScreen() {
           </Card>
 
           <PrimaryButton
-            title="Continue checkout"
+            title="Continue to deposit settlement"
             onPress={
               continueCheckout
             }
@@ -827,9 +816,9 @@ export function CheckoutFinalBillScreen() {
           ) : null}
 
           <SecondaryButton
-            title="Back to checkout"
-            onPress={
-              continueCheckout
+            title="Back"
+            onPress={() =>
+              navigation.goBack()
             }
           />
         </>
