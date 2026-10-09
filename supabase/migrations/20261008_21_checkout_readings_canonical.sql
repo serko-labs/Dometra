@@ -1,52 +1,32 @@
 -- ============================================================
 -- DOMETRA
--- CHECKOUT READINGS AS CANONICAL METER BASELINE
+-- RESTORE LATEST READING VIEW + CANONICAL CHECKOUT BASELINE
 -- ============================================================
 --
--- Goal:
+-- TWO DIFFERENT VIEWS:
 --
--- After a tenancy checkout is completed, its final meter
--- readings must become the canonical latest readings.
+-- 1. v_latest_meter_register_readings
 --
--- Example:
---
---   monthly reading before checkout = 1200
---   final checkout reading          = 1247
---
--- The next tenancy must use:
---
---   previous value = 1247
+--    Existing MONTHLY reading compatibility view.
+--    Billing/RPC code depends on this contract.
 --
 --
--- Why the view is recreated instead of CREATE OR REPLACE:
+-- 2. v_canonical_latest_meter_register_readings
 --
--- An older Dometra version of:
+--    Latest physical meter value including COMPLETED checkout
+--    readings.
 --
---   v_latest_meter_register_readings
---
--- contains a different set of columns.
---
--- PostgreSQL does not allow CREATE OR REPLACE VIEW to remove
--- existing columns:
---
---   ERROR 42P16:
---   cannot drop columns from view
---
--- Therefore this migration explicitly drops the old view and
--- creates the canonical version again.
---
--- We DO NOT use CASCADE.
+--    Used as the baseline for the next tenancy.
 --
 -- ============================================================
 
 
 -- ============================================================
--- SUPPORTING INDEXES
+-- INDEXES
 -- ============================================================
 
 create index if not exists
   idx_tenancy_checkout_readings_register_date
-
 on public.tenancy_checkout_readings (
   meter_register_id,
   reading_date desc
@@ -55,7 +35,6 @@ on public.tenancy_checkout_readings (
 
 create index if not exists
   idx_meter_reading_sessions_meter_date
-
 on public.meter_reading_sessions (
   meter_id,
   reading_date desc
@@ -64,84 +43,58 @@ on public.meter_reading_sessions (
 
 create index if not exists
   idx_meter_register_readings_register
-
 on public.meter_register_readings (
   meter_register_id
 );
 
 
 -- ============================================================
--- REMOVE HELPER FIRST
--- ============================================================
---
--- If an earlier execution created the helper successfully,
--- remove it before recreating the view.
---
--- This also prevents a dependency from blocking DROP VIEW.
+-- REMOVE OBJECTS CREATED BY PREVIOUS ATTEMPTS
 -- ============================================================
 
 drop function if exists
   public.get_latest_meter_register_value(uuid);
 
 
--- ============================================================
--- REMOVE OLD VIEW
--- ============================================================
+drop view if exists
+  public.v_canonical_latest_meter_register_readings;
+
 
 drop view if exists
   public.v_latest_meter_register_readings;
 
 
 -- ============================================================
--- CREATE CANONICAL LATEST READING VIEW
+-- RESTORE MONTHLY LATEST-READING VIEW
 -- ============================================================
 --
--- Sources:
+-- Compatibility fields:
 --
--- 1. MONTHLY
+--   meter_register_reading_id
+--   reading_session_id
+--   meter_register_id
+--   meter_id
+--   billing_period
+--   reading_date
+--   previous_value
+--   current_value
+--   consumption
+--   photo_bucket
+--   photo_path
+--   photo_mime_type
 --
---    meter_reading_sessions
---      +
---    meter_register_readings
+-- Photo information comes from:
 --
+--   meter_register_readings
+--      -> meter_reading_photos
+--      -> media_files
 --
--- 2. CHECKOUT
+-- We intentionally do NOT depend on:
 --
---    tenancy_checkout_readings
---      +
---    tenancy_checkouts
---
---
--- Only COMPLETED checkout readings participate.
---
---
--- For monthly:
---
---   previous_value = recorded previous value
---   current_value  = recorded current value
---
---
--- For checkout:
---
---   previous_value = final checkout value
---   current_value  = final checkout value
---
---
--- Setting both checkout values to the final reading is
--- intentional.
---
--- It ensures that the next tenancy receives the checkout
--- reading as its baseline even if:
---
---   Tenant A moves out in October
---   Tenant B moves in during October
---
---
--- Ordering:
---
---   1. reading_date DESC
---   2. checkout wins over monthly on the same date
---   3. source UUID provides a deterministic final tie-breaker
+--   meter_reading_photos.sort_order
+--   meter_reading_photos.created_at
+--   meter_reading_sessions.tenancy_id
+--   meter_reading_sessions.confirmed_at
 --
 -- ============================================================
 
@@ -151,11 +104,13 @@ with (
 )
 as
 
-with monthly_readings as (
+with ranked as (
 
   select
     r.id
-      as source_id,
+      as meter_register_reading_id,
+
+    r.reading_session_id,
 
     r.meter_register_id,
 
@@ -169,8 +124,25 @@ with monthly_readings as (
 
     r.current_value,
 
-    1
-      as source_priority
+    r.consumption,
+
+    photo.photo_bucket,
+
+    photo.photo_path,
+
+    photo.photo_mime_type,
+
+    row_number()
+    over (
+      partition by
+        r.meter_register_id
+
+      order by
+        s.reading_date desc,
+        s.billing_period desc,
+        r.id desc
+    )
+      as rn
 
   from public.meter_register_readings r
 
@@ -178,15 +150,152 @@ with monthly_readings as (
     on s.id =
       r.reading_session_id
 
+
+  -- ----------------------------------------------------------
+  -- Pick one attached photo deterministically.
+  --
+  -- Only media_files columns are used for ordering because
+  -- their presence is known:
+  --
+  --   id
+  --   bucket
+  --   storage_path
+  --   mime_type
+  --
+  -- ----------------------------------------------------------
+
+  left join lateral (
+
+    select
+      mf.bucket
+        as photo_bucket,
+
+      mf.storage_path
+        as photo_path,
+
+      mf.mime_type
+        as photo_mime_type
+
+    from public.meter_reading_photos mrp
+
+    join public.media_files mf
+      on mf.id =
+        mrp.media_file_id
+
+    where
+      mrp.register_reading_id =
+        r.id
+
+    order by
+      mf.storage_path asc,
+      mf.id asc
+
+    limit 1
+
+  ) photo
+    on true
+
+
   where
     r.current_value
       is not null
 
-    and s.status::text
-      in (
-        'SUBMITTED',
-        'CONFIRMED'
-      )
+    and s.status::text in (
+      'SUBMITTED',
+      'CONFIRMED'
+    )
+
+)
+
+select
+  meter_register_reading_id,
+
+  reading_session_id,
+
+  meter_register_id,
+
+  meter_id,
+
+  billing_period,
+
+  reading_date,
+
+  previous_value,
+
+  current_value,
+
+  consumption,
+
+  photo_bucket,
+
+  photo_path,
+
+  photo_mime_type
+
+from ranked
+
+where
+  rn =
+    1;
+
+
+grant select
+on public.v_latest_meter_register_readings
+to authenticated;
+
+
+-- ============================================================
+-- CANONICAL PHYSICAL LATEST READING
+-- ============================================================
+--
+-- Monthly example:
+--
+--   previous = 1200
+--   current  = 1240
+--
+-- Checkout:
+--
+--   final = 1247
+--
+-- Canonical:
+--
+--   previous_value = 1247
+--   current_value  = 1247
+--   source_kind    = CHECKOUT
+--
+-- ============================================================
+
+create view public.v_canonical_latest_meter_register_readings
+with (
+  security_invoker = true
+)
+as
+
+with monthly_readings as (
+
+  select
+    latest.meter_register_reading_id
+      as source_id,
+
+    latest.meter_register_id,
+
+    latest.meter_id,
+
+    latest.billing_period,
+
+    latest.reading_date,
+
+    latest.previous_value,
+
+    latest.current_value,
+
+    'MONTHLY'::text
+      as source_kind,
+
+    1
+      as source_priority
+
+  from public.v_latest_meter_register_readings latest
 
 ),
 
@@ -214,6 +323,9 @@ checkout_readings as (
 
     cr.value
       as current_value,
+
+    'CHECKOUT'::text
+      as source_kind,
 
     2
       as source_priority
@@ -255,6 +367,8 @@ all_readings as (
 
     current_value,
 
+    source_kind,
+
     source_priority
 
   from monthly_readings
@@ -277,6 +391,8 @@ all_readings as (
     previous_value,
 
     current_value,
+
+    source_kind,
 
     source_priority
 
@@ -302,6 +418,8 @@ ranked as (
 
     current_value,
 
+    source_kind,
+
     source_priority,
 
     row_number()
@@ -311,9 +429,7 @@ ranked as (
 
       order by
         reading_date desc,
-
         source_priority desc,
-
         source_id desc
     )
       as rn
@@ -321,7 +437,6 @@ ranked as (
   from all_readings
 
 )
-
 
 select
   meter_register_id,
@@ -334,7 +449,9 @@ select
 
   previous_value,
 
-  current_value
+  current_value,
+
+  source_kind
 
 from ranked
 
@@ -343,29 +460,13 @@ where
     1;
 
 
--- ============================================================
--- ACCESS
--- ============================================================
-
 grant select
-on public.v_latest_meter_register_readings
+on public.v_canonical_latest_meter_register_readings
 to authenticated;
 
 
 -- ============================================================
--- HELPER
--- ============================================================
---
--- Returns the current canonical value of one meter register.
---
--- This can be reused later for:
---
---   * move-in readings
---   * creating a new tenancy
---   * meter replacement
---   * checkout validation
---   * diagnostics
---
+-- CANONICAL VALUE HELPER
 -- ============================================================
 
 create or replace function public.get_latest_meter_register_value(
@@ -381,7 +482,7 @@ as $$
   select
     latest.current_value
 
-  from public.v_latest_meter_register_readings latest
+  from public.v_canonical_latest_meter_register_readings latest
 
   where
     latest.meter_register_id =
@@ -393,7 +494,48 @@ $$;
 
 
 grant execute
-on function public.get_latest_meter_register_value(
-  uuid
-)
+on function public.get_latest_meter_register_value(uuid)
 to authenticated;
+
+
+-- ============================================================
+-- VALIDATION
+-- ============================================================
+
+do $$
+begin
+
+  perform
+    latest.meter_register_reading_id,
+    latest.reading_session_id,
+    latest.meter_register_id,
+    latest.meter_id,
+    latest.billing_period,
+    latest.reading_date,
+    latest.previous_value,
+    latest.current_value,
+    latest.consumption,
+    latest.photo_bucket,
+    latest.photo_path,
+    latest.photo_mime_type
+
+  from public.v_latest_meter_register_readings latest
+
+  limit 1;
+
+
+  perform
+    canonical.meter_register_id,
+    canonical.meter_id,
+    canonical.billing_period,
+    canonical.reading_date,
+    canonical.previous_value,
+    canonical.current_value,
+    canonical.source_kind
+
+  from public.v_canonical_latest_meter_register_readings canonical
+
+  limit 1;
+
+end
+$$;
