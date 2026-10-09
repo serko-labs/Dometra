@@ -87,6 +87,10 @@ import {
 } from '../screens/NotificationsScreen';
 
 import {
+  CheckoutFinalBillScreen,
+} from '../screens/CheckoutFinalBillScreen';
+
+import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
 
@@ -546,6 +550,17 @@ export function RootNavigator() {
               name="PreviousRentalDetails"
               component={
                 PreviousRentalDetailsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="CheckoutFinalBill"
+              component={
+                CheckoutFinalBillScreen
               }
               options={{
                 title:

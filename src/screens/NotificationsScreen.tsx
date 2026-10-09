@@ -146,7 +146,7 @@ function notificationBody(
       return `Checkout has been started for ${name}. Final meter readings may be required.`;
 
     case 'CHECKOUT_READINGS_SUBMITTED':
-      return `The tenant submitted all final meter readings for ${name}. Review the readings and complete checkout.`;
+      return `The tenant submitted all final meter readings for ${name}. Review the final bill before completing checkout.`;
 
     case 'CHECKOUT_COMPLETED':
       return `Your tenancy at ${name} has been completed. The rental is now available in Previous rentals.`;
@@ -427,17 +427,21 @@ export function NotificationsScreen() {
         case 'CHECKOUT_READINGS_SUBMITTED':
 
           if (
-            notification.propertyId ||
             notification.tenancyId
           ) {
             navigation.navigate(
-              'CheckoutTenant',
+              'CheckoutFinalBill',
               {
+                tenancyId:
+                  notification.tenancyId,
+
                 propertyId:
                   notification.propertyId,
 
-                tenancyId:
-                  notification.tenancyId,
+                propertyName:
+                  propertyName(
+                    notification,
+                  ),
               },
             );
           }
