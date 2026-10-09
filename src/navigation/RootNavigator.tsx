@@ -75,6 +75,14 @@ import {
 } from '../screens/BillingHistoryScreen';
 
 import {
+  PreviousRentalsScreen,
+} from '../screens/PreviousRentalsScreen';
+
+import {
+  PreviousRentalDetailsScreen,
+} from '../screens/PreviousRentalDetailsScreen';
+
+import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
 
@@ -501,6 +509,28 @@ export function RootNavigator() {
               name="BillingHistory"
               component={
                 BillingHistoryScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="PreviousRentals"
+              component={
+                PreviousRentalsScreen
+              }
+              options={{
+                title:
+                  '',
+              }}
+            />
+
+            <Stack.Screen
+              name="PreviousRentalDetails"
+              component={
+                PreviousRentalDetailsScreen
               }
               options={{
                 title:

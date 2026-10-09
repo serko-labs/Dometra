@@ -25,6 +25,8 @@ import {
   Card,
   Header,
   Screen,
+  SecondaryButton,
+  SectionTitle,
 } from '../components/ui';
 
 import {
@@ -49,9 +51,56 @@ import {
 } from '../services/tenantPortalRepository';
 
 import {
+  loadTenantRentalHistory,
+  TenantRentalHistoryItem,
+} from '../services/tenantRentalHistoryRepository';
+
+import {
   colors,
   spacing,
 } from '../theme';
+
+function formatDate(
+  value?:
+    string,
+) {
+  if (
+    !value
+  ) {
+    return '—';
+  }
+
+  const normalized =
+    value.includes(
+      'T',
+    )
+      ? value
+      : `${value}T00:00:00`;
+
+  const date =
+    new Date(
+      normalized,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      month:
+        'short',
+
+      year:
+        'numeric',
+    },
+  );
+}
 
 export function TenantHomeScreen() {
   const navigation =
@@ -68,6 +117,14 @@ export function TenantHomeScreen() {
   ] =
     useState<
       TenantApartmentPortal[]
+    >([]);
+
+  const [
+    previousRentals,
+    setPreviousRentals,
+  ] =
+    useState<
+      TenantRentalHistoryItem[]
     >([]);
 
   const [
@@ -108,8 +165,15 @@ export function TenantHomeScreen() {
         );
 
         try {
-          const apartmentData =
-            await loadTenantApartments();
+          const [
+            apartmentData,
+            rentalHistory,
+          ] =
+            await Promise.all([
+              loadTenantApartments(),
+
+              loadTenantRentalHistory(),
+            ]);
 
           const tenancyIds =
             apartmentData.map(
@@ -134,6 +198,10 @@ export function TenantHomeScreen() {
 
           setApartments(
             apartmentData,
+          );
+
+          setPreviousRentals(
+            rentalHistory,
           );
 
           setPaymentClaims(
@@ -200,6 +268,15 @@ export function TenantHomeScreen() {
         );
     };
 
+  const openPreviousRentals =
+    () => {
+      navigation
+        .getParent()
+        ?.navigate(
+          'PreviousRentals',
+        );
+    };
+
   return (
     <Screen>
       <Header
@@ -248,7 +325,7 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            When you accept an apartment invitation, it will appear here.
+            When you accept a new apartment invitation, it will appear here.
           </Text>
         </Card>
       ) : null}
@@ -439,6 +516,122 @@ export function TenantHomeScreen() {
           );
         },
       )}
+
+      {!loading &&
+      previousRentals.length >
+        0 ? (
+        <>
+          <SectionTitle
+            title="Previous rentals"
+          />
+
+          <Card>
+            <View
+              style={
+                styles.previousHeader
+              }
+            >
+              <View
+                style={
+                  styles.historyIcon
+                }
+              >
+                <Text
+                  style={
+                    styles.historyIconText
+                  }
+                >
+                  ↶
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.flex
+                }
+              >
+                <Text
+                  style={
+                    styles.historyTitle
+                  }
+                >
+                  Previous rentals
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  {previousRentals.length}{' '}
+                  completed rental
+                  {previousRentals.length ===
+                  1
+                    ? ''
+                    : 's'}
+                </Text>
+              </View>
+
+              <Badge
+                text={
+                  String(
+                    previousRentals.length,
+                  )
+                }
+                tone="neutral"
+              />
+            </View>
+
+            {previousRentals[0] ? (
+              <View
+                style={
+                  styles.latestRental
+                }
+              >
+                <Text
+                  style={
+                    styles.latestRentalName
+                  }
+                >
+                  {
+                    previousRentals[0]
+                      .propertyName
+                  }
+                </Text>
+
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  {formatDate(
+                    previousRentals[0]
+                      .startDate,
+                  )}
+                  {' → '}
+                  {formatDate(
+                    previousRentals[0]
+                      .endDate,
+                  )}
+                </Text>
+              </View>
+            ) : null}
+
+            <View
+              style={
+                styles.buttonTop
+              }
+            >
+              <SecondaryButton
+                title="View previous rentals"
+                onPress={
+                  openPreviousRentals
+                }
+              />
+            </View>
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -566,6 +759,89 @@ const styles =
 
       fontWeight:
         '800',
+    },
+
+    previousHeader: {
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.md,
+    },
+
+    historyIcon: {
+      width:
+        44,
+
+      height:
+        44,
+
+      borderRadius:
+        14,
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      backgroundColor:
+        '#EEF2FF',
+    },
+
+    historyIconText: {
+      color:
+        colors.primary,
+
+      fontSize:
+        23,
+
+      fontWeight:
+        '800',
+    },
+
+    historyTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    latestRental: {
+      borderTopWidth:
+        StyleSheet.hairlineWidth,
+
+      borderTopColor:
+        colors.border,
+
+      marginTop:
+        spacing.md,
+
+      paddingTop:
+        spacing.md,
+    },
+
+    latestRentalName: {
+      color:
+        colors.text,
+
+      fontSize:
+        13,
+
+      fontWeight:
+        '800',
+    },
+
+    buttonTop: {
+      marginTop:
+        spacing.md,
     },
 
     muted: {
