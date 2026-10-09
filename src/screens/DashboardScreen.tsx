@@ -26,6 +26,10 @@ import {
 } from '../components/ui';
 
 import {
+  NotificationBell,
+} from '../components/NotificationBell';
+
+import {
   PaymentStatusBadge,
 } from '../components/PaymentStatusBadge';
 
@@ -322,6 +326,9 @@ export function DashboardScreen() {
       <Header
         title="Home"
         subtitle="Your rental properties"
+        right={
+          <NotificationBell />
+        }
       />
 
       <PrimaryButton
@@ -395,6 +402,29 @@ export function DashboardScreen() {
       ) : null}
 
       {!loading &&
+      portfolio &&
+      portfolio.properties.length ===
+        0 ? (
+        <Card>
+          <Text
+            style={
+              styles.emptyTitle
+            }
+          >
+            No properties yet
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            Add your first apartment to start managing tenants, meters and payments.
+          </Text>
+        </Card>
+      ) : null}
+
+      {!loading &&
       properties.map(
         property => (
           <Pressable
@@ -432,6 +462,7 @@ export function DashboardScreen() {
 
                       navigation.navigate(
                         'PropertyIcon',
+
                         {
                           propertyId:
                             property.propertyId,
@@ -497,6 +528,24 @@ export function DashboardScreen() {
                           property.propertyCity
                         }
                       </Text>
+
+                      {property.areaM2 >
+                      0 ? (
+                        <Text
+                          style={
+                            styles.meta
+                          }
+                        >
+                          {
+                            property.areaM2
+                          }{' '}
+                          m²
+                          {'  •  '}
+                          {property.tenancyId
+                            ? 'Occupied'
+                            : 'No active tenant'}
+                        </Text>
+                      ) : null}
                     </View>
 
                     {paymentBadge(
@@ -710,6 +759,17 @@ const styles =
         4,
     },
 
+    meta: {
+      color:
+        colors.muted,
+
+      fontSize:
+        12,
+
+      marginTop:
+        6,
+    },
+
     separator: {
       borderTopWidth:
         StyleSheet.hairlineWidth,
@@ -785,5 +845,22 @@ const styles =
 
       fontSize:
         12,
+
+      lineHeight:
+        18,
+    },
+
+    emptyTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+
+      marginBottom:
+        4,
     },
   });

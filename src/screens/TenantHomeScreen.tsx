@@ -30,6 +30,10 @@ import {
 } from '../components/ui';
 
 import {
+  NotificationBell,
+} from '../components/NotificationBell';
+
+import {
   PaymentStatusBadge,
 } from '../components/PaymentStatusBadge';
 
@@ -70,16 +74,13 @@ function formatDate(
     return '—';
   }
 
-  const normalized =
-    value.includes(
-      'T',
-    )
-      ? value
-      : `${value}T00:00:00`;
-
   const date =
     new Date(
-      normalized,
+      value.includes(
+        'T',
+      )
+        ? value
+        : `${value}T00:00:00`,
     );
 
   if (
@@ -268,15 +269,6 @@ export function TenantHomeScreen() {
         );
     };
 
-  const openPreviousRentals =
-    () => {
-      navigation
-        .getParent()
-        ?.navigate(
-          'PreviousRentals',
-        );
-    };
-
   return (
     <Screen>
       <Header
@@ -294,6 +286,9 @@ export function TenantHomeScreen() {
               'Your rental apartments',
           },
         )}
+        right={
+          <NotificationBell />
+        }
       />
 
       {loading ? (
@@ -498,19 +493,13 @@ export function TenantHomeScreen() {
                   </View>
                 </View>
 
-                <View
+                <Text
                   style={
-                    styles.footer
+                    styles.openText
                   }
                 >
-                  <Text
-                    style={
-                      styles.openText
-                    }
-                  >
-                    Open details ›
-                  </Text>
-                </View>
+                  Open details ›
+                </Text>
               </Card>
             </Pressable>
           );
@@ -571,51 +560,40 @@ export function TenantHomeScreen() {
                     : 's'}
                 </Text>
               </View>
-
-              <Badge
-                text={
-                  String(
-                    previousRentals.length,
-                  )
-                }
-                tone="neutral"
-              />
             </View>
 
-            {previousRentals[0] ? (
-              <View
+            <View
+              style={
+                styles.latestRental
+              }
+            >
+              <Text
                 style={
-                  styles.latestRental
+                  styles.latestRentalName
                 }
               >
-                <Text
-                  style={
-                    styles.latestRentalName
-                  }
-                >
-                  {
-                    previousRentals[0]
-                      .propertyName
-                  }
-                </Text>
+                {
+                  previousRentals[0]
+                    .propertyName
+                }
+              </Text>
 
-                <Text
-                  style={
-                    styles.muted
-                  }
-                >
-                  {formatDate(
-                    previousRentals[0]
-                      .startDate,
-                  )}
-                  {' → '}
-                  {formatDate(
-                    previousRentals[0]
-                      .endDate,
-                  )}
-                </Text>
-              </View>
-            ) : null}
+              <Text
+                style={
+                  styles.muted
+                }
+              >
+                {formatDate(
+                  previousRentals[0]
+                    .startDate,
+                )}
+                {' → '}
+                {formatDate(
+                  previousRentals[0]
+                    .endDate,
+                )}
+              </Text>
+            </View>
 
             <View
               style={
@@ -624,8 +602,12 @@ export function TenantHomeScreen() {
             >
               <SecondaryButton
                 title="View previous rentals"
-                onPress={
-                  openPreviousRentals
+                onPress={() =>
+                  navigation
+                    .getParent()
+                    ?.navigate(
+                      'PreviousRentals',
+                    )
                 }
               />
             </View>
@@ -745,11 +727,6 @@ const styles =
         4,
     },
 
-    footer: {
-      marginTop:
-        spacing.md,
-    },
-
     openText: {
       color:
         colors.primary,
@@ -759,6 +736,9 @@ const styles =
 
       fontWeight:
         '800',
+
+      marginTop:
+        spacing.md,
     },
 
     previousHeader: {

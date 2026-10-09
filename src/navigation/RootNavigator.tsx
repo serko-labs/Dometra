@@ -83,6 +83,10 @@ import {
 } from '../screens/PreviousRentalDetailsScreen';
 
 import {
+  NotificationsScreen,
+} from '../screens/NotificationsScreen';
+
+import {
   VariableExpenseScreen,
 } from '../screens/VariableExpenseScreen';
 
@@ -480,6 +484,17 @@ export function RootNavigator() {
               options={{
                 headerShown:
                   false,
+              }}
+            />
+
+            <Stack.Screen
+              name="Notifications"
+              component={
+                NotificationsScreen
+              }
+              options={{
+                title:
+                  '',
               }}
             />
 
