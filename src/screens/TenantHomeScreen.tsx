@@ -64,6 +64,43 @@ import {
   spacing,
 } from '../theme';
 
+function errorMessage(
+  error:
+    unknown,
+  fallback:
+    string,
+) {
+  if (
+    error instanceof
+    Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error ===
+      'object' &&
+    'message' in error &&
+    typeof (
+      error as {
+        message?:
+          unknown;
+      }
+    ).message ===
+      'string'
+  ) {
+    return (
+      error as {
+        message:
+          string;
+      }
+    ).message;
+  }
+
+  return fallback;
+}
+
 function formatDate(
   value?:
     string,
@@ -165,23 +202,122 @@ export function TenantHomeScreen() {
           true,
         );
 
+        let apartmentData:
+          TenantApartmentPortal[] =
+          [];
+
+        /*
+         * ----------------------------------------------------
+         * ACTIVE TENANCIES
+         * ----------------------------------------------------
+         *
+         * This is the primary data for Tenant Home.
+         *
+         * If this fails, the user should see an error.
+         */
         try {
-          const [
+          apartmentData =
+            await loadTenantApartments();
+
+          setApartments(
             apartmentData,
-            rentalHistory,
-          ] =
-            await Promise.all([
-              loadTenantApartments(),
+          );
+        } catch (
+          error
+        ) {
+          console.error(
+            '[Dometra Tenant Home] Unable to load active apartments:',
+            error,
+          );
 
-              loadTenantRentalHistory(),
-            ]);
+          setApartments(
+            [],
+          );
 
-          const tenancyIds =
-            apartmentData.map(
-              apartment =>
-                apartment.tenancyId,
-            );
+          Alert.alert(
+            t(
+              'tenantMyRent',
+              {
+                defaultValue:
+                  'My rent',
+              },
+            ),
 
+            errorMessage(
+              error,
+              'Unable to load your apartments.',
+            ),
+          );
+
+          setLoading(
+            false,
+          );
+
+          return;
+        }
+
+        /*
+         * ----------------------------------------------------
+         * PREVIOUS RENTALS
+         * ----------------------------------------------------
+         *
+         * Historical data must NEVER make active Tenant Home
+         * unusable.
+         */
+        try {
+          const history =
+            await loadTenantRentalHistory();
+
+          setPreviousRentals(
+            history,
+          );
+        } catch (
+          error
+        ) {
+          console.warn(
+            '[Dometra Tenant Home] Unable to load previous rentals:',
+            error,
+          );
+
+          setPreviousRentals(
+            [],
+          );
+        }
+
+        /*
+         * ----------------------------------------------------
+         * ACTIVE TENANCY ENRICHMENT
+         * ----------------------------------------------------
+         *
+         * If the user has no active tenancy after checkout,
+         * there is nothing to query here.
+         */
+        const tenancyIds =
+          apartmentData.map(
+            apartment =>
+              apartment.tenancyId,
+          );
+
+        if (
+          tenancyIds.length ===
+          0
+        ) {
+          setPaymentClaims(
+            {},
+          );
+
+          setCheckouts(
+            {},
+          );
+
+          setLoading(
+            false,
+          );
+
+          return;
+        }
+
+        try {
           const [
             claims,
             checkoutData,
@@ -197,14 +333,6 @@ export function TenantHomeScreen() {
               ),
             ]);
 
-          setApartments(
-            apartmentData,
-          );
-
-          setPreviousRentals(
-            rentalHistory,
-          );
-
           setPaymentClaims(
             claims,
           );
@@ -215,19 +343,21 @@ export function TenantHomeScreen() {
         } catch (
           error
         ) {
-          Alert.alert(
-            t(
-              'home',
-              {
-                defaultValue:
-                  'Home',
-              },
-            ),
+          /*
+           * Payment/checkout status is secondary UI metadata.
+           * Do not hide the apartment if enrichment fails.
+           */
+          console.warn(
+            '[Dometra Tenant Home] Unable to load tenancy status:',
+            error,
+          );
 
-            error instanceof
-            Error
-              ? error.message
-              : 'Unable to load your apartments.',
+          setPaymentClaims(
+            {},
+          );
+
+          setCheckouts(
+            {},
           );
         } finally {
           setLoading(

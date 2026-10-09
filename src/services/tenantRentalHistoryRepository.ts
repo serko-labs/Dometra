@@ -606,6 +606,18 @@ async function loadTenantEndedTenancyIds() {
     );
   }
 
+  /*
+   * IMPORTANT:
+   *
+   * The live Dometra tenancy_member_role enum uses TENANT.
+   *
+   * Do NOT query PRIMARY_TENANT here.
+   * PostgreSQL validates enum literals before filtering and
+   * would throw:
+   *
+   * 22P02 invalid input value for enum tenancy_member_role
+   */
+
   const {
     data:
       memberData,
@@ -618,18 +630,15 @@ async function loadTenantEndedTenancyIds() {
         'tenancy_members',
       )
       .select(
-        'tenancy_id,role',
+        'tenancy_id',
       )
       .eq(
         'user_id',
         userId,
       )
-      .in(
+      .eq(
         'role',
-        [
-          'TENANT',
-          'PRIMARY_TENANT',
-        ],
+        'TENANT',
       );
 
   if (

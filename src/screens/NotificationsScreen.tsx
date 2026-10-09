@@ -87,6 +87,9 @@ function notificationTitle(
     case 'CHECKOUT_STARTED':
       return 'Checkout started';
 
+    case 'CHECKOUT_READINGS_SUBMITTED':
+      return 'Checkout readings submitted';
+
     case 'CHECKOUT_COMPLETED':
       return 'Checkout completed';
 
@@ -142,6 +145,9 @@ function notificationBody(
     case 'CHECKOUT_STARTED':
       return `Checkout has been started for ${name}. Final meter readings may be required.`;
 
+    case 'CHECKOUT_READINGS_SUBMITTED':
+      return `The tenant submitted all final meter readings for ${name}. Review the readings and complete checkout.`;
+
     case 'CHECKOUT_COMPLETED':
       return `Your tenancy at ${name} has been completed. The rental is now available in Previous rentals.`;
 
@@ -168,6 +174,9 @@ function notificationIcon(
 
     case 'CHECKOUT_STARTED':
       return '→';
+
+    case 'CHECKOUT_READINGS_SUBMITTED':
+      return '▥';
 
     case 'CHECKOUT_COMPLETED':
       return '✓';
@@ -406,6 +415,27 @@ export function NotificationsScreen() {
             navigation.navigate(
               'TenantCheckout',
               {
+                tenancyId:
+                  notification.tenancyId,
+              },
+            );
+          }
+
+          return;
+
+
+        case 'CHECKOUT_READINGS_SUBMITTED':
+
+          if (
+            notification.propertyId ||
+            notification.tenancyId
+          ) {
+            navigation.navigate(
+              'CheckoutTenant',
+              {
+                propertyId:
+                  notification.propertyId,
+
                 tenancyId:
                   notification.tenancyId,
               },
