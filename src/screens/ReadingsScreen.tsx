@@ -1,18 +1,20 @@
-import React from 'react';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
 
 import {
+  Alert,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
 import {
+  useFocusEffect,
   useNavigation,
+  useRoute,
 } from '@react-navigation/native';
-
-import {
-  useQuery,
-} from '@tanstack/react-query';
 
 import {
   useTranslation,
@@ -24,29 +26,29 @@ import {
   Header,
   Screen,
   SecondaryButton,
-  SectionTitle,
 } from '../components/ui';
 
 import {
-  MeterSubmissionBadge,
-} from '../components/MeterSubmissionBadge';
+  PropertyTypeIcon,
+} from '../components/PropertyTypeIcon';
+
+import {
+  SubmissionStatusBadge,
+} from '../components/SubmissionStatusBadge';
 
 import {
   getLocaleTag,
 } from '../i18n/language';
 
 import {
-  queryKeys,
-} from '../lib/queryClient';
-
-import {
-  loadTenantReadingsQuery,
-  MeterSubmissionStatuses,
-} from '../queries/tenantQueries';
-
-import {
-  MeterSubmissionStatus,
+  getApartmentSubmissionStatus,
+  getMeterSubmissionStatus,
 } from '../services/meterSubmissionStatus';
+
+import {
+  loadTenantApartments,
+  TenantApartmentPortal,
+} from '../services/tenantPortalRepository';
 
 import {
   Meter,
@@ -56,7 +58,6 @@ import {
   colors,
   spacing,
 } from '../theme';
-
 
 function formatDate(
   value:
@@ -93,6 +94,7 @@ function formatDate(
 
   return date.toLocaleDateString(
     locale,
+
     {
       day:
         '2-digit',
@@ -106,31 +108,27 @@ function formatDate(
   );
 }
 
-
 function lastReadingText(
   meter:
     Meter,
 ) {
-  const values =
-    meter.registers
-      .filter(
-        register =>
-          register.lastValue !==
-          undefined,
-      )
-      .map(
-        register =>
-          meter.registers.length >
-          1
-            ? `${register.code}: ${register.lastValue} ${register.unit}`
-            : `${register.lastValue} ${register.unit}`,
-      );
-
-  return values.join(
-    ' • ',
-  );
+  return meter.registers
+    .filter(
+      register =>
+        register.lastValue !==
+        undefined,
+    )
+    .map(
+      register =>
+        meter.registers.length >
+        1
+          ? `${register.code}: ${register.lastValue} ${register.unit}`
+          : `${register.lastValue} ${register.unit}`,
+    )
+    .join(
+      ' • ',
+    );
 }
-
 
 function lastReadingDate(
   meter:
@@ -163,61 +161,51 @@ function lastReadingDate(
     .reverse()[0];
 }
 
+function statusText(
+  state:
+    ReturnType<
+      typeof getMeterSubmissionStatus
+    >['state'],
 
-function findMeterStatus(
-  statuses:
-    MeterSubmissionStatuses,
+  submitted:
+    number,
 
-  meterId:
-    string,
-):
-  | MeterSubmissionStatus
-  | undefined {
-  return statuses.find(
-    (
-      status:
-        MeterSubmissionStatus,
-    ) =>
-      status.meterId ===
-      meterId,
-  );
-}
-
-
-function errorMessage(
-  error:
-    unknown,
+  total:
+    number,
 ) {
   if (
-    error instanceof
-    Error
+    state ===
+    'COMPLETE'
   ) {
-    return error.message;
+    return total >
+      1
+      ? `${submitted}/${total} submitted`
+      : 'Submitted';
   }
 
   if (
-    error &&
-    typeof error ===
-      'object' &&
-    'message' in error
+    state ===
+    'DUE'
   ) {
-    return String(
-      (
-        error as {
-          message:
-            unknown;
-        }
-      ).message,
-    );
+    return 'Due';
   }
 
-  return 'Unable to load meters.';
-}
+  if (
+    state ===
+    'OVERDUE'
+  ) {
+    return 'Overdue';
+  }
 
+  return 'Not required';
+}
 
 export function ReadingsScreen() {
   const navigation =
     useNavigation<any>();
+
+  const route =
+    useRoute<any>();
 
   const {
     t,
@@ -231,101 +219,153 @@ export function ReadingsScreen() {
         i18n.language,
     );
 
+  const tenancyId:
+    string | undefined =
+      route.params
+        ?.tenancyId;
 
-  const {
-    data,
-    error,
-    isPending,
-    isFetching,
-    refetch,
-  } =
-    useQuery({
-      queryKey:
-        queryKeys.tenantReadings,
+  const [
+    apartment,
+    setApartment,
+  ] =
+    useState<
+      TenantApartmentPortal | null
+    >(null);
 
-      queryFn:
-        () =>
-          loadTenantReadingsQuery(),
-    });
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
 
+  useFocusEffect(
+    useCallback(
+      () => {
+        let active =
+          true;
 
-  const apartments =
-    data?.apartments ??
-    [];
+        const load =
+          async () => {
+            setLoading(
+              true,
+            );
 
-  const meterStatuses =
-    data?.meterStatuses ??
-    [];
+            try {
+              const apartmentData =
+                await loadTenantApartments();
 
-  const checkouts =
-    data?.checkouts ??
-    {};
+              const selected =
+                apartmentData.find(
+                  item =>
+                    item.tenancyId ===
+                    tenancyId,
+                ) ??
+                (
+                  tenancyId
+                    ? null
+                    : apartmentData[0] ??
+                      null
+                );
 
+              if (
+                active
+              ) {
+                setApartment(
+                  selected,
+                );
+              }
+            } catch (
+              error
+            ) {
+              if (
+                active
+              ) {
+                Alert.alert(
+                  t(
+                    'readings',
+                    {
+                      defaultValue:
+                        'Readings',
+                    },
+                  ),
+
+                  error instanceof
+                  Error
+                    ? error.message
+                    : t(
+                        'loadingMeters',
+                        {
+                          defaultValue:
+                            'Unable to load meters.',
+                        },
+                      ),
+                );
+              }
+            } finally {
+              if (
+                active
+              ) {
+                setLoading(
+                  false,
+                );
+              }
+            }
+          };
+
+        void load();
+
+        return () => {
+          active =
+            false;
+        };
+      },
+
+      [
+        tenancyId,
+        t,
+      ],
+    ),
+  );
 
   const openReading =
     (
       meterId:
         string,
     ) => {
-      navigation
-        .getParent()
-        ?.navigate(
-          'MeterReading',
-          {
-            meterId,
+      navigation.navigate(
+        'MeterReading',
 
-            source:
-              'TENANT',
-          },
-        );
+        {
+          meterId,
+
+          source:
+            'TENANT',
+        },
+      );
     };
 
+  if (
+    loading
+  ) {
+    return (
+      <Screen>
+        <Header
+          title={t(
+            'readings',
+            {
+              defaultValue:
+                'Readings',
+            },
+          )}
+          subtitle={t(
+            'readingsSubtitle',
+            {
+              defaultValue:
+                'Submit current meter values',
+            },
+          )}
+        />
 
-  const refresh =
-    () => {
-      if (
-        isFetching
-      ) {
-        return;
-      }
-
-      void refetch();
-    };
-
-
-  return (
-    <Screen>
-      <Header
-        title={t(
-          'readings',
-        )}
-        subtitle={t(
-          'readingsSubtitle',
-        )}
-      />
-
-
-      {!isPending ? (
-        <View
-          style={
-            styles.refreshWrap
-          }
-        >
-          <SecondaryButton
-            title={
-              isFetching
-                ? 'Refreshing...'
-                : 'Refresh'
-            }
-            onPress={
-              refresh
-            }
-          />
-        </View>
-      ) : null}
-
-
-      {isPending ? (
         <Card>
           <Text
             style={
@@ -334,40 +374,32 @@ export function ReadingsScreen() {
           >
             {t(
               'loadingMeters',
+              {
+                defaultValue:
+                  'Loading meters...',
+              },
             )}
           </Text>
         </Card>
-      ) : null}
+      </Screen>
+    );
+  }
 
+  if (
+    !apartment
+  ) {
+    return (
+      <Screen>
+        <Header
+          title={t(
+            'readings',
+            {
+              defaultValue:
+                'Readings',
+            },
+          )}
+        />
 
-      {!isPending &&
-      error ? (
-        <Card>
-          <Text
-            style={
-              styles.title
-            }
-          >
-            Unable to load readings
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {errorMessage(
-              error,
-            )}
-          </Text>
-        </Card>
-      ) : null}
-
-
-      {!isPending &&
-      !error &&
-      apartments.length ===
-        0 ? (
         <Card>
           <Text
             style={
@@ -376,6 +408,10 @@ export function ReadingsScreen() {
           >
             {t(
               'noActiveTenancy',
+              {
+                defaultValue:
+                  'No active tenancy',
+              },
             )}
           </Text>
 
@@ -386,90 +422,90 @@ export function ReadingsScreen() {
           >
             {t(
               'readingsAvailableAfterJoin',
+              {
+                defaultValue:
+                  'Readings will be available after you join an apartment.',
+              },
             )}
           </Text>
         </Card>
-      ) : null}
+      </Screen>
+    );
+  }
 
+  const meters =
+    apartment.meters.filter(
+      meter =>
+        meter.billingMode ===
+        'METERED',
+    );
 
-      {apartments.map(
-        apartment => {
-          const meters =
-            apartment.meters.filter(
-              meter =>
-                meter.billingMode ===
-                'METERED',
-            );
+  const checkoutPending =
+    apartment.status ===
+    'CHECKOUT_PENDING';
 
+  const apartmentStatus =
+    getApartmentSubmissionStatus(
+      apartment.meters,
+    );
 
-          /*
-           * Checkout state does not live on tenancy.status.
-           *
-           * The tenancy remains ACTIVE until the landlord
-           * completes checkout.
-           */
-          const checkoutPending =
-            checkouts[
-              apartment.tenancyId
-            ]?.status ===
-            'PENDING';
+  return (
+    <Screen>
+      <Header
+        title={t(
+          'readings',
+          {
+            defaultValue:
+              'Readings',
+          },
+        )}
+        subtitle={
+          apartment.propertyName
+        }
+      />
 
+      <Card>
+        <View
+          style={
+            styles.rowBetween
+          }
+        >
+          <View
+            style={
+              styles.propertyIdentity
+            }
+          >
+            <PropertyTypeIcon
+              propertyType={
+                apartment.propertyType
+              }
+              size="medium"
+            />
 
-          const submittedCount =
-            meters.filter(
-              meter =>
-                findMeterStatus(
-                  meterStatuses,
-                  meter.id,
-                )?.state ===
-                'COMPLETE',
-            ).length;
-
-
-          return (
             <View
-              key={
-                apartment.tenancyId
+              style={
+                styles.propertyText
               }
             >
-              <View
+              <Text
                 style={
-                  styles.apartmentTitleRow
+                  styles.apartmentTitle
+                }
+                numberOfLines={
+                  2
                 }
               >
-                <SectionTitle
-                  title={
-                    apartment.propertyName
-                  }
-                />
-
-                {!checkoutPending &&
-                meters.length >
-                  0 ? (
-                  <Text
-                    style={
-                      styles.progress
-                    }
-                  >
-                    {t(
-                      'submittedProgress',
-
-                      {
-                        submitted:
-                          submittedCount,
-
-                        total:
-                          meters.length,
-                      },
-                    )}
-                  </Text>
-                ) : null}
-              </View>
-
+                {
+                  apartment.propertyName
+                }
+              </Text>
 
               <Text
                 style={
                   styles.address
+                }
+                numberOfLines={
+                  2
                 }
               >
                 {
@@ -480,256 +516,314 @@ export function ReadingsScreen() {
                   apartment.propertyCity
                 }
               </Text>
+            </View>
+          </View>
 
+          {!checkoutPending &&
+          apartmentStatus.totalMeters >
+            0 ? (
+            <SubmissionStatusBadge
+              state={
+                apartmentStatus.state
+              }
+              text={`${apartmentStatus.submittedMeters}/${apartmentStatus.totalMeters} submitted`}
+            />
+          ) : null}
+        </View>
+      </Card>
 
-              {checkoutPending ? (
-                <Card>
-                  <View
-                    style={
-                      styles.rowBetween
-                    }
-                  >
-                    <View
-                      style={
-                        styles.flex
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.title
-                        }
-                      >
-                        {t(
-                          'checkoutRequired',
-                        )}
-                      </Text>
+      {checkoutPending ? (
+        <Card>
+          <View
+            style={
+              styles.rowBetween
+            }
+          >
+            <View
+              style={
+                styles.flex
+              }
+            >
+              <Text
+                style={
+                  styles.title
+                }
+              >
+                {t(
+                  'checkoutRequired',
+                  {
+                    defaultValue:
+                      'Checkout required',
+                  },
+                )}
+              </Text>
 
-                      <Text
-                        style={
-                          styles.muted
-                        }
-                      >
-                        {t(
-                          'checkoutRegularReadingsDisabled',
-                        )}
-                      </Text>
-                    </View>
+              <Text
+                style={
+                  styles.muted
+                }
+              >
+                {t(
+                  'checkoutRegularReadingsDisabled',
+                  {
+                    defaultValue:
+                      'Regular monthly readings are disabled while checkout is pending.',
+                  },
+                )}
+              </Text>
+            </View>
 
-                    <Badge
-                      text={t(
-                        'pending',
-                      )}
-                      tone="warning"
-                    />
-                  </View>
-                </Card>
-              ) : null}
+            <Badge
+              text={t(
+                'pending',
+                {
+                  defaultValue:
+                    'Pending',
+                },
+              )}
+              tone="warning"
+            />
+          </View>
+        </Card>
+      ) : null}
 
+      {meters.length ===
+      0 ? (
+        <Card>
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            {t(
+              'noUtilityMeters',
+              {
+                defaultValue:
+                  'No utility meters are configured for this apartment.',
+              },
+            )}
+          </Text>
+        </Card>
+      ) : null}
 
-              {meters.length ===
-              0 ? (
-                <Card>
+      {meters.map(
+        meter => {
+          const last =
+            lastReadingText(
+              meter,
+            );
+
+          const date =
+            lastReadingDate(
+              meter,
+            );
+
+          const status =
+            getMeterSubmissionStatus(
+              meter,
+            );
+
+          return (
+            <Card
+              key={
+                meter.id
+              }
+            >
+              <View
+                style={
+                  styles.rowBetween
+                }
+              >
+                <View
+                  style={
+                    styles.flex
+                  }
+                >
                   <Text
                     style={
-                      styles.muted
+                      styles.title
+                    }
+                  >
+                    {
+                      meter.name
+                    }
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.tariff
+                    }
+                  >
+                    {meter.registers
+                      .map(
+                        register =>
+                          `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
+                      )
+                      .join(
+                        ' • ',
+                      )}
+                  </Text>
+                </View>
+
+                {!checkoutPending ? (
+                  <SubmissionStatusBadge
+                    state={
+                      status.state
+                    }
+                    text={statusText(
+                      status.state,
+                      status.submittedRegisters,
+                      status.totalRegisters,
+                    )}
+                  />
+                ) : null}
+              </View>
+
+              {!checkoutPending &&
+              status.state ===
+                'DUE' ? (
+                <Text
+                  style={
+                    styles.dueText
+                  }
+                >
+                  {t(
+                    'sendBeforeFifth',
+                    {
+                      defaultValue:
+                        'Send readings by the 5th.',
+                    },
+                  )}
+                </Text>
+              ) : null}
+
+              {!checkoutPending &&
+              status.state ===
+                'OVERDUE' ? (
+                <Text
+                  style={
+                    styles.overdueText
+                  }
+                >
+                  {t(
+                    'readingsOverdue',
+                    {
+                      defaultValue:
+                        'Reading is overdue.',
+                    },
+                  )}
+                </Text>
+              ) : null}
+
+              <View
+                style={
+                  styles.separator
+                }
+              />
+
+              {last ? (
+                <>
+                  <Text
+                    style={
+                      styles.label
                     }
                   >
                     {t(
-                      'noUtilityMeters',
+                      'previousValue',
+                      {
+                        defaultValue:
+                          'Previous value',
+                      },
                     )}
                   </Text>
-                </Card>
-              ) : null}
 
+                  <Text
+                    style={
+                      styles.lastValue
+                    }
+                  >
+                    {last}
+                  </Text>
 
-              {meters.map(
-                meter => {
-                  const last =
-                    lastReadingText(
-                      meter,
-                    );
-
-                  const date =
-                    lastReadingDate(
-                      meter,
-                    );
-
-                  const status =
-                    findMeterStatus(
-                      meterStatuses,
-                      meter.id,
-                    );
-
-                  const submitted =
-                    status?.state ===
-                    'COMPLETE';
-
-
-                  return (
-                    <Card
-                      key={
-                        meter.id
+                  {date ? (
+                    <Text
+                      style={
+                        styles.muted
                       }
                     >
-                      <View
-                        style={
-                          styles.rowBetween
-                        }
-                      >
-                        <View
-                          style={
-                            styles.flex
-                          }
-                        >
-                          <Text
-                            style={
-                              styles.title
-                            }
-                          >
-                            {
-                              meter.name
-                            }
-                          </Text>
+                      {t(
+                        'lastSubmitted',
 
-                          <Text
-                            style={
-                              styles.tariff
-                            }
-                          >
-                            {meter.registers
-                              .map(
-                                register =>
-                                  `${register.tariff} ${register.tariffCurrency}/${register.unit}`,
-                              )
-                              .join(
-                                ' • ',
-                              )}
-                          </Text>
-                        </View>
+                        {
+                          defaultValue:
+                            'Last submitted: {{date}}',
 
-
-                        {!checkoutPending &&
-                        status ? (
-                          <MeterSubmissionBadge
-                            status={
-                              status
-                            }
-                          />
-                        ) : null}
-                      </View>
-
-
-                      {!checkoutPending &&
-                      status &&
-                      !submitted ? (
-                        <Text
-                          style={
-                            styles.dueText
-                          }
-                        >
-                          {t(
-                            'sendBeforeFifth',
-                          )}
-                        </Text>
-                      ) : null}
-
-
-                      <View
-                        style={
-                          styles.separator
-                        }
-                      />
-
-
-                      {last ? (
-                        <>
-                          <Text
-                            style={
-                              styles.label
-                            }
-                          >
-                            {t(
-                              'previousValue',
-                            )}
-                          </Text>
-
-                          <Text
-                            style={
-                              styles.lastValue
-                            }
-                          >
-                            {last}
-                          </Text>
-
-                          {date ? (
-                            <Text
-                              style={
-                                styles.muted
-                              }
-                            >
-                              {t(
-                                'lastSubmitted',
-
-                                {
-                                  date:
-                                    formatDate(
-                                      date,
-                                      locale,
-                                    ),
-                                },
-                              )}
-                            </Text>
-                          ) : null}
-                        </>
-                      ) : (
-                        <Text
-                          style={
-                            styles.muted
-                          }
-                        >
-                          {t(
-                            'noReadingsYet',
-                          )}
-                        </Text>
+                          date:
+                            formatDate(
+                              date,
+                              locale,
+                            ),
+                        },
                       )}
-
-
-                      {!checkoutPending ? (
-                        <View
-                          style={
-                            styles.buttonTop
-                          }
-                        >
-                          <SecondaryButton
-                            title={
-                              submitted
-                                ? t(
-                                    'updateReading',
-                                  )
-                                : t(
-                                    'addReading',
-                                  )
-                            }
-                            onPress={() =>
-                              openReading(
-                                meter.id,
-                              )
-                            }
-                          />
-                        </View>
-                      ) : null}
-                    </Card>
-                  );
-                },
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <Text
+                  style={
+                    styles.muted
+                  }
+                >
+                  {t(
+                    'noReadingsYet',
+                    {
+                      defaultValue:
+                        'No readings yet.',
+                    },
+                  )}
+                </Text>
               )}
-            </View>
+
+              {!checkoutPending ? (
+                <View
+                  style={
+                    styles.buttonTop
+                  }
+                >
+                  <SecondaryButton
+                    title={
+                      status.state ===
+                      'COMPLETE'
+                        ? t(
+                            'updateReading',
+                            {
+                              defaultValue:
+                                'Update reading',
+                            },
+                          )
+                        : t(
+                            'addReading',
+                            {
+                              defaultValue:
+                                'Add reading',
+                            },
+                          )
+                    }
+                    onPress={() =>
+                      openReading(
+                        meter.id,
+                      )
+                    }
+                  />
+                </View>
+              ) : null}
+            </Card>
           );
         },
       )}
     </Screen>
   );
 }
-
 
 const styles =
   StyleSheet.create({
@@ -738,48 +832,54 @@ const styles =
         1,
     },
 
-    refreshWrap: {
-      marginBottom:
-        spacing.sm,
-    },
-
-    apartmentTitleRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        spacing.md,
-    },
-
-    progress: {
-      color:
-        colors.muted,
-
-      fontSize:
-        11,
-
-      fontWeight:
-        '700',
-    },
-
     rowBetween: {
       flexDirection:
         'row',
 
       alignItems:
-        'center',
+        'flex-start',
 
       justifyContent:
         'space-between',
 
       gap:
         spacing.md,
+    },
+
+    propertyIdentity: {
+      flex:
+        1,
+
+      minWidth:
+        0,
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.sm,
+    },
+
+    propertyText: {
+      flex:
+        1,
+
+      minWidth:
+        0,
+    },
+
+    apartmentTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        18,
+
+      fontWeight:
+        '800',
     },
 
     title: {
@@ -800,11 +900,11 @@ const styles =
       fontSize:
         12,
 
-      marginBottom:
-        spacing.sm,
+      lineHeight:
+        18,
 
       marginTop:
-        -4,
+        4,
     },
 
     tariff: {
@@ -822,6 +922,20 @@ const styles =
     },
 
     dueText: {
+      color:
+        '#92400E',
+
+      fontSize:
+        11,
+
+      fontWeight:
+        '700',
+
+      marginTop:
+        8,
+    },
+
+    overdueText: {
       color:
         '#B42318',
 

@@ -26,6 +26,10 @@ import {
 } from '../components/ui';
 
 import {
+  PropertyTypeIcon,
+} from '../components/PropertyTypeIcon';
+
+import {
   loadTenantApartments,
   TenantApartmentPortal,
 } from '../services/tenantPortalRepository';
@@ -511,88 +515,113 @@ export function TenantStatisticsScreen() {
           />
 
           {statistics.apartments.map(
-            item => (
-              <Card
-                key={`${item.tenancyId}:${item.currency}`}
-              >
-                <View
-                  style={
-                    styles.rowBetween
-                  }
+            item => {
+              const apartment =
+                apartments.find(
+                  candidate =>
+                    candidate.tenancyId ===
+                    item.tenancyId,
+                );
+
+              return (
+                <Card
+                  key={`${item.tenancyId}:${item.currency}`}
                 >
                   <View
                     style={
-                      styles.flex
+                      styles.rowBetween
                     }
                   >
-                    <Text
+                    <View
                       style={
-                        styles.title
+                        styles.apartmentIdentity
                       }
                     >
-                      {
-                        item.propertyName
-                      }
-                    </Text>
+                      <PropertyTypeIcon
+                        propertyType={
+                          apartment?.propertyType
+                        }
+                        size="small"
+                      />
+
+                      <View
+                        style={
+                          styles.apartmentText
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.title
+                          }
+                          numberOfLines={
+                            2
+                          }
+                        >
+                          {
+                            item.propertyName
+                          }
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.muted
+                          }
+                        >
+                          {t(
+                            'rentAndUtilities',
+                            {
+                              defaultValue:
+                                'Rent + utilities',
+                            },
+                          )}
+                        </Text>
+                      </View>
+                    </View>
 
                     <Text
                       style={
-                        styles.muted
+                        styles.apartmentTotal
                       }
                     >
-                      {t(
-                        'rentAndUtilities',
-                        {
-                          defaultValue:
-                            'Rent + utilities',
-                        },
+                      {formatMoney(
+                        item.total,
+                        item.currency,
                       )}
                     </Text>
                   </View>
 
-                  <Text
+                  <View
                     style={
-                      styles.apartmentTotal
+                      styles.miniBreakdown
                     }
                   >
-                    {formatMoney(
-                      item.total,
-                      item.currency,
-                    )}
-                  </Text>
-                </View>
+                    <Text
+                      style={
+                        styles.miniText
+                      }
+                    >
+                      Rent:{' '}
+                      {formatMoney(
+                        item.rent,
+                        item.currency,
+                      )}
+                    </Text>
 
-                <View
-                  style={
-                    styles.miniBreakdown
-                  }
-                >
-                  <Text
-                    style={
-                      styles.miniText
-                    }
-                  >
-                    Rent:{' '}
-                    {formatMoney(
-                      item.rent,
-                      item.currency,
-                    )}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.miniText
-                    }
-                  >
-                    Utilities:{' '}
-                    {formatMoney(
-                      item.utilities,
-                      item.currency,
-                    )}
-                  </Text>
-                </View>
-              </Card>
-            ),
+                    <Text
+                      style={
+                        styles.miniText
+                      }
+                    >
+                      Utilities:{' '}
+                      {formatMoney(
+                        item.utilities,
+                        item.currency,
+                      )}
+                    </Text>
+                  </View>
+                </Card>
+              );
+            },
           )}
         </>
       ) : null}
@@ -738,6 +767,31 @@ const styles =
 
       gap:
         spacing.md,
+    },
+
+    apartmentIdentity: {
+      flex:
+        1,
+
+      minWidth:
+        0,
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.sm,
+    },
+
+    apartmentText: {
+      flex:
+        1,
+
+      minWidth:
+        0,
     },
 
     title: {
