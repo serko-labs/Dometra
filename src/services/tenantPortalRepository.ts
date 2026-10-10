@@ -23,6 +23,8 @@ export interface TenantApartmentPortal {
 
   workspaceId: string;
 
+  propertyType: string;
+
   propertyName: string;
 
   propertyAddress: string;
@@ -87,6 +89,8 @@ interface PropertyRow {
 
   workspace_id: string;
 
+  property_type: string;
+
   title: string;
 
   street: string;
@@ -94,17 +98,17 @@ interface PropertyRow {
   city: string;
 
   area_m2:
-    number |
-    string |
-    null;
+    | number
+    | string
+    | null;
 }
 
 interface RentRow {
   tenancy_id: string;
 
   rent_amount:
-    number |
-    string;
+    | number
+    | string;
 
   currency_code:
     string;
@@ -113,13 +117,13 @@ interface RentRow {
     number;
 
   deposit_amount:
-    number |
-    string |
-    null;
+    | number
+    | string
+    | null;
 
   deposit_currency:
-    string |
-    null;
+    | string
+    | null;
 }
 
 interface ServiceRow {
@@ -184,8 +188,8 @@ interface TariffRow {
     string | null;
 
   price:
-    number |
-    string;
+    | number
+    | string;
 
   currency_code:
     string;
@@ -202,13 +206,13 @@ interface LatestReadingRow {
   reading_date: string;
 
   previous_value:
-    number |
-    string |
-    null;
+    | number
+    | string
+    | null;
 
   current_value:
-    number |
-    string;
+    | number
+    | string;
 }
 
 interface ManualValueRow {
@@ -218,8 +222,8 @@ interface ManualValueRow {
   billing_period: string;
 
   amount:
-    number |
-    string;
+    | number
+    | string;
 
   currency_code:
     string;
@@ -241,10 +245,10 @@ function requireSupabase() {
 
 function asNumber(
   value:
-    number |
-    string |
-    null |
-    undefined,
+    | number
+    | string
+    | null
+    | undefined,
 
   fallback = 0,
 ) {
@@ -267,10 +271,10 @@ function asNumber(
 
 function optionalNumber(
   value:
-    number |
-    string |
-    null |
-    undefined,
+    | number
+    | string
+    | null
+    | undefined,
 ) {
   if (
     value === null ||
@@ -291,9 +295,9 @@ function optionalNumber(
 
 function currency(
   value:
-    string |
-    null |
-    undefined,
+    | string
+    | null
+    | undefined,
 ): CurrencyCode {
   if (
     value === 'USD' ||
@@ -505,6 +509,7 @@ export async function loadTenantApartments(): Promise<
           [
             'id',
             'workspace_id',
+            'property_type',
             'title',
             'street',
             'city',
@@ -1115,13 +1120,11 @@ export async function loadTenantApartments(): Promise<
     });
   }
 
-return tenancies
-  .map<
-    TenantApartmentPortal | null
-  >(
-    (
-      tenancy,
-    ) => {
+  return tenancies
+    .map<
+      TenantApartmentPortal | null
+    >(
+      tenancy => {
         const property =
           properties.find(
             item =>
@@ -1154,6 +1157,10 @@ return tenancies
 
           workspaceId:
             property.workspace_id,
+
+          propertyType:
+            property.property_type ||
+            'APARTMENT',
 
           propertyName:
             property.title,
