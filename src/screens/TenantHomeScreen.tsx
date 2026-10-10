@@ -39,53 +39,25 @@ import {
 import {
   currentBillingPeriod,
   getTenantPaymentState,
-  loadPaymentClaims,
-  TenantPaymentClaim,
 } from '../services/billingRepository';
-
-import {
-  loadCheckoutSummaries,
-  TenancyCheckout,
-} from '../services/checkoutRepository';
-
-import {
-  loadTenantApartments,
-  TenantApartmentPortal,
-} from '../services/tenantPortalRepository';
-
-import {
-  loadTenantRentalHistory,
-  TenantRentalHistoryItem,
-} from '../services/tenantRentalHistoryRepository';
 
 import {
   queryKeys,
 } from '../lib/queryClient';
 
 import {
+  loadTenantHomeQuery,
+} from '../queries/tenantQueries';
+
+import {
+  TenantApartmentPortal,
+} from '../services/tenantPortalRepository';
+
+import {
   colors,
   spacing,
 } from '../theme';
 
-interface TenantHomeData {
-  apartments:
-    TenantApartmentPortal[];
-
-  previousRentals:
-    TenantRentalHistoryItem[];
-
-  paymentClaims:
-    Record<
-      string,
-      TenantPaymentClaim
-    >;
-
-  checkouts:
-    Record<
-      string,
-      TenancyCheckout
-    >;
-}
 
 function errorMessage(
   error:
@@ -116,6 +88,7 @@ function errorMessage(
 
   return 'Unable to load your apartments.';
 }
+
 
 function formatDate(
   value?:
@@ -156,123 +129,6 @@ function formatDate(
   );
 }
 
-async function loadTenantHomeData(): Promise<
-  TenantHomeData
-> {
-  /*
-   * ACTIVE APARTMENTS
-   *
-   * This is the only critical part of Tenant Home.
-   */
-  const apartments =
-    await loadTenantApartments();
-
-
-  /*
-   * PREVIOUS RENTALS
-   *
-   * Historical data should never make Tenant Home unusable.
-   */
-  let previousRentals:
-    TenantRentalHistoryItem[] =
-      [];
-
-  try {
-    previousRentals =
-      await loadTenantRentalHistory();
-  } catch (
-    error
-  ) {
-    console.warn(
-      '[Dometra Tenant Home] Unable to load previous rentals:',
-      error,
-    );
-  }
-
-
-  const tenancyIds =
-    apartments.map(
-      apartment =>
-        apartment.tenancyId,
-    );
-
-
-  if (
-    tenancyIds.length ===
-    0
-  ) {
-    return {
-      apartments,
-
-      previousRentals,
-
-      paymentClaims:
-        {},
-
-      checkouts:
-        {},
-    };
-  }
-
-
-  /*
-   * Payment / checkout metadata is useful but secondary.
-   *
-   * If this enrichment fails, still show apartments.
-   */
-  let paymentClaims:
-    Record<
-      string,
-      TenantPaymentClaim
-    > = {};
-
-  let checkouts:
-    Record<
-      string,
-      TenancyCheckout
-    > = {};
-
-  try {
-    const [
-      claims,
-      checkoutData,
-    ] =
-      await Promise.all([
-        loadPaymentClaims(
-          tenancyIds,
-          currentBillingPeriod(),
-        ),
-
-        loadCheckoutSummaries(
-          tenancyIds,
-        ),
-      ]);
-
-    paymentClaims =
-      claims;
-
-    checkouts =
-      checkoutData;
-  } catch (
-    error
-  ) {
-    console.warn(
-      '[Dometra Tenant Home] Unable to load tenancy status:',
-      error,
-    );
-  }
-
-
-  return {
-    apartments,
-
-    previousRentals,
-
-    paymentClaims,
-
-    checkouts,
-  };
-}
 
 export function TenantHomeScreen() {
   const navigation =
@@ -283,10 +139,12 @@ export function TenantHomeScreen() {
   } =
     useTranslation();
 
+
   const {
     data,
     error,
     isPending,
+    isFetching,
     refetch,
   } =
     useQuery({
@@ -294,7 +152,7 @@ export function TenantHomeScreen() {
         queryKeys.tenantHome,
 
       queryFn:
-        loadTenantHomeData,
+        loadTenantHomeQuery,
     });
 
 
@@ -329,6 +187,18 @@ export function TenantHomeScreen() {
               apartment.tenancyId,
           },
         );
+    };
+
+
+  const manualRefresh =
+    () => {
+      if (
+        isFetching
+      ) {
+        return;
+      }
+
+      void refetch();
     };
 
 
@@ -395,9 +265,13 @@ export function TenantHomeScreen() {
             }
           >
             <SecondaryButton
-              title="Try again"
-              onPress={() =>
-                void refetch()
+              title={
+                isFetching
+                  ? 'Refreshing...'
+                  : 'Try again'
+              }
+              onPress={
+                manualRefresh
               }
             />
           </View>
@@ -425,6 +299,23 @@ export function TenantHomeScreen() {
           >
             When you accept a new apartment invitation, it will appear here.
           </Text>
+
+          <View
+            style={
+              styles.buttonTop
+            }
+          >
+            <SecondaryButton
+              title={
+                isFetching
+                  ? 'Refreshing...'
+                  : 'Refresh'
+              }
+              onPress={
+                manualRefresh
+              }
+            />
+          </View>
         </Card>
       ) : null}
 
@@ -454,6 +345,7 @@ export function TenantHomeScreen() {
 
               apartment.paymentDueDay,
             );
+
 
           return (
             <Pressable
@@ -539,6 +431,7 @@ export function TenantHomeScreen() {
                   )}
                 </View>
 
+
                 <View
                   style={
                     styles.infoRow
@@ -596,6 +489,7 @@ export function TenantHomeScreen() {
                     </Text>
                   </View>
                 </View>
+
 
                 <Text
                   style={
@@ -667,6 +561,7 @@ export function TenantHomeScreen() {
               </View>
             </View>
 
+
             <View
               style={
                 styles.latestRental
@@ -700,6 +595,7 @@ export function TenantHomeScreen() {
               </Text>
             </View>
 
+
             <View
               style={
                 styles.buttonTop
@@ -722,6 +618,7 @@ export function TenantHomeScreen() {
     </Screen>
   );
 }
+
 
 const styles =
   StyleSheet.create({

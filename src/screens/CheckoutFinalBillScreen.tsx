@@ -1,7 +1,4 @@
-import React, {
-  useCallback,
-  useState,
-} from 'react';
+import React from 'react';
 
 import {
   Alert,
@@ -11,10 +8,14 @@ import {
 } from 'react-native';
 
 import {
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
+
+import {
+  useMutation,
+  useQuery,
+} from '@tanstack/react-query';
 
 import {
   Badge,
@@ -28,19 +29,25 @@ import {
 
 import {
   CheckoutBalance,
-  CheckoutFinalBillingSummary,
   generateCheckoutFinalInvoice,
   loadCheckoutFinalBilling,
 } from '../services/checkoutFinalBillingRepository';
+
+import {
+  invalidateCheckoutData,
+  queryKeys,
+} from '../lib/queryClient';
 
 import {
   colors,
   spacing,
 } from '../theme';
 
+
 function money(
   value:
     number,
+
   currency:
     string,
 ) {
@@ -55,6 +62,7 @@ function money(
     },
   )} ${currency}`;
 }
+
 
 function formatDate(
   value?:
@@ -98,6 +106,38 @@ function formatDate(
   );
 }
 
+
+function errorMessage(
+  error:
+    unknown,
+) {
+  if (
+    error instanceof
+    Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error ===
+      'object' &&
+    'message' in error
+  ) {
+    return String(
+      (
+        error as {
+          message:
+            unknown;
+        }
+      ).message,
+    );
+  }
+
+  return 'Unknown error.';
+}
+
+
 function BalanceRows({
   items,
   emptyText,
@@ -122,6 +162,7 @@ function BalanceRows({
       </Text>
     );
   }
+
 
   return (
     <>
@@ -162,6 +203,7 @@ function BalanceRows({
   );
 }
 
+
 export function CheckoutFinalBillScreen() {
   const navigation =
     useNavigation<any>();
@@ -185,141 +227,71 @@ export function CheckoutFinalBillScreen() {
       | string
       | undefined;
 
-  const [
-    summary,
-    setSummary,
-  ] =
-    useState<
-      CheckoutFinalBillingSummary | null
-    >(null);
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(
-      true,
-    );
+  const {
+    data:
+      summary,
 
-  const [
-    busy,
-    setBusy,
-  ] =
-    useState(
-      false,
-    );
+    error,
 
-  const reload =
-    useCallback(
-      async () => {
-        if (
-          !tenancyId
-        ) {
-          return;
-        }
+    isPending,
 
-        setLoading(
-          true,
-        );
+    isFetching,
 
-        try {
-          setSummary(
-            await loadCheckoutFinalBilling(
-              tenancyId,
+    refetch,
+  } =
+    useQuery({
+      queryKey:
+        queryKeys.checkoutFinalBill(
+          tenancyId,
+        ),
+
+      queryFn:
+        () =>
+          loadCheckoutFinalBilling(
+            tenancyId,
+          ),
+
+      enabled:
+        Boolean(
+          tenancyId,
+        ),
+    });
+
+
+  const generateMutation =
+    useMutation({
+      mutationFn:
+        () =>
+          generateCheckoutFinalInvoice(
+            tenancyId,
+          ),
+
+      onSuccess:
+        async () => {
+          await invalidateCheckoutData(
+            tenancyId,
+            propertyId,
+          );
+
+          Alert.alert(
+            'Final bill confirmed',
+            'The final checkout adjustment has been issued.',
+          );
+        },
+
+      onError:
+        mutationError => {
+          Alert.alert(
+            'Unable to create final invoice',
+
+            errorMessage(
+              mutationError,
             ),
           );
-        } catch (
-          error
-        ) {
-          Alert.alert(
-            'Final checkout bill',
+        },
+    });
 
-            error &&
-            typeof error ===
-              'object' &&
-            'message' in error
-              ? String(
-                  (
-                    error as {
-                      message:
-                        unknown;
-                    }
-                  ).message,
-                )
-              : 'Unable to load final checkout bill.',
-          );
-        } finally {
-          setLoading(
-            false,
-          );
-        }
-      },
-      [
-        tenancyId,
-      ],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
-      [
-        reload,
-      ],
-    ),
-  );
-
-  const generate =
-    async () => {
-      if (
-        busy ||
-        !summary?.ready
-      ) {
-        return;
-      }
-
-      setBusy(
-        true,
-      );
-
-      try {
-        await generateCheckoutFinalInvoice(
-          tenancyId,
-        );
-
-        await reload();
-
-        Alert.alert(
-          'Final bill confirmed',
-          'The final checkout adjustment has been issued.',
-        );
-      } catch (
-        error
-      ) {
-        Alert.alert(
-          'Unable to create final invoice',
-
-          error &&
-          typeof error ===
-            'object' &&
-          'message' in error
-            ? String(
-                (
-                  error as {
-                    message:
-                      unknown;
-                  }
-                ).message,
-              )
-            : 'Unknown error.',
-        );
-      } finally {
-        setBusy(
-          false,
-        );
-      }
-    };
 
   const continueCheckout =
     () => {
@@ -335,8 +307,9 @@ export function CheckoutFinalBillScreen() {
       );
     };
 
+
   if (
-    loading
+    isPending
   ) {
     return (
       <Screen>
@@ -361,13 +334,18 @@ export function CheckoutFinalBillScreen() {
     );
   }
 
+
   if (
+    error ||
     !summary
   ) {
     return (
       <Screen>
         <Header
           title="Final checkout bill"
+          subtitle={
+            propertyName
+          }
         />
 
         <Card>
@@ -378,15 +356,44 @@ export function CheckoutFinalBillScreen() {
           >
             Final bill is not available.
           </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            {error
+              ? errorMessage(
+                  error,
+                )
+              : 'No billing information was returned.'}
+          </Text>
         </Card>
+
+        <SecondaryButton
+          title={
+            isFetching
+              ? 'Refreshing...'
+              : 'Try again'
+          }
+          onPress={() => {
+            if (
+              !isFetching
+            ) {
+              void refetch();
+            }
+          }}
+        />
       </Screen>
     );
   }
+
 
   const generated =
     Boolean(
       summary.generatedAt,
     );
+
 
   return (
     <Screen>
@@ -419,6 +426,7 @@ export function CheckoutFinalBillScreen() {
           />
         }
       />
+
 
       <Card>
         <Text
@@ -462,9 +470,11 @@ export function CheckoutFinalBillScreen() {
         </View>
       </Card>
 
+
       <SectionTitle
         title="Final meter readings"
       />
+
 
       {summary.lines.length ===
       0 ? (
@@ -534,6 +544,7 @@ export function CheckoutFinalBillScreen() {
                 />
               </View>
 
+
               <View
                 style={
                   styles.readingGrid
@@ -565,6 +576,7 @@ export function CheckoutFinalBillScreen() {
                   </Text>
                 </View>
 
+
                 <View
                   style={
                     styles.readingCell
@@ -590,6 +602,7 @@ export function CheckoutFinalBillScreen() {
                     }
                   </Text>
                 </View>
+
 
                 <View
                   style={
@@ -617,6 +630,7 @@ export function CheckoutFinalBillScreen() {
                   </Text>
                 </View>
               </View>
+
 
               {line.ready &&
               line.amount !==
@@ -656,6 +670,7 @@ export function CheckoutFinalBillScreen() {
                 </View>
               ) : null}
 
+
               {line.issue ? (
                 <View
                   style={
@@ -678,6 +693,7 @@ export function CheckoutFinalBillScreen() {
         )
       )}
 
+
       <SectionTitle
         title="Final meter charges"
       />
@@ -690,6 +706,7 @@ export function CheckoutFinalBillScreen() {
           emptyText="No additional meter charges."
         />
       </Card>
+
 
       <SectionTitle
         title="Existing outstanding balance"
@@ -711,6 +728,7 @@ export function CheckoutFinalBillScreen() {
           Existing rent and utility invoices are not duplicated in the final adjustment.
         </Text>
       </Card>
+
 
       {generated ? (
         <>
@@ -773,6 +791,7 @@ export function CheckoutFinalBillScreen() {
             )}
           </Card>
 
+
           <PrimaryButton
             title="Continue to deposit settlement"
             onPress={
@@ -802,18 +821,24 @@ export function CheckoutFinalBillScreen() {
             </Card>
           ) : null}
 
+
           {summary.ready ? (
             <PrimaryButton
               title={
-                busy
+                generateMutation.isPending
                   ? 'Creating final invoice...'
                   : 'Confirm final bill'
               }
-              onPress={() =>
-                void generate()
-              }
+              onPress={() => {
+                if (
+                  !generateMutation.isPending
+                ) {
+                  generateMutation.mutate();
+                }
+              }}
             />
           ) : null}
+
 
           <SecondaryButton
             title="Back"
@@ -826,6 +851,7 @@ export function CheckoutFinalBillScreen() {
     </Screen>
   );
 }
+
 
 const styles =
   StyleSheet.create({

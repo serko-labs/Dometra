@@ -1,7 +1,4 @@
-import React, {
-  useCallback,
-  useState,
-} from 'react';
+import React from 'react';
 
 import {
   Alert,
@@ -12,9 +9,13 @@ import {
 } from 'react-native';
 
 import {
-  useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
+
+import {
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import {
   Card,
@@ -35,9 +36,14 @@ import {
 } from '../services/notificationCenterRepository';
 
 import {
+  queryKeys,
+} from '../lib/queryClient';
+
+import {
   colors,
   spacing,
 } from '../theme';
+
 
 function stringValue(
   notification:
@@ -57,6 +63,7 @@ function stringValue(
     : undefined;
 }
 
+
 function propertyName(
   notification:
     DometraNotification,
@@ -67,6 +74,7 @@ function propertyName(
   ) ??
     'Apartment';
 }
+
 
 function notificationTitle(
   notification:
@@ -98,6 +106,7 @@ function notificationTitle(
   }
 }
 
+
 function notificationBody(
   notification:
     DometraNotification,
@@ -113,22 +122,27 @@ function notificationBody(
       'billingPeriod',
     );
 
+
   switch (
     notification.eventType
   ) {
     case 'PAYMENT_REPORTED':
+
       return period
         ? `The tenant reported ${billingMonthLabel(
             period,
           )} as paid for ${name}.`
         : `The tenant reported a payment for ${name}.`;
 
+
     case 'PAYMENT_CONFIRMED':
+
       return period
         ? `Your payment for ${billingMonthLabel(
             period,
           )} at ${name} was confirmed.`
         : `Your payment for ${name} was confirmed.`;
+
 
     case 'PAYMENT_REJECTED': {
       const note =
@@ -142,19 +156,28 @@ function notificationBody(
         : `Your payment for ${name} was not confirmed.`;
     }
 
+
     case 'CHECKOUT_STARTED':
+
       return `Checkout has been started for ${name}. Final meter readings may be required.`;
 
+
     case 'CHECKOUT_READINGS_SUBMITTED':
+
       return `The tenant submitted all final meter readings for ${name}. Review the final bill before completing checkout.`;
 
+
     case 'CHECKOUT_COMPLETED':
+
       return `Your tenancy at ${name} has been completed. The rental is now available in Previous rentals.`;
 
+
     default:
+
       return name;
   }
 }
+
 
 function notificationIcon(
   notification:
@@ -186,6 +209,7 @@ function notificationIcon(
   }
 }
 
+
 function formatDateTime(
   value:
     string,
@@ -203,6 +227,7 @@ function formatDateTime(
     return value;
   }
 
+
   const now =
     new Date();
 
@@ -213,6 +238,7 @@ function formatDateTime(
       date.getMonth() &&
     now.getDate() ===
       date.getDate();
+
 
   if (
     sameDay
@@ -228,6 +254,7 @@ function formatDateTime(
       },
     );
   }
+
 
   return date.toLocaleDateString(
     undefined,
@@ -247,76 +274,89 @@ function formatDateTime(
   );
 }
 
+
+function errorMessage(
+  error:
+    unknown,
+) {
+  if (
+    error instanceof
+    Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error ===
+      'object' &&
+    'message' in error
+  ) {
+    return String(
+      (
+        error as {
+          message:
+            unknown;
+        }
+      ).message,
+    );
+  }
+
+  return 'Unable to load notifications.';
+}
+
+
 export function NotificationsScreen() {
   const navigation =
     useNavigation<any>();
 
-  const [
-    notifications,
-    setNotifications,
-  ] =
-    useState<
-      DometraNotification[]
-    >([]);
+  const queryClient =
+    useQueryClient();
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(
-      true,
-    );
 
-  const [
-    busy,
-    setBusy,
-  ] =
-    useState(
-      false,
-    );
+  const {
+    data:
+      notifications = [],
 
-  const reload =
-    useCallback(
-      async () => {
-        setLoading(
-          true,
-        );
+    error,
 
-        try {
-          setNotifications(
-            await loadNotifications(),
-          );
-        } catch (
-          error
-        ) {
-          Alert.alert(
-            'Notifications',
+    isPending,
 
-            error instanceof
-            Error
-              ? error.message
-              : 'Unable to load notifications.',
-          );
-        } finally {
-          setLoading(
-            false,
-          );
-        }
-      },
-      [],
-    );
+    isFetching,
 
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
+    refetch,
+  } =
+    useQuery<DometraNotification[]>({
+      queryKey:
+        queryKeys.notifications,
 
-      [
-        reload,
-      ],
-    ),
-  );
+      /*
+       * loadNotifications accepts an optional numeric limit.
+       *
+       * React Query provides QueryFunctionContext to queryFn,
+       * so calling:
+       *
+       *   queryFn: loadNotifications
+       *
+       * is type-incorrect.
+       */
+      queryFn:
+        () =>
+          loadNotifications(),
+
+      staleTime:
+        30_000,
+
+      refetchInterval:
+        60_000,
+
+      refetchOnMount:
+        false,
+
+      refetchOnWindowFocus:
+        false,
+    });
+
 
   const unreadCount =
     notifications.filter(
@@ -324,44 +364,69 @@ export function NotificationsScreen() {
         !notification.readAt,
     ).length;
 
+
+  const updateCachedNotification =
+    (
+      notificationId:
+        string,
+    ) => {
+      const now =
+        new Date()
+          .toISOString();
+
+
+      queryClient.setQueryData<
+        DometraNotification[]
+      >(
+        queryKeys.notifications,
+
+        current =>
+          (
+            current ??
+            []
+          ).map(
+            notification =>
+              notification.id ===
+              notificationId
+                ? {
+                    ...notification,
+
+                    readAt:
+                      notification.readAt ??
+                      now,
+                  }
+                : notification,
+          ),
+      );
+    };
+
+
   const openNotification =
     async (
       notification:
         DometraNotification,
     ) => {
-      try {
-        if (
-          !notification.readAt
-        ) {
+      if (
+        !notification.readAt
+      ) {
+        try {
           await markNotificationRead(
             notification.id,
           );
 
-          setNotifications(
-            current =>
-              current.map(
-                item =>
-                  item.id ===
-                  notification.id
-                    ? {
-                        ...item,
-
-                        readAt:
-                          new Date()
-                            .toISOString(),
-                      }
-                    : item,
-              ),
+          updateCachedNotification(
+            notification.id,
+          );
+        } catch (
+          markError
+        ) {
+          console.warn(
+            '[Dometra] Unable to mark notification read:',
+            markError,
           );
         }
-      } catch (
-        error
-      ) {
-        console.warn(
-          '[Dometra] Unable to mark notification read:',
-          error,
-        );
       }
+
 
       switch (
         notification.eventType
@@ -482,30 +547,36 @@ export function NotificationsScreen() {
       }
     };
 
+
   const markEverythingRead =
     async () => {
       if (
-        busy ||
         unreadCount ===
-          0
+        0
       ) {
         return;
       }
 
-      setBusy(
-        true,
-      );
 
       try {
         await markAllNotificationsRead();
+
 
         const now =
           new Date()
             .toISOString();
 
-        setNotifications(
+
+        queryClient.setQueryData<
+          DometraNotification[]
+        >(
+          queryKeys.notifications,
+
           current =>
-            current.map(
+            (
+              current ??
+              []
+            ).map(
               notification => ({
                 ...notification,
 
@@ -516,22 +587,18 @@ export function NotificationsScreen() {
             ),
         );
       } catch (
-        error
+        markError
       ) {
         Alert.alert(
           'Notifications',
 
-          error instanceof
-          Error
-            ? error.message
-            : 'Unable to mark notifications as read.',
-        );
-      } finally {
-        setBusy(
-          false,
+          errorMessage(
+            markError,
+          ),
         );
       }
     };
+
 
   return (
     <Screen>
@@ -545,21 +612,53 @@ export function NotificationsScreen() {
         }
       />
 
-      {unreadCount >
-      0 ? (
-        <SecondaryButton
-          title={
-            busy
-              ? 'Saving...'
-              : 'Mark all as read'
-          }
-          onPress={() =>
-            void markEverythingRead()
-          }
-        />
-      ) : null}
 
-      {loading ? (
+      <View
+        style={
+          styles.actions
+        }
+      >
+        {unreadCount >
+        0 ? (
+          <View
+            style={
+              styles.action
+            }
+          >
+            <SecondaryButton
+              title="Mark all as read"
+              onPress={() =>
+                void markEverythingRead()
+              }
+            />
+          </View>
+        ) : null}
+
+
+        <View
+          style={
+            styles.action
+          }
+        >
+          <SecondaryButton
+            title={
+              isFetching
+                ? 'Refreshing...'
+                : 'Refresh'
+            }
+            onPress={() => {
+              if (
+                !isFetching
+              ) {
+                void refetch();
+              }
+            }}
+          />
+        </View>
+      </View>
+
+
+      {isPending ? (
         <Card>
           <Text
             style={
@@ -571,7 +670,33 @@ export function NotificationsScreen() {
         </Card>
       ) : null}
 
-      {!loading &&
+
+      {!isPending &&
+      error ? (
+        <Card>
+          <Text
+            style={
+              styles.emptyTitle
+            }
+          >
+            Unable to load notifications
+          </Text>
+
+          <Text
+            style={
+              styles.emptyText
+            }
+          >
+            {errorMessage(
+              error,
+            )}
+          </Text>
+        </Card>
+      ) : null}
+
+
+      {!isPending &&
+      !error &&
       notifications.length ===
         0 ? (
         <Card>
@@ -613,11 +738,14 @@ export function NotificationsScreen() {
         </Card>
       ) : null}
 
-      {!loading &&
+
+      {!isPending &&
+      !error &&
       notifications.map(
         notification => {
           const unread =
             !notification.readAt;
+
 
           return (
             <Pressable
@@ -666,6 +794,7 @@ export function NotificationsScreen() {
                     </Text>
                   </View>
 
+
                   <View
                     style={
                       styles.flex
@@ -711,6 +840,7 @@ export function NotificationsScreen() {
                     </Text>
                   </View>
 
+
                   {unread ? (
                     <View
                       style={
@@ -728,9 +858,26 @@ export function NotificationsScreen() {
   );
 }
 
+
 const styles =
   StyleSheet.create({
     flex: {
+      flex:
+        1,
+    },
+
+    actions: {
+      flexDirection:
+        'row',
+
+      gap:
+        spacing.sm,
+
+      marginBottom:
+        spacing.sm,
+    },
+
+    action: {
       flex:
         1,
     },

@@ -1,6 +1,7 @@
 import React, {
-  useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -14,10 +15,14 @@ import {
 } from 'react-native';
 
 import {
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
+
+import {
+  useMutation,
+  useQuery,
+} from '@tanstack/react-query';
 
 import {
   Badge,
@@ -36,9 +41,15 @@ import {
 } from '../services/checkoutSettlementRepository';
 
 import {
+  invalidateCheckoutData,
+  queryKeys,
+} from '../lib/queryClient';
+
+import {
   colors,
   spacing,
 } from '../theme';
+
 
 type SettlementMode =
   | 'RETURN_FULL'
@@ -46,9 +57,11 @@ type SettlementMode =
   | 'CUSTOM'
   | 'RETAIN_ALL';
 
+
 function money(
   amount:
     number,
+
   currency?:
     string,
 ) {
@@ -65,6 +78,7 @@ function money(
     ? ` ${currency}`
     : ''}`;
 }
+
 
 function parseAmount(
   value:
@@ -89,6 +103,38 @@ function parseAmount(
       )
     : 0;
 }
+
+
+function errorMessage(
+  error:
+    unknown,
+) {
+  if (
+    error instanceof
+    Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error ===
+      'object' &&
+    'message' in error
+  ) {
+    return String(
+      (
+        error as {
+          message:
+            unknown;
+        }
+      ).message,
+    );
+  }
+
+  return 'Unknown error.';
+}
+
 
 function ModeButton({
   title,
@@ -167,6 +213,7 @@ function ModeButton({
   );
 }
 
+
 export function CheckoutSettlementScreen() {
   const navigation =
     useNavigation<any>();
@@ -178,35 +225,18 @@ export function CheckoutSettlementScreen() {
     route.params
       ?.tenancyId as string;
 
+  const propertyId =
+    route.params
+      ?.propertyId as
+      | string
+      | undefined;
+
   const propertyName =
     route.params
       ?.propertyName as
       | string
       | undefined;
 
-  const [
-    preview,
-    setPreview,
-  ] =
-    useState<
-      CheckoutSettlementPreview | null
-    >(null);
-
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(
-      true,
-    );
-
-  const [
-    busy,
-    setBusy,
-  ] =
-    useState(
-      false,
-    );
 
   const [
     mode,
@@ -221,7 +251,7 @@ export function CheckoutSettlementScreen() {
     setCustomApply,
   ] =
     useState(
-      '0',
+      '0.00',
     );
 
   const [
@@ -229,7 +259,7 @@ export function CheckoutSettlementScreen() {
     setCustomReturn,
   ] =
     useState(
-      '0',
+      '0.00',
     );
 
   const [
@@ -237,7 +267,7 @@ export function CheckoutSettlementScreen() {
     setCustomRetain,
   ] =
     useState(
-      '0',
+      '0.00',
     );
 
   const [
@@ -248,95 +278,116 @@ export function CheckoutSettlementScreen() {
       '',
     );
 
-  const reload =
-    useCallback(
-      async () => {
-        if (
-          !tenancyId
-        ) {
-          return;
-        }
 
-        setLoading(
-          true,
-        );
-
-        try {
-          const result =
-            await loadCheckoutSettlementPreview(
-              tenancyId,
-            );
-
-          setPreview(
-            result,
-          );
-
-          const automaticApply =
-            Math.min(
-              result.depositAmount,
-              result.outstandingAmount,
-            );
-
-          setCustomApply(
-            automaticApply.toFixed(
-              2,
-            ),
-          );
-
-          setCustomReturn(
-            Math.max(
-              result.depositAmount -
-                automaticApply,
-              0,
-            ).toFixed(
-              2,
-            ),
-          );
-
-          setCustomRetain(
-            '0.00',
-          );
-        } catch (
-          error
-        ) {
-          Alert.alert(
-            'Checkout',
-
-            error &&
-            typeof error ===
-              'object' &&
-            'message' in error
-              ? String(
-                  (
-                    error as {
-                      message:
-                        unknown;
-                    }
-                  ).message,
-                )
-              : 'Unable to load checkout settlement.',
-          );
-        } finally {
-          setLoading(
-            false,
-          );
-        }
-      },
-      [
-        tenancyId,
-      ],
+  const seedRef =
+    useRef<
+      string | null
+    >(
+      null,
     );
 
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
-      [
-        reload,
-      ],
-    ),
+
+  const {
+    data:
+      preview,
+
+    error,
+
+    isPending,
+
+    isFetching,
+
+    refetch,
+  } =
+    useQuery({
+      queryKey:
+        queryKeys.checkoutSettlement(
+          tenancyId,
+        ),
+
+      queryFn:
+        () =>
+          loadCheckoutSettlementPreview(
+            tenancyId,
+          ),
+
+      enabled:
+        Boolean(
+          tenancyId,
+        ),
+    });
+
+
+  /*
+   * Initialize custom inputs once for each meaningful
+   * settlement snapshot.
+   *
+   * A background refetch must not overwrite values the landlord
+   * is currently editing.
+   */
+  useEffect(
+    () => {
+      if (
+        !preview
+      ) {
+        return;
+      }
+
+      const seed =
+        [
+          preview.depositAmount,
+          preview.outstandingAmount,
+          preview.depositCurrency ??
+            '',
+        ].join(
+          ':',
+        );
+
+
+      if (
+        seedRef.current ===
+        seed
+      ) {
+        return;
+      }
+
+
+      seedRef.current =
+        seed;
+
+
+      const automaticApply =
+        Math.min(
+          preview.depositAmount,
+          preview.outstandingAmount,
+        );
+
+
+      setCustomApply(
+        automaticApply.toFixed(
+          2,
+        ),
+      );
+
+      setCustomReturn(
+        Math.max(
+          preview.depositAmount -
+            automaticApply,
+          0,
+        ).toFixed(
+          2,
+        ),
+      );
+
+      setCustomRetain(
+        '0.00',
+      );
+    },
+    [
+      preview,
+    ],
   );
+
 
   const settlement =
     useMemo(
@@ -356,8 +407,10 @@ export function CheckoutSettlementScreen() {
           };
         }
 
+
         const deposit =
           preview.depositAmount;
+
 
         if (
           deposit <=
@@ -375,6 +428,7 @@ export function CheckoutSettlementScreen() {
           };
         }
 
+
         if (
           mode ===
           'RETURN_FULL'
@@ -390,6 +444,7 @@ export function CheckoutSettlementScreen() {
               0,
           };
         }
+
 
         if (
           mode ===
@@ -416,6 +471,7 @@ export function CheckoutSettlementScreen() {
           };
         }
 
+
         if (
           mode ===
           'RETAIN_ALL'
@@ -431,6 +487,7 @@ export function CheckoutSettlementScreen() {
               deposit,
           };
         }
+
 
         return {
           apply:
@@ -458,10 +515,12 @@ export function CheckoutSettlementScreen() {
       ],
     );
 
+
   const settlementTotal =
     settlement.apply +
     settlement.returned +
     settlement.retained;
+
 
   const valid =
     preview
@@ -475,14 +534,99 @@ export function CheckoutSettlementScreen() {
             0.01
       : false;
 
+
+  const completeMutation =
+    useMutation({
+      mutationFn:
+        async () => {
+          if (
+            !preview
+          ) {
+            throw new Error(
+              'Checkout settlement is not loaded.',
+            );
+          }
+
+
+          return completeCheckoutWithSettlement(
+            {
+              tenancyId,
+
+              applyAmount:
+                settlement.apply,
+
+              returnAmount:
+                settlement.returned,
+
+              retainAmount:
+                settlement.retained,
+
+              note,
+            },
+          );
+        },
+
+
+      onSuccess:
+        async () => {
+          await invalidateCheckoutData(
+            tenancyId,
+            propertyId,
+          );
+
+
+          Alert.alert(
+            'Checkout completed',
+            'The tenancy has been closed successfully.',
+            [
+              {
+                text:
+                  'OK',
+
+                onPress:
+                  () => {
+                    navigation.reset(
+                      {
+                        index:
+                          0,
+
+                        routes: [
+                          {
+                            name:
+                              'Main',
+                          },
+                        ],
+                      },
+                    );
+                  },
+              },
+            ],
+          );
+        },
+
+
+      onError:
+        mutationError => {
+          Alert.alert(
+            'Unable to complete checkout',
+
+            errorMessage(
+              mutationError,
+            ),
+          );
+        },
+    });
+
+
   const complete =
-    async () => {
+    () => {
       if (
         !preview ||
-        busy
+        completeMutation.isPending
       ) {
         return;
       }
+
 
       if (
         !preview.readingsReady
@@ -495,6 +639,7 @@ export function CheckoutSettlementScreen() {
         return;
       }
 
+
       if (
         !preview.finalBillingReady
       ) {
@@ -506,11 +651,13 @@ export function CheckoutSettlementScreen() {
         return;
       }
 
+
       if (
         !valid
       ) {
         Alert.alert(
           'Deposit settlement',
+
           `The settlement must equal ${money(
             preview.depositAmount,
             preview.depositCurrency,
@@ -520,9 +667,12 @@ export function CheckoutSettlementScreen() {
         return;
       }
 
+
       Alert.alert(
         'Complete checkout?',
+
         'The tenancy will be ended and the apartment will become vacant.',
+
         [
           {
             text:
@@ -540,89 +690,17 @@ export function CheckoutSettlementScreen() {
               'destructive',
 
             onPress:
-              async () => {
-                setBusy(
-                  true,
-                );
-
-                try {
-                  await completeCheckoutWithSettlement(
-                    {
-                      tenancyId,
-
-                      applyAmount:
-                        settlement.apply,
-
-                      returnAmount:
-                        settlement.returned,
-
-                      retainAmount:
-                        settlement.retained,
-
-                      note,
-                    },
-                  );
-
-                  Alert.alert(
-                    'Checkout completed',
-                    'The tenancy has been closed successfully.',
-                    [
-                      {
-                        text:
-                          'OK',
-
-                        onPress:
-                          () => {
-                            navigation.reset(
-                              {
-                                index:
-                                  0,
-
-                                routes: [
-                                  {
-                                    name:
-                                      'Main',
-                                  },
-                                ],
-                              },
-                            );
-                          },
-                      },
-                    ],
-                  );
-                } catch (
-                  error
-                ) {
-                  Alert.alert(
-                    'Unable to complete checkout',
-
-                    error &&
-                    typeof error ===
-                      'object' &&
-                    'message' in error
-                      ? String(
-                          (
-                            error as {
-                              message:
-                                unknown;
-                            }
-                          ).message,
-                        )
-                      : 'Unknown error.',
-                  );
-                } finally {
-                  setBusy(
-                    false,
-                  );
-                }
+              () => {
+                completeMutation.mutate();
               },
           },
         ],
       );
     };
 
+
   if (
-    loading
+    isPending
   ) {
     return (
       <Screen>
@@ -647,13 +725,18 @@ export function CheckoutSettlementScreen() {
     );
   }
 
+
   if (
+    error ||
     !preview
   ) {
     return (
       <Screen>
         <Header
           title="Deposit settlement"
+          subtitle={
+            propertyName
+          }
         />
 
         <Card>
@@ -664,10 +747,38 @@ export function CheckoutSettlementScreen() {
           >
             Settlement is not available.
           </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            {error
+              ? errorMessage(
+                  error,
+                )
+              : 'No settlement data was returned.'}
+          </Text>
         </Card>
+
+        <SecondaryButton
+          title={
+            isFetching
+              ? 'Refreshing...'
+              : 'Try again'
+          }
+          onPress={() => {
+            if (
+              !isFetching
+            ) {
+              void refetch();
+            }
+          }}
+        />
       </Screen>
     );
   }
+
 
   return (
     <Screen>
@@ -684,6 +795,7 @@ export function CheckoutSettlementScreen() {
           />
         }
       />
+
 
       {!preview.readingsReady ? (
         <Card>
@@ -705,6 +817,7 @@ export function CheckoutSettlementScreen() {
         </Card>
       ) : null}
 
+
       {!preview.finalBillingReady ? (
         <Card>
           <Text
@@ -725,9 +838,11 @@ export function CheckoutSettlementScreen() {
         </Card>
       ) : null}
 
+
       <SectionTitle
         title="Security deposit"
       />
+
 
       <Card>
         <View
@@ -755,11 +870,13 @@ export function CheckoutSettlementScreen() {
           </Text>
         </View>
 
+
         <View
           style={
             styles.separator
           }
         />
+
 
         <View
           style={
@@ -786,6 +903,7 @@ export function CheckoutSettlementScreen() {
           </Text>
         </View>
 
+
         {preview.depositAmount >
           0 &&
         !preview.depositCurrency ? (
@@ -798,6 +916,7 @@ export function CheckoutSettlementScreen() {
           </Text>
         ) : null}
       </Card>
+
 
       {preview.depositAmount >
       0 ? (
@@ -874,6 +993,7 @@ export function CheckoutSettlementScreen() {
         </>
       ) : null}
 
+
       {mode ===
         'CUSTOM' &&
       preview.depositAmount >
@@ -906,6 +1026,7 @@ export function CheckoutSettlementScreen() {
               placeholder="0.00"
             />
 
+
             <Text
               style={
                 styles.inputLabel
@@ -927,6 +1048,7 @@ export function CheckoutSettlementScreen() {
               }
               placeholder="0.00"
             />
+
 
             <Text
               style={
@@ -953,9 +1075,11 @@ export function CheckoutSettlementScreen() {
         </>
       ) : null}
 
+
       <SectionTitle
         title="Summary"
       />
+
 
       <Card>
         <View
@@ -983,6 +1107,7 @@ export function CheckoutSettlementScreen() {
           </Text>
         </View>
 
+
         <View
           style={
             styles.summaryRow
@@ -1007,6 +1132,7 @@ export function CheckoutSettlementScreen() {
             )}
           </Text>
         </View>
+
 
         <View
           style={
@@ -1033,11 +1159,13 @@ export function CheckoutSettlementScreen() {
           </Text>
         </View>
 
+
         <View
           style={
             styles.separator
           }
         />
+
 
         <View
           style={
@@ -1064,6 +1192,7 @@ export function CheckoutSettlementScreen() {
           </Text>
         </View>
 
+
         {!valid ? (
           <Text
             style={
@@ -1075,9 +1204,11 @@ export function CheckoutSettlementScreen() {
         ) : null}
       </Card>
 
+
       <SectionTitle
         title="Note"
       />
+
 
       <Card>
         <TextInput
@@ -1097,16 +1228,18 @@ export function CheckoutSettlementScreen() {
         />
       </Card>
 
+
       <PrimaryButton
         title={
-          busy
+          completeMutation.isPending
             ? 'Completing checkout...'
             : 'Complete checkout'
         }
-        onPress={() =>
-          void complete()
+        onPress={
+          complete
         }
       />
+
 
       <SecondaryButton
         title="Back"
@@ -1117,6 +1250,7 @@ export function CheckoutSettlementScreen() {
     </Screen>
   );
 }
+
 
 const styles =
   StyleSheet.create({

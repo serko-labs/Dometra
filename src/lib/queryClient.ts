@@ -2,35 +2,37 @@ import {
   QueryClient,
 } from '@tanstack/react-query';
 
+const ONE_HOUR =
+  60 *
+  60 *
+  1000;
+
 export const queryClient =
   new QueryClient({
     defaultOptions: {
       queries: {
         /*
-         * Server data stays fresh until Dometra explicitly
-         * invalidates it after a mutation.
+         * Dometra uses explicit invalidation after mutations.
          *
-         * This is intentional:
+         * Going:
          *
          * Screen A
          *   -> Screen B
          *   -> Back
          *
-         * must NOT perform another Supabase request.
+         * must not automatically hit Supabase again.
          */
         staleTime:
           Infinity,
 
         /*
-         * Keep unused screen data in memory for one hour.
+         * Keep inactive screen data in memory.
          *
-         * If the app process is killed, this cache disappears.
-         * We intentionally do not persist it to disk yet.
+         * This cache is intentionally NOT persisted to disk.
+         * Closing / killing the app gives us a clean load.
          */
         gcTime:
-          60 *
-          60 *
-          1000,
+          ONE_HOUR,
 
         retry:
           1,
@@ -53,7 +55,29 @@ export const queryClient =
   });
 
 
+function sortedIds(
+  ids:
+    string[],
+) {
+  return [
+    ...ids,
+  ].sort();
+}
+
+
 export const queryKeys = {
+  /*
+   * ----------------------------------------------------------
+   * TENANT
+   * ----------------------------------------------------------
+   */
+
+  tenantRoot:
+    [
+      'tenant',
+    ] as const,
+
+
   tenantHome:
     [
       'tenant',
@@ -66,6 +90,25 @@ export const queryKeys = {
       'tenant',
       'apartments',
     ] as const,
+
+
+  tenantReadings:
+    [
+      'tenant',
+      'readings',
+    ] as const,
+
+
+  tenantMeter:
+    (
+      meterId:
+        string,
+    ) =>
+      [
+        'tenant',
+        'meter',
+        meterId,
+      ] as const,
 
 
   tenantApartment:
@@ -130,6 +173,69 @@ export const queryKeys = {
       ] as const,
 
 
+  paymentClaims:
+    (
+      billingPeriod:
+        string,
+
+      tenancyIds:
+        string[],
+    ) =>
+      [
+        'tenant',
+        'payment-claims',
+        billingPeriod,
+        sortedIds(
+          tenancyIds,
+        ),
+      ] as const,
+
+
+  checkoutSummaries:
+    (
+      tenancyIds:
+        string[],
+    ) =>
+      [
+        'checkout',
+        'summaries',
+        sortedIds(
+          tenancyIds,
+        ),
+      ] as const,
+
+
+  /*
+   * ----------------------------------------------------------
+   * READINGS
+   * ----------------------------------------------------------
+   */
+
+  readingsRoot:
+    [
+      'readings',
+    ] as const,
+
+
+  meterSubmissionStatuses:
+    [
+      'readings',
+      'submission-statuses',
+    ] as const,
+
+
+  /*
+   * ----------------------------------------------------------
+   * LANDLORD
+   * ----------------------------------------------------------
+   */
+
+  landlordRoot:
+    [
+      'landlord',
+    ] as const,
+
+
   landlordDashboard:
     [
       'landlord',
@@ -178,9 +284,15 @@ export const queryKeys = {
       ] as const,
 
 
-  readings:
+  /*
+   * ----------------------------------------------------------
+   * CHECKOUT
+   * ----------------------------------------------------------
+   */
+
+  checkoutRoot:
     [
-      'readings',
+      'checkout',
     ] as const,
 
 
@@ -219,18 +331,31 @@ export const queryKeys = {
       ] as const,
 
 
+  /*
+   * ----------------------------------------------------------
+   * NOTIFICATIONS
+   * ----------------------------------------------------------
+   */
+
   notifications:
     [
       'notifications',
     ] as const,
-
-
-  notificationCount:
-    [
-      'notifications',
-      'unread-count',
-    ] as const,
 };
+
+
+/*
+ * ============================================================
+ * INVALIDATION HELPERS
+ * ============================================================
+ *
+ * The screen does NOT decide what else depends on its data.
+ *
+ * Mutations call one of these helpers instead.
+ *
+ * That keeps invalidation centralized.
+ * ============================================================
+ */
 
 
 export async function invalidateTenantData(
@@ -252,6 +377,11 @@ export async function invalidateTenantData(
 
       queryClient.invalidateQueries({
         queryKey:
+          queryKeys.tenantReadings,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
           queryKeys.tenantStatistics,
       }),
 
@@ -260,6 +390,7 @@ export async function invalidateTenantData(
           queryKeys.previousRentals,
       }),
     ];
+
 
   if (
     tenancyId
@@ -288,26 +419,84 @@ export async function invalidateTenantData(
 
       queryClient.invalidateQueries({
         queryKey:
-          queryKeys.checkout(
-            tenancyId,
-          ),
-      }),
-
-      queryClient.invalidateQueries({
-        queryKey:
-          queryKeys.checkoutFinalBill(
-            tenancyId,
-          ),
-      }),
-
-      queryClient.invalidateQueries({
-        queryKey:
-          queryKeys.checkoutSettlement(
+          queryKeys.previousRental(
             tenancyId,
           ),
       }),
     );
   }
+
+
+  await Promise.all(
+    tasks,
+  );
+}
+
+
+export async function invalidateReadingsData(
+  propertyId?:
+    string,
+) {
+  const tasks:
+    Promise<unknown>[] =
+    [
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantHome,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantApartments,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantReadings,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantStatistics,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.readingsRoot,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.landlordDashboard,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.landlordStatistics,
+      }),
+    ];
+
+
+  if (
+    propertyId
+  ) {
+    tasks.push(
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.property(
+            propertyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.propertyHistory(
+            propertyId,
+          ),
+      }),
+    );
+  }
+
 
   await Promise.all(
     tasks,
@@ -333,6 +522,7 @@ export async function invalidateLandlordData(
       }),
     ];
 
+
   if (
     propertyId
   ) {
@@ -353,6 +543,128 @@ export async function invalidateLandlordData(
     );
   }
 
+
+  await Promise.all(
+    tasks,
+  );
+}
+
+
+export async function invalidateCheckoutData(
+  tenancyId:
+    string,
+
+  propertyId?:
+    string,
+) {
+  const tasks:
+    Promise<unknown>[] =
+    [
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.checkout(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.checkoutFinalBill(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.checkoutSettlement(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.checkoutRoot,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantHome,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantApartments,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantReadings,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantApartment(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.tenantBilling(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.billingHistory(
+            tenancyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.previousRentals,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.landlordDashboard,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.landlordStatistics,
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.notifications,
+      }),
+    ];
+
+
+  if (
+    propertyId
+  ) {
+    tasks.push(
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.property(
+            propertyId,
+          ),
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.propertyHistory(
+            propertyId,
+          ),
+      }),
+    );
+  }
+
+
   await Promise.all(
     tasks,
   );
@@ -360,17 +672,15 @@ export async function invalidateLandlordData(
 
 
 export async function invalidateNotifications() {
-  await Promise.all([
-    queryClient.invalidateQueries({
-      queryKey:
-        queryKeys.notifications,
-    }),
+  await queryClient.invalidateQueries({
+    queryKey:
+      queryKeys.notifications,
+  });
+}
 
-    queryClient.invalidateQueries({
-      queryKey:
-        queryKeys.notificationCount,
-    }),
-  ]);
+
+export async function refreshAllServerData() {
+  await queryClient.invalidateQueries();
 }
 
 

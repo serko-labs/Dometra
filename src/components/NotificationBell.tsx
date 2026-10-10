@@ -1,7 +1,4 @@
-import React, {
-  useCallback,
-  useState,
-} from 'react';
+import React from 'react';
 
 import {
   Pressable,
@@ -11,60 +8,69 @@ import {
 } from 'react-native';
 
 import {
-  useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
 
 import {
-  loadUnreadNotificationCount,
-} from '../services/notificationCenterRepository';
+  useQuery,
+} from '@tanstack/react-query';
 
 import {
-  colors,
-} from '../theme';
+  queryKeys,
+} from '../lib/queryClient';
+
+import {
+  DometraNotification,
+  loadNotifications,
+} from '../services/notificationCenterRepository';
+
 
 export function NotificationBell() {
   const navigation =
     useNavigation<any>();
 
-  const [
-    unreadCount,
-    setUnreadCount,
-  ] =
-    useState(
-      0,
-    );
+  const {
+    data:
+      notifications = [],
+  } =
+    useQuery<DometraNotification[]>({
+      queryKey:
+        queryKeys.notifications,
 
-  const reload =
-    useCallback(
-      async () => {
-        try {
-          setUnreadCount(
-            await loadUnreadNotificationCount(),
-          );
-        } catch (
-          error
-        ) {
-          console.warn(
-            '[Dometra] Unable to load notification count:',
-            error,
-          );
-        }
-      },
-      [],
-    );
+      /*
+       * IMPORTANT:
+       *
+       * Do not pass loadNotifications directly.
+       *
+       * React Query calls queryFn(context), while
+       * loadNotifications expects:
+       *
+       *   loadNotifications(limit?: number)
+       */
+      queryFn:
+        () =>
+          loadNotifications(),
 
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
+      staleTime:
+        30_000,
 
-      [
-        reload,
-      ],
-    ),
-  );
+      refetchInterval:
+        60_000,
+
+      refetchOnMount:
+        false,
+
+      refetchOnWindowFocus:
+        false,
+    });
+
+
+  const unreadCount =
+    notifications.filter(
+      notification =>
+        !notification.readAt,
+    ).length;
+
 
   return (
     <Pressable
@@ -72,9 +78,6 @@ export function NotificationBell() {
         navigation.navigate(
           'Notifications',
         )
-      }
-      hitSlop={
-        10
       }
       style={({
         pressed,
@@ -84,13 +87,16 @@ export function NotificationBell() {
         pressed &&
           styles.pressed,
       ]}
+      hitSlop={
+        10
+      }
     >
       <Text
         style={
           styles.icon
         }
       >
-        ♢
+        🔔
       </Text>
 
       {unreadCount >
@@ -116,6 +122,7 @@ export function NotificationBell() {
   );
 }
 
+
 const styles =
   StyleSheet.create({
     button: {
@@ -134,14 +141,8 @@ const styles =
       justifyContent:
         'center',
 
-      borderWidth:
-        1,
-
-      borderColor:
-        colors.border,
-
       backgroundColor:
-        '#FFFFFF',
+        '#F1F5F9',
     },
 
     pressed: {
@@ -150,55 +151,40 @@ const styles =
     },
 
     icon: {
-      color:
-        colors.text,
-
       fontSize:
-        23,
-
-      lineHeight:
-        26,
-
-      fontWeight:
-        '800',
+        20,
     },
 
     badge: {
       position:
         'absolute',
 
+      right:
+        -4,
+
       top:
         -4,
 
-      right:
-        -5,
-
       minWidth:
-        20,
+        18,
 
       height:
-        20,
+        18,
 
       paddingHorizontal:
-        5,
+        4,
 
       borderRadius:
-        10,
+        9,
+
+      backgroundColor:
+        '#DC2626',
 
       alignItems:
         'center',
 
       justifyContent:
         'center',
-
-      backgroundColor:
-        '#DC2626',
-
-      borderWidth:
-        2,
-
-      borderColor:
-        '#FFFFFF',
     },
 
     badgeText: {
