@@ -1,6 +1,10 @@
-import React from 'react';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
 
 import {
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -8,12 +12,9 @@ import {
 } from 'react-native';
 
 import {
+  useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
-
-import {
-  useQuery,
-} from '@tanstack/react-query';
 
 import {
   useTranslation,
@@ -24,32 +25,22 @@ import {
   Card,
   Header,
   Screen,
-  SecondaryButton,
-  SectionTitle,
 } from '../components/ui';
 
 import {
-  NotificationBell,
-} from '../components/NotificationBell';
+  PropertyTypeIcon,
+} from '../components/PropertyTypeIcon';
 
 import {
-  PaymentStatusBadge,
-} from '../components/PaymentStatusBadge';
+  SubmissionStatusBadge,
+} from '../components/SubmissionStatusBadge';
 
 import {
-  currentBillingPeriod,
-  getTenantPaymentState,
-} from '../services/billingRepository';
+  getApartmentSubmissionStatus,
+} from '../services/meterSubmissionStatus';
 
 import {
-  queryKeys,
-} from '../lib/queryClient';
-
-import {
-  loadTenantHomeQuery,
-} from '../queries/tenantQueries';
-
-import {
+  loadTenantApartments,
   TenantApartmentPortal,
 } from '../services/tenantPortalRepository';
 
@@ -58,77 +49,50 @@ import {
   spacing,
 } from '../theme';
 
+function submissionText(
+  state:
+    ReturnType<
+      typeof getApartmentSubmissionStatus
+    >['state'],
 
-function errorMessage(
-  error:
-    unknown,
+  submitted:
+    number,
+
+  total:
+    number,
 ) {
   if (
-    error instanceof
-    Error
+    state ===
+    'COMPLETE'
   ) {
-    return error.message;
+    return total >
+      0
+      ? `${submitted}/${total} submitted`
+      : 'Submitted';
   }
 
   if (
-    error &&
-    typeof error ===
-      'object' &&
-    'message' in error
+    state ===
+    'DUE'
   ) {
-    return String(
-      (
-        error as {
-          message:
-            unknown;
-        }
-      ).message,
-    );
+    return total >
+      0
+      ? `${submitted}/${total} submitted`
+      : 'Readings due';
   }
 
-  return 'Unable to load your apartments.';
+  if (
+    state ===
+    'OVERDUE'
+  ) {
+    return total >
+      0
+      ? `${submitted}/${total} overdue`
+      : 'Overdue';
+  }
+
+  return 'No readings required';
 }
-
-
-function formatDate(
-  value?:
-    string,
-) {
-  if (
-    !value
-  ) {
-    return '—';
-  }
-
-  const date =
-    new Date(
-      value.includes(
-        'T',
-      )
-        ? value
-        : `${value}T00:00:00`,
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return value;
-  }
-
-  return date.toLocaleDateString(
-    undefined,
-    {
-      month:
-        'short',
-
-      year:
-        'numeric',
-    },
-  );
-}
-
 
 export function TenantHomeScreen() {
   const navigation =
@@ -139,39 +103,88 @@ export function TenantHomeScreen() {
   } =
     useTranslation();
 
+  const [
+    apartments,
+    setApartments,
+  ] =
+    useState<
+      TenantApartmentPortal[]
+    >([]);
 
-  const {
-    data,
-    error,
-    isPending,
-    isFetching,
-    refetch,
-  } =
-    useQuery({
-      queryKey:
-        queryKeys.tenantHome,
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
 
-      queryFn:
-        loadTenantHomeQuery,
-    });
+  useFocusEffect(
+    useCallback(
+      () => {
+        let active =
+          true;
 
+        const load =
+          async () => {
+            setLoading(
+              true,
+            );
 
-  const apartments =
-    data?.apartments ??
-    [];
+            try {
+              const data =
+                await loadTenantApartments();
 
-  const previousRentals =
-    data?.previousRentals ??
-    [];
+              if (
+                active
+              ) {
+                setApartments(
+                  data,
+                );
+              }
+            } catch (
+              error
+            ) {
+              if (
+                active
+              ) {
+                Alert.alert(
+                  t(
+                    'home',
+                    {
+                      defaultValue:
+                        'Home',
+                    },
+                  ),
 
-  const paymentClaims =
-    data?.paymentClaims ??
-    {};
+                  error instanceof
+                  Error
+                    ? error.message
+                    : 'Unable to load your apartments.',
+                );
+              }
+            } finally {
+              if (
+                active
+              ) {
+                setLoading(
+                  false,
+                );
+              }
+            }
+          };
 
-  const checkouts =
-    data?.checkouts ??
-    {};
+        void load();
 
+        return () => {
+          active =
+            false;
+        };
+      },
+
+      [
+        t,
+      ],
+    ),
+  );
 
   const openApartment =
     (
@@ -182,25 +195,13 @@ export function TenantHomeScreen() {
         .getParent()
         ?.navigate(
           'TenantApartment',
+
           {
             tenancyId:
               apartment.tenancyId,
           },
         );
     };
-
-
-  const manualRefresh =
-    () => {
-      if (
-        isFetching
-      ) {
-        return;
-      }
-
-      void refetch();
-    };
-
 
   return (
     <Screen>
@@ -219,68 +220,27 @@ export function TenantHomeScreen() {
               'Your rental apartments',
           },
         )}
-        right={
-          <NotificationBell />
-        }
       />
 
-
-      {isPending ? (
+      {loading ? (
         <Card>
           <Text
             style={
               styles.muted
             }
           >
-            Loading apartments...
-          </Text>
-        </Card>
-      ) : null}
-
-
-      {!isPending &&
-      error ? (
-        <Card>
-          <Text
-            style={
-              styles.emptyTitle
-            }
-          >
-            Unable to load apartments
-          </Text>
-
-          <Text
-            style={
-              styles.muted
-            }
-          >
-            {errorMessage(
-              error,
+            {t(
+              'loadingApartments',
+              {
+                defaultValue:
+                  'Loading apartments...',
+              },
             )}
           </Text>
-
-          <View
-            style={
-              styles.buttonTop
-            }
-          >
-            <SecondaryButton
-              title={
-                isFetching
-                  ? 'Refreshing...'
-                  : 'Try again'
-              }
-              onPress={
-                manualRefresh
-              }
-            />
-          </View>
         </Card>
       ) : null}
 
-
-      {!isPending &&
-      !error &&
+      {!loading &&
       apartments.length ===
         0 ? (
         <Card>
@@ -289,7 +249,13 @@ export function TenantHomeScreen() {
               styles.emptyTitle
             }
           >
-            No active tenancy
+            {t(
+              'noActiveTenancy',
+              {
+                defaultValue:
+                  'No active tenancy',
+              },
+            )}
           </Text>
 
           <Text
@@ -297,55 +263,27 @@ export function TenantHomeScreen() {
               styles.muted
             }
           >
-            When you accept a new apartment invitation, it will appear here.
+            {t(
+              'tenantHomeEmpty',
+              {
+                defaultValue:
+                  'When you accept an apartment invitation, it will appear here.',
+              },
+            )}
           </Text>
-
-          <View
-            style={
-              styles.buttonTop
-            }
-          >
-            <SecondaryButton
-              title={
-                isFetching
-                  ? 'Refreshing...'
-                  : 'Refresh'
-              }
-              onPress={
-                manualRefresh
-              }
-            />
-          </View>
         </Card>
       ) : null}
 
-
       {apartments.map(
         apartment => {
-          const checkout =
-            checkouts[
-              apartment.tenancyId
-            ];
-
           const checkoutPending =
-            checkout?.status ===
-            'PENDING';
+            apartment.status ===
+            'CHECKOUT_PENDING';
 
-          const claim =
-            paymentClaims[
-              apartment.tenancyId
-            ] ??
-            null;
-
-          const paymentState =
-            getTenantPaymentState(
-              claim,
-
-              currentBillingPeriod(),
-
-              apartment.paymentDueDay,
+          const submission =
+            getApartmentSubmissionStatus(
+              apartment.meters,
             );
-
 
           return (
             <Pressable
@@ -374,251 +312,177 @@ export function TenantHomeScreen() {
                 >
                   <View
                     style={
-                      styles.flex
+                      styles.propertyIdentity
                     }
                   >
-                    <Text
-                      style={
-                        styles.propertyName
+                    <PropertyTypeIcon
+                      propertyType={
+                        apartment.propertyType
                       }
-                    >
-                      {
-                        apartment.propertyName
-                      }
-                    </Text>
+                      size="medium"
+                    />
 
-                    <Text
+                    <View
                       style={
-                        styles.address
+                        styles.propertyText
                       }
                     >
-                      {
-                        apartment.propertyAddress
-                      }
-                      ,{' '}
-                      {
-                        apartment.propertyCity
-                      }
-                    </Text>
+                      <Text
+                        numberOfLines={
+                          2
+                        }
+                        style={
+                          styles.propertyName
+                        }
+                      >
+                        {
+                          apartment.propertyName
+                        }
+                      </Text>
+
+                      <Text
+                        numberOfLines={
+                          2
+                        }
+                        style={
+                          styles.address
+                        }
+                      >
+                        {
+                          apartment.propertyAddress
+                        }
+                        ,{' '}
+                        {
+                          apartment.propertyCity
+                        }
+                      </Text>
+                    </View>
                   </View>
 
                   {checkoutPending ? (
                     <Badge
-                      text="Checkout"
+                      text={t(
+                        'pending',
+                        {
+                          defaultValue:
+                            'Pending',
+                        },
+                      )}
                       tone="warning"
                     />
                   ) : (
-                    <PaymentStatusBadge
+                    <SubmissionStatusBadge
                       state={
-                        paymentState
+                        submission.state
                       }
-                      text={
-                        paymentState ===
-                        'PAID'
-                          ? 'Paid'
-
-                          : paymentState ===
-                              'AWAITING'
-                            ? 'Awaiting'
-
-                            : paymentState ===
-                                'OVERDUE'
-                              ? 'Overdue'
-
-                              : 'Pending'
-                      }
+                      text={submissionText(
+                        submission.state,
+                        submission.submittedMeters,
+                        submission.totalMeters,
+                      )}
                     />
                   )}
                 </View>
 
-
                 <View
                   style={
-                    styles.infoRow
+                    styles.footer
                   }
                 >
-                  <View
+                  {!checkoutPending &&
+                  submission.state ===
+                    'DUE' ? (
+                    <Text
+                      style={
+                        styles.dueHint
+                      }
+                    >
+                      {t(
+                        'tenantReadingsDueHint',
+                        {
+                          defaultValue:
+                            'Send meter readings by the 5th.',
+                        },
+                      )}
+                    </Text>
+                  ) : null}
+
+                  {!checkoutPending &&
+                  submission.state ===
+                    'OVERDUE' ? (
+                    <Text
+                      style={
+                        styles.overdueHint
+                      }
+                    >
+                      {t(
+                        'tenantReadingsOverdueHint',
+                        {
+                          defaultValue:
+                            'Meter readings are overdue.',
+                        },
+                      )}
+                    </Text>
+                  ) : null}
+
+                  {!checkoutPending &&
+                  submission.state ===
+                    'COMPLETE' ? (
+                    <Text
+                      style={
+                        styles.completeHint
+                      }
+                    >
+                      {t(
+                        'tenantReadingsCompleteHint',
+                        {
+                          defaultValue:
+                            'All readings for this month are submitted.',
+                        },
+                      )}
+                    </Text>
+                  ) : null}
+
+                  {submission.state ===
+                    'NOT_REQUIRED' ? (
+                    <Text
+                      style={
+                        styles.muted
+                      }
+                    >
+                      {t(
+                        'tenantNoReadingsRequired',
+                        {
+                          defaultValue:
+                            'No meter readings are required for this apartment.',
+                        },
+                      )}
+                    </Text>
+                  ) : null}
+
+                  <Text
                     style={
-                      styles.infoCell
+                      styles.openText
                     }
                   >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      Rent
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.value
-                      }
-                    >
+                    {t(
+                      'openDetails',
                       {
-                        apartment.rentAmount
-                      }{' '}
-                      {
-                        apartment.currency
-                      }
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.infoCell
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.label
-                      }
-                    >
-                      Payment due
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.value
-                      }
-                    >
-                      Day{' '}
-                      {
-                        apartment.paymentDueDay
-                      }
-                    </Text>
-                  </View>
+                        defaultValue:
+                          'Open details',
+                      },
+                    )}{' '}
+                    ›
+                  </Text>
                 </View>
-
-
-                <Text
-                  style={
-                    styles.openText
-                  }
-                >
-                  Open details ›
-                </Text>
               </Card>
             </Pressable>
           );
         },
       )}
-
-
-      {!isPending &&
-      previousRentals.length >
-        0 ? (
-        <>
-          <SectionTitle
-            title="Previous rentals"
-          />
-
-          <Card>
-            <View
-              style={
-                styles.previousHeader
-              }
-            >
-              <View
-                style={
-                  styles.historyIcon
-                }
-              >
-                <Text
-                  style={
-                    styles.historyIconText
-                  }
-                >
-                  ↶
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.flex
-                }
-              >
-                <Text
-                  style={
-                    styles.historyTitle
-                  }
-                >
-                  Previous rentals
-                </Text>
-
-                <Text
-                  style={
-                    styles.muted
-                  }
-                >
-                  {previousRentals.length}{' '}
-                  completed rental
-                  {previousRentals.length ===
-                  1
-                    ? ''
-                    : 's'}
-                </Text>
-              </View>
-            </View>
-
-
-            <View
-              style={
-                styles.latestRental
-              }
-            >
-              <Text
-                style={
-                  styles.latestRentalName
-                }
-              >
-                {
-                  previousRentals[0]
-                    .propertyName
-                }
-              </Text>
-
-              <Text
-                style={
-                  styles.muted
-                }
-              >
-                {formatDate(
-                  previousRentals[0]
-                    .startDate,
-                )}
-                {' → '}
-                {formatDate(
-                  previousRentals[0]
-                    .endDate,
-                )}
-              </Text>
-            </View>
-
-
-            <View
-              style={
-                styles.buttonTop
-              }
-            >
-              <SecondaryButton
-                title="View previous rentals"
-                onPress={() =>
-                  navigation
-                    .getParent()
-                    ?.navigate(
-                      'PreviousRentals',
-                    )
-                }
-              />
-            </View>
-          </Card>
-        </>
-      ) : null}
     </Screen>
   );
 }
-
 
 const styles =
   StyleSheet.create({
@@ -630,11 +494,6 @@ const styles =
     pressed: {
       opacity:
         0.72,
-    },
-
-    flex: {
-      flex:
-        1,
     },
 
     rowBetween: {
@@ -649,6 +508,31 @@ const styles =
 
       gap:
         spacing.md,
+    },
+
+    propertyIdentity: {
+      flex:
+        1,
+
+      minWidth:
+        0,
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      gap:
+        spacing.sm,
+    },
+
+    propertyText: {
+      flex:
+        1,
+
+      minWidth:
+        0,
     },
 
     propertyName: {
@@ -676,13 +560,7 @@ const styles =
         4,
     },
 
-    infoRow: {
-      flexDirection:
-        'row',
-
-      gap:
-        spacing.md,
-
+    footer: {
       borderTopWidth:
         StyleSheet.hairlineWidth,
 
@@ -694,39 +572,9 @@ const styles =
 
       paddingTop:
         spacing.md,
-    },
 
-    infoCell: {
-      flex:
-        1,
-    },
-
-    label: {
-      color:
-        colors.muted,
-
-      fontSize:
-        11,
-
-      fontWeight:
-        '700',
-
-      textTransform:
-        'uppercase',
-    },
-
-    value: {
-      color:
-        colors.text,
-
-      fontSize:
-        15,
-
-      fontWeight:
-        '800',
-
-      marginTop:
-        4,
+      gap:
+        6,
     },
 
     openText: {
@@ -740,90 +588,49 @@ const styles =
         '800',
 
       marginTop:
-        spacing.md,
+        4,
     },
 
-    previousHeader: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        spacing.md,
-    },
-
-    historyIcon: {
-      width:
-        44,
-
-      height:
-        44,
-
-      borderRadius:
-        14,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        '#EEF2FF',
-    },
-
-    historyIconText: {
+    dueHint: {
       color:
-        colors.primary,
+        '#92400E',
 
       fontSize:
-        23,
+        12,
+
+      lineHeight:
+        18,
 
       fontWeight:
-        '800',
+        '600',
     },
 
-    historyTitle: {
+    overdueHint: {
       color:
-        colors.text,
+        '#B42318',
 
       fontSize:
-        16,
+        12,
+
+      lineHeight:
+        18,
 
       fontWeight:
-        '800',
+        '700',
     },
 
-    latestRental: {
-      borderTopWidth:
-        StyleSheet.hairlineWidth,
-
-      borderTopColor:
-        colors.border,
-
-      marginTop:
-        spacing.md,
-
-      paddingTop:
-        spacing.md,
-    },
-
-    latestRentalName: {
+    completeHint: {
       color:
-        colors.text,
+        '#166534',
 
       fontSize:
-        13,
+        12,
+
+      lineHeight:
+        18,
 
       fontWeight:
-        '800',
-    },
-
-    buttonTop: {
-      marginTop:
-        spacing.md,
+        '600',
     },
 
     muted: {
