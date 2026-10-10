@@ -3,7 +3,6 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-
 import {
   Alert,
   Pressable,
@@ -11,12 +10,10 @@ import {
   Text,
   View,
 } from 'react-native';
-
 import {
   useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
-
 import {
   Badge,
   Card,
@@ -24,30 +21,35 @@ import {
   PrimaryButton,
   Screen,
 } from '../components/ui';
-
 import {
   NotificationBell,
 } from '../components/NotificationBell';
-
 import {
   PaymentStatusBadge,
 } from '../components/PaymentStatusBadge';
-
 import {
   PropertyThumbnail,
 } from '../components/PropertyThumbnail';
-
 import {
   LandlordPortfolioStatistics,
   LandlordPropertyPaymentSummary,
   loadLandlordPortfolioStatistics,
 } from '../services/landlordPortfolioRepository';
-
 import {
   loadPropertyIcons,
   PropertyIcon,
 } from '../services/propertyIconRepository';
-
+import {
+  currentBillingPeriod,
+} from '../services/billingRepository';
+import {
+  invalidateLandlordCache,
+  invalidateLandlordPortfolioCache,
+  landlordCacheKeys,
+  landlordCacheTtl,
+  loadLandlordCachedQuery,
+  readLandlordCache,
+} from '../services/landlordCache';
 import {
   colors,
   spacing,
@@ -146,10 +148,8 @@ function FilterButton({
 }: {
   title:
     string;
-
   selected:
     boolean;
-
   onPress:
     () => void;
 }) {
@@ -162,10 +162,8 @@ function FilterButton({
         pressed,
       }) => [
         styles.filterButton,
-
         selected &&
           styles.filterButtonSelected,
-
         pressed &&
           styles.pressed,
       ]}
@@ -173,7 +171,6 @@ function FilterButton({
       <Text
         style={[
           styles.filterButtonText,
-
           selected &&
             styles.filterButtonTextSelected,
         ]}
@@ -188,13 +185,51 @@ export function DashboardScreen() {
   const navigation =
     useNavigation<any>();
 
+  const initialPeriod =
+    currentBillingPeriod();
+
+  const initialPortfolioSnapshot =
+    readLandlordCache<
+      LandlordPortfolioStatistics
+    >(
+      landlordCacheKeys.portfolio(
+        initialPeriod,
+      ),
+    );
+
+  const initialPortfolio =
+    initialPortfolioSnapshot.hasValue
+      ? initialPortfolioSnapshot.value
+      : undefined;
+
+  const initialPropertyIds =
+    initialPortfolio?.properties.map(
+      property =>
+        property.propertyId,
+    ) ?? [];
+
+  const initialIcons =
+    readLandlordCache<
+      Record<
+        string,
+        PropertyIcon
+      >
+    >(
+      landlordCacheKeys.propertyIcons(
+        initialPropertyIds,
+      ),
+    );
+
   const [
     portfolio,
     setPortfolio,
   ] =
     useState<
       LandlordPortfolioStatistics | null
-    >(null);
+    >(
+      initialPortfolio ??
+        null,
+    );
 
   const [
     propertyIcons,
@@ -205,14 +240,19 @@ export function DashboardScreen() {
         string,
         PropertyIcon
       >
-    >({});
+    >(
+      initialIcons.hasValue
+        ? initialIcons.value ??
+            {}
+        : {},
+    );
 
   const [
     loading,
     setLoading,
   ] =
     useState(
-      true,
+      !initialPortfolio,
     );
 
   const [
@@ -225,21 +265,66 @@ export function DashboardScreen() {
 
   const reload =
     useCallback(
-      async () => {
-        setLoading(
-          true,
-        );
+      async (
+        force = false,
+      ) => {
+        const billingPeriod =
+          currentBillingPeriod();
+
+        const cachedPortfolio =
+          readLandlordCache<
+            LandlordPortfolioStatistics
+          >(
+            landlordCacheKeys.portfolio(
+              billingPeriod,
+            ),
+          );
+
+        if (
+          !cachedPortfolio.hasValue
+        ) {
+          setLoading(
+            true,
+          );
+        }
 
         try {
           const data =
-            await loadLandlordPortfolioStatistics();
+            await loadLandlordCachedQuery(
+              landlordCacheKeys.portfolio(
+                billingPeriod,
+              ),
+              () =>
+                loadLandlordPortfolioStatistics(
+                  billingPeriod,
+                ),
+              {
+                ttlMs:
+                  landlordCacheTtl.portfolio,
+                force,
+              },
+            );
+
+          const propertyIds =
+            data.properties.map(
+              property =>
+                property.propertyId,
+            );
 
           const icons =
-            await loadPropertyIcons(
-              data.properties.map(
-                property =>
-                  property.propertyId,
+            await loadLandlordCachedQuery(
+              landlordCacheKeys.propertyIcons(
+                propertyIds,
               ),
+              () =>
+                loadPropertyIcons(
+                  propertyIds,
+                ),
+              {
+                ttlMs:
+                  landlordCacheTtl.propertyIcons,
+                force,
+              },
             );
 
           setPortfolio(
@@ -254,7 +339,6 @@ export function DashboardScreen() {
         ) {
           Alert.alert(
             'Home',
-
             error instanceof
             Error
               ? error.message
@@ -274,7 +358,6 @@ export function DashboardScreen() {
       () => {
         void reload();
       },
-
       [
         reload,
       ],
@@ -314,7 +397,6 @@ export function DashboardScreen() {
 
         return portfolio.properties;
       },
-
       [
         portfolio,
         filter,
@@ -333,11 +415,13 @@ export function DashboardScreen() {
 
       <PrimaryButton
         title="+ Add property"
-        onPress={() =>
+        onPress={() => {
+          invalidateLandlordPortfolioCache();
+
           navigation.navigate(
             'AddProperty',
-          )
-        }
+          );
+        }}
       />
 
       {portfolio &&
@@ -460,9 +544,12 @@ export function DashboardScreen() {
                     event => {
                       event.stopPropagation();
 
+                      invalidateLandlordCache(
+                        landlordCacheKeys.propertyIconsPrefix(),
+                      );
+
                       navigation.navigate(
                         'PropertyIcon',
-
                         {
                           propertyId:
                             property.propertyId,

@@ -2,36 +2,36 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-
 import {
   Alert,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-
 import {
   useFocusEffect,
 } from '@react-navigation/native';
-
 import {
   Card,
   Header,
   Screen,
   SectionTitle,
 } from '../components/ui';
-
 import {
   billingMonthLabel,
   currentBillingPeriod,
 } from '../services/billingRepository';
-
 import {
   LandlordCurrencyStatistics,
   LandlordPortfolioStatistics,
   loadLandlordPortfolioStatistics,
 } from '../services/landlordPortfolioRepository';
-
+import {
+  landlordCacheKeys,
+  landlordCacheTtl,
+  loadLandlordCachedQuery,
+  readLandlordCache,
+} from '../services/landlordCache';
 import {
   colors,
   spacing,
@@ -40,7 +40,6 @@ import {
 function money(
   value:
     number,
-
   currency:
     string,
 ) {
@@ -82,7 +81,6 @@ function Metric({
 }: {
   label:
     string;
-
   value:
     string;
 }) {
@@ -112,33 +110,82 @@ function Metric({
 }
 
 export function LandlordStatisticsScreen() {
+  const billingPeriod =
+    currentBillingPeriod();
+
+  const initialStatisticsSnapshot =
+    readLandlordCache<
+      LandlordPortfolioStatistics
+    >(
+      landlordCacheKeys.portfolio(
+        billingPeriod,
+      ),
+    );
+
+  const initialStatistics =
+    initialStatisticsSnapshot.hasValue
+      ? initialStatisticsSnapshot.value
+      : undefined;
+
   const [
     statistics,
     setStatistics,
   ] =
     useState<
       LandlordPortfolioStatistics | null
-    >(null);
+    >(
+      initialStatistics ??
+        null,
+    );
 
   const [
     loading,
     setLoading,
   ] =
     useState(
-      true,
+      !initialStatistics,
     );
 
   const reload =
     useCallback(
-      async () => {
-        setLoading(
-          true,
-        );
+      async (
+        force = false,
+      ) => {
+        const period =
+          currentBillingPeriod();
+
+        const cached =
+          readLandlordCache<
+            LandlordPortfolioStatistics
+          >(
+            landlordCacheKeys.portfolio(
+              period,
+            ),
+          );
+
+        if (
+          !cached.hasValue
+        ) {
+          setLoading(
+            true,
+          );
+        }
 
         try {
           setStatistics(
-            await loadLandlordPortfolioStatistics(
-              currentBillingPeriod(),
+            await loadLandlordCachedQuery(
+              landlordCacheKeys.portfolio(
+                period,
+              ),
+              () =>
+                loadLandlordPortfolioStatistics(
+                  period,
+                ),
+              {
+                ttlMs:
+                  landlordCacheTtl.portfolio,
+                force,
+              },
             ),
           );
         } catch (

@@ -37,10 +37,20 @@ import {
 } from '../services/tenantRepository';
 
 import {
+  invalidateLandlordCache,
+  invalidateLandlordPortfolioCache,
+  landlordCacheKeys,
+  landlordCacheTtl,
+  loadLandlordCachedQuery,
+  readLandlordCache,
+} from '../services/landlordCache';
+
+import {
   colors,
   radius,
   spacing,
 } from '../theme';
+
 
 function formatDate(
   value?:
@@ -87,6 +97,7 @@ function formatDate(
   );
 }
 
+
 function DetailRow({
   label,
   value,
@@ -128,6 +139,7 @@ function DetailRow({
   );
 }
 
+
 export function TenantDetailsScreen() {
   const navigation =
     useNavigation<any>();
@@ -145,21 +157,43 @@ export function TenantDetailsScreen() {
       | string
       | undefined;
 
+
+  const tenancyKey =
+    landlordCacheKeys.propertyTenancy(
+      propertyId,
+    );
+
+
+  const initialTenancy =
+    readLandlordCache<
+      PropertyTenancySummary | null
+    >(
+      tenancyKey,
+    );
+
+
   const [
     tenancy,
     setTenancy,
   ] =
     useState<
       PropertyTenancySummary | null
-    >(null);
+    >(
+      initialTenancy.hasValue
+        ? initialTenancy.value ??
+            null
+        : null,
+    );
+
 
   const [
     loading,
     setLoading,
   ] =
     useState(
-      true,
+      !initialTenancy.hasValue,
     );
+
 
   useFocusEffect(
     useCallback(
@@ -167,17 +201,55 @@ export function TenantDetailsScreen() {
         let active =
           true;
 
+
         const load =
           async () => {
-            setLoading(
-              true,
-            );
+            const cached =
+              readLandlordCache<
+                PropertyTenancySummary | null
+              >(
+                landlordCacheKeys.propertyTenancy(
+                  propertyId,
+                ),
+              );
+
+
+            if (
+              cached.hasValue
+            ) {
+              setTenancy(
+                cached.value ??
+                  null,
+              );
+
+              setLoading(
+                false,
+              );
+            } else {
+              setLoading(
+                true,
+              );
+            }
+
 
             try {
               const result =
-                await getPropertyTenancy(
-                  propertyId,
+                await loadLandlordCachedQuery(
+                  landlordCacheKeys.propertyTenancy(
+                    propertyId,
+                  ),
+
+                  () =>
+                    getPropertyTenancy(
+                      propertyId,
+                    ),
+
+                  {
+                    ttlMs:
+                      landlordCacheTtl.propertyTenancy,
+                  },
                 );
+
 
               if (
                 active
@@ -212,7 +284,9 @@ export function TenantDetailsScreen() {
             }
           };
 
+
         void load();
+
 
         return () => {
           active =
@@ -226,6 +300,7 @@ export function TenantDetailsScreen() {
     ),
   );
 
+
   if (
     loading
   ) {
@@ -238,6 +313,7 @@ export function TenantDetailsScreen() {
       </Screen>
     );
   }
+
 
   if (
     !tenancy
@@ -262,16 +338,51 @@ export function TenantDetailsScreen() {
     );
   }
 
+
   const tenant =
     tenancy.tenant;
+
 
   const fullName =
     tenant
       ? `${tenant.firstName} ${tenant.lastName}`
       : 'Tenant invitation';
 
+
+  const invalidateFinancialData =
+    () => {
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyInvoices(
+          propertyId,
+        ),
+      );
+
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyHistoryPrefix(
+          propertyId,
+        ),
+      );
+
+      invalidateLandlordPortfolioCache();
+    };
+
+
+  const invalidateTenancyData =
+    () => {
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyTenancy(
+          propertyId,
+        ),
+      );
+
+      invalidateFinancialData();
+    };
+
+
   const openCurrentBill =
     () => {
+      invalidateFinancialData();
+
       navigation.navigate(
         'TenantBilling',
         {
@@ -294,6 +405,7 @@ export function TenantDetailsScreen() {
       );
     };
 
+
   const openBillingHistory =
     () => {
       navigation.navigate(
@@ -311,6 +423,37 @@ export function TenantDetailsScreen() {
         },
       );
     };
+
+
+  const openCheckout =
+    () => {
+      /*
+       * The checkout screen itself decides whether this is:
+       *
+       *   - a new checkout
+       *   - an existing pending checkout
+       *
+       * We invalidate tenancy/portfolio data now so returning
+       * after starting/completing checkout refreshes the
+       * landlord state.
+       */
+      invalidateTenancyData();
+
+      navigation.navigate(
+        'CheckoutTenant',
+        {
+          tenancyId:
+            tenancy.id,
+
+          propertyId,
+
+          propertyName:
+            propertyName ??
+            'Apartment',
+        },
+      );
+    };
+
 
   return (
     <Screen>
@@ -344,6 +487,7 @@ export function TenantDetailsScreen() {
           />
         }
       />
+
 
       {tenant ? (
         <>
@@ -388,6 +532,7 @@ export function TenantDetailsScreen() {
             />
           </Card>
 
+
           {(tenant.passportIdNumber ||
             tenant.passportPhotoUri) ? (
             <>
@@ -419,6 +564,7 @@ export function TenantDetailsScreen() {
             </>
           ) : null}
 
+
           {tenant.notes ? (
             <>
               <SectionTitle
@@ -440,6 +586,7 @@ export function TenantDetailsScreen() {
           ) : null}
         </>
       ) : null}
+
 
       <SectionTitle
         title="Rental"
@@ -497,6 +644,7 @@ export function TenantDetailsScreen() {
         ) : null}
       </Card>
 
+
       {tenancy.status ===
       'ACTIVE' ? (
         <>
@@ -547,8 +695,45 @@ export function TenantDetailsScreen() {
               />
             </View>
           </Card>
+
+
+          <SectionTitle
+            title="Checkout"
+          />
+
+          <Card>
+            <Text
+              style={
+                styles.checkoutTitle
+              }
+            >
+              End tenancy
+            </Text>
+
+            <Text
+              style={
+                styles.muted
+              }
+            >
+              Start or continue the move-out flow, collect final meter readings, prepare the final bill and settle the security deposit.
+            </Text>
+
+            <View
+              style={
+                styles.buttonTop
+              }
+            >
+              <SecondaryButton
+                title="Checkout tenant"
+                onPress={
+                  openCheckout
+                }
+              />
+            </View>
+          </Card>
         </>
       ) : null}
+
 
       {tenancy.openingReadings.length >
       0 ? (
@@ -618,6 +803,7 @@ export function TenantDetailsScreen() {
         </>
       ) : null}
 
+
       {tenancy.agreementUri ? (
         <>
           <SectionTitle
@@ -639,11 +825,14 @@ export function TenantDetailsScreen() {
         </>
       ) : null}
 
+
       {tenancy.tenantType ===
       'MANUAL' ? (
         <PrimaryButton
           title="Edit tenant"
-          onPress={() =>
+          onPress={() => {
+            invalidateTenancyData();
+
             navigation.navigate(
               'TenantProfile',
               {
@@ -652,10 +841,11 @@ export function TenantDetailsScreen() {
 
                 propertyId,
               },
-            )
-          }
+            );
+          }}
         />
       ) : null}
+
 
       {tenancy.tenantType ===
         'DOMETRA' ? (
@@ -670,6 +860,7 @@ export function TenantDetailsScreen() {
     </Screen>
   );
 }
+
 
 const styles =
   StyleSheet.create({
@@ -718,6 +909,17 @@ const styles =
     },
 
     billingTitle: {
+      color:
+        colors.text,
+
+      fontSize:
+        16,
+
+      fontWeight:
+        '800',
+    },
+
+    checkoutTitle: {
       color:
         colors.text,
 

@@ -13,7 +13,8 @@ import {
 } from '../services/checkoutRepository';
 
 import {
-  loadMeterSubmissionStatuses,
+  getMeterSubmissionStatus,
+  MeterSubmissionStatus,
 } from '../services/meterSubmissionStatus';
 
 import {
@@ -24,13 +25,6 @@ import {
   loadTenantRentalHistory,
 } from '../services/tenantRentalHistoryRepository';
 
-
-/*
- * Do not depend on repository-internal types being exported.
- *
- * The repository functions are already strongly typed, so we
- * derive all cache types directly from their return values.
- */
 
 export type TenantApartments =
   Awaited<
@@ -65,11 +59,7 @@ export type CheckoutSummaries =
 
 
 export type MeterSubmissionStatuses =
-  Awaited<
-    ReturnType<
-      typeof loadMeterSubmissionStatuses
-    >
-  >;
+  MeterSubmissionStatus[];
 
 
 export interface TenantHomeQueryData {
@@ -101,21 +91,13 @@ export interface TenantReadingsQueryData {
 
 /*
  * ============================================================
- * SHARED TENANT APARTMENTS
+ * SHARED TENANT APARTMENTS CACHE
  * ============================================================
  *
- * Tenant Home and Readings both need this same relatively
- * expensive portal payload.
+ * Tenant Home and Readings use the same apartment payload.
  *
- * fetchQuery() means:
- *
- * first consumer
- *   -> Supabase
- *
- * second consumer
- *   -> existing QueryClient cache
- *
- * until explicit invalidation occurs.
+ * With staleTime = Infinity this query is reused until a
+ * mutation explicitly invalidates it.
  * ============================================================
  */
 
@@ -141,19 +123,6 @@ Promise<PreviousRentals> {
     queryFn:
       () =>
         loadTenantRentalHistory(),
-  });
-}
-
-
-async function loadCachedMeterSubmissionStatuses():
-Promise<MeterSubmissionStatuses> {
-  return queryClient.fetchQuery({
-    queryKey:
-      queryKeys.meterSubmissionStatuses,
-
-    queryFn:
-      () =>
-        loadMeterSubmissionStatuses(),
   });
 }
 
@@ -201,12 +170,50 @@ async function loadCachedCheckoutSummaries(
 }
 
 
+/*
+ * ============================================================
+ * METER SUBMISSION STATUS
+ * ============================================================
+ *
+ * This is NOT server state.
+ *
+ * meterSubmissionStatus.ts derives the current state from
+ * Meter.registers[].lastBillingPeriod.
+ *
+ * Therefore we should NOT make another Supabase request and
+ * should NOT maintain a separate server query for this data.
+ *
+ * Whenever cached apartment meter readings are invalidated,
+ * these values are recalculated from the fresh apartment data.
+ * ============================================================
+ */
+
+function createMeterSubmissionStatuses(
+  apartments:
+    TenantApartments,
+): MeterSubmissionStatuses {
+  return apartments.flatMap(
+    apartment =>
+      apartment.meters
+        .filter(
+          meter =>
+            meter.billingMode ===
+            'METERED',
+        )
+        .map(
+          meter =>
+            getMeterSubmissionStatus(
+              meter,
+            ),
+        ),
+  );
+}
+
+
 export async function loadTenantHomeQuery():
 Promise<TenantHomeQueryData> {
   /*
-   * Apartments are critical.
-   *
-   * If this fails, Tenant Home itself cannot be rendered.
+   * Active apartments are critical.
    */
   const apartments =
     await loadCachedTenantApartments();
@@ -215,8 +222,7 @@ Promise<TenantHomeQueryData> {
   /*
    * Previous rentals are supplementary.
    *
-   * A historical-data issue should not break active tenancy
-   * access.
+   * Historical-data failure must not break active tenancy UI.
    */
   let previousRentals =
     [] as PreviousRentals;
@@ -310,8 +316,20 @@ Promise<TenantHomeQueryData> {
 
 export async function loadTenantReadingsQuery():
 Promise<TenantReadingsQueryData> {
+  /*
+   * This is the only server request required for the meter
+   * submission states themselves.
+   *
+   * Statuses are calculated from the returned meter data.
+   */
   const apartments =
     await loadCachedTenantApartments();
+
+
+  const meterStatuses =
+    createMeterSubmissionStatuses(
+      apartments,
+    );
 
 
   const tenancyIds =
@@ -321,40 +339,28 @@ Promise<TenantReadingsQueryData> {
     );
 
 
-  const meterStatusesPromise =
-    loadCachedMeterSubmissionStatuses();
+  let checkouts =
+    {} as CheckoutSummaries;
 
 
-  const checkoutsPromise:
-    Promise<CheckoutSummaries> =
+  if (
     tenancyIds.length >
     0
-      ? loadCachedCheckoutSummaries(
+  ) {
+    try {
+      checkouts =
+        await loadCachedCheckoutSummaries(
           tenancyIds,
-        ).catch(
-          error => {
-            console.warn(
-              '[Dometra Readings] Unable to load checkout status:',
-              error,
-            );
-
-            return {} as CheckoutSummaries;
-          },
-        )
-
-      : Promise.resolve(
-          {} as CheckoutSummaries,
         );
-
-
-  const [
-    meterStatuses,
-    checkouts,
-  ] =
-    await Promise.all([
-      meterStatusesPromise,
-      checkoutsPromise,
-    ]);
+    } catch (
+      error
+    ) {
+      console.warn(
+        '[Dometra Readings] Unable to load checkout status:',
+        error,
+      );
+    }
+  }
 
 
   return {

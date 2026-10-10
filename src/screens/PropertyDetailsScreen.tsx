@@ -2,7 +2,6 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-
 import {
   Alert,
   Pressable,
@@ -10,17 +9,14 @@ import {
   Text,
   View,
 } from 'react-native';
-
 import {
   useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
-
 import {
   useTranslation,
 } from 'react-i18next';
-
 import {
   Badge,
   Card,
@@ -30,35 +26,36 @@ import {
   SecondaryButton,
   SectionTitle,
 } from '../components/ui';
-
 import {
   SwipeActions,
 } from '../components/SwipeActions';
-
 import {
   useApp,
 } from '../context/AppContext';
-
 import {
   FinanceInvoiceSummary,
   generateMonthlyInvoice,
   loadPropertyInvoices,
 } from '../services/financeRepository';
-
 import {
   loadPropertyHistory,
   PropertyHistoryItem,
 } from '../services/propertyHistoryService';
-
 import {
   getPropertyTenancy,
   PropertyTenancySummary,
 } from '../services/tenantRepository';
-
+import {
+  invalidateLandlordCache,
+  invalidateLandlordPortfolioCache,
+  landlordCacheKeys,
+  landlordCacheTtl,
+  loadLandlordCachedQuery,
+  readLandlordCache,
+} from '../services/landlordCache';
 import {
   Meter,
 } from '../types';
-
 import {
   colors,
   spacing,
@@ -315,19 +312,63 @@ export function PropertyDetailsScreen() {
         propertyId,
     );
 
+  const tenancyKey =
+    landlordCacheKeys.propertyTenancy(
+      propertyId,
+    );
+
+  const historyKey =
+    landlordCacheKeys.propertyHistory(
+      propertyId,
+      30,
+    );
+
+  const invoicesKey =
+    landlordCacheKeys.propertyInvoices(
+      propertyId,
+    );
+
+  const initialTenancy =
+    readLandlordCache<
+      PropertyTenancySummary | null
+    >(
+      tenancyKey,
+    );
+
+  const initialHistory =
+    readLandlordCache<
+      PropertyHistoryItem[]
+    >(
+      historyKey,
+    );
+
+  const initialInvoices =
+    readLandlordCache<
+      FinanceInvoiceSummary[]
+    >(
+      invoicesKey,
+    );
+
   const [
     tenancy,
     setTenancy,
   ] =
     useState<
       PropertyTenancySummary | null
-    >(null);
+    >(
+      initialTenancy.hasValue
+        ? initialTenancy.value ??
+            null
+        : null,
+    );
 
   const [
     tenancyLoading,
     setTenancyLoading,
   ] =
-    useState(true);
+    useState(
+      !initialTenancy.hasValue,
+    );
 
   const [
     history,
@@ -335,13 +376,20 @@ export function PropertyDetailsScreen() {
   ] =
     useState<
       PropertyHistoryItem[]
-    >([]);
+    >(
+      initialHistory.hasValue
+        ? initialHistory.value ??
+            []
+        : [],
+    );
 
   const [
     historyLoading,
     setHistoryLoading,
   ] =
-    useState(false);
+    useState(
+      !initialHistory.hasValue,
+    );
 
   const [
     invoices,
@@ -349,13 +397,20 @@ export function PropertyDetailsScreen() {
   ] =
     useState<
       FinanceInvoiceSummary[]
-    >([]);
+    >(
+      initialInvoices.hasValue
+        ? initialInvoices.value ??
+            []
+        : [],
+    );
 
   const [
     invoicesLoading,
     setInvoicesLoading,
   ] =
-    useState(false);
+    useState(
+      !initialInvoices.hasValue,
+    );
 
   const [
     invoiceBusy,
@@ -375,17 +430,84 @@ export function PropertyDetailsScreen() {
 
         const load =
           async () => {
-            setTenancyLoading(
-              true,
-            );
+            const cachedTenancy =
+              readLandlordCache<
+                PropertyTenancySummary | null
+              >(
+                landlordCacheKeys.propertyTenancy(
+                  propertyId,
+                ),
+              );
 
-            setHistoryLoading(
-              true,
-            );
+            const cachedHistory =
+              readLandlordCache<
+                PropertyHistoryItem[]
+              >(
+                landlordCacheKeys.propertyHistory(
+                  propertyId,
+                  30,
+                ),
+              );
 
-            setInvoicesLoading(
-              true,
-            );
+            const cachedInvoices =
+              readLandlordCache<
+                FinanceInvoiceSummary[]
+              >(
+                landlordCacheKeys.propertyInvoices(
+                  propertyId,
+                ),
+              );
+
+            if (
+              cachedTenancy.hasValue
+            ) {
+              setTenancy(
+                cachedTenancy.value ??
+                  null,
+              );
+
+              setTenancyLoading(
+                false,
+              );
+            } else {
+              setTenancyLoading(
+                true,
+              );
+            }
+
+            if (
+              cachedHistory.hasValue
+            ) {
+              setHistory(
+                cachedHistory.value ??
+                  [],
+              );
+
+              setHistoryLoading(
+                false,
+              );
+            } else {
+              setHistoryLoading(
+                true,
+              );
+            }
+
+            if (
+              cachedInvoices.hasValue
+            ) {
+              setInvoices(
+                cachedInvoices.value ??
+                  [],
+              );
+
+              setInvoicesLoading(
+                false,
+              );
+            } else {
+              setInvoicesLoading(
+                true,
+              );
+            }
 
             try {
               const [
@@ -394,17 +516,48 @@ export function PropertyDetailsScreen() {
                 invoiceData,
               ] =
                 await Promise.all([
-                  getPropertyTenancy(
-                    propertyId,
+                  loadLandlordCachedQuery(
+                    landlordCacheKeys.propertyTenancy(
+                      propertyId,
+                    ),
+                    () =>
+                      getPropertyTenancy(
+                        propertyId,
+                      ),
+                    {
+                      ttlMs:
+                        landlordCacheTtl.propertyTenancy,
+                    },
                   ),
 
-                  loadPropertyHistory(
-                    propertyId,
-                    30,
+                  loadLandlordCachedQuery(
+                    landlordCacheKeys.propertyHistory(
+                      propertyId,
+                      30,
+                    ),
+                    () =>
+                      loadPropertyHistory(
+                        propertyId,
+                        30,
+                      ),
+                    {
+                      ttlMs:
+                        landlordCacheTtl.propertyHistory,
+                    },
                   ),
 
-                  loadPropertyInvoices(
-                    propertyId,
+                  loadLandlordCachedQuery(
+                    landlordCacheKeys.propertyInvoices(
+                      propertyId,
+                    ),
+                    () =>
+                      loadPropertyInvoices(
+                        propertyId,
+                      ),
+                    {
+                      ttlMs:
+                        landlordCacheTtl.propertyInvoices,
+                    },
                   ),
                 ]);
 
@@ -495,6 +648,7 @@ export function PropertyDetailsScreen() {
           {
             text:
               'Cancel',
+
             style:
               'cancel',
           },
@@ -502,13 +656,25 @@ export function PropertyDetailsScreen() {
           {
             text:
               'Remove',
+
             style:
               'destructive',
+
             onPress:
               () => {
-                void removeMeter(
-                  meterId,
-                );
+                void (async () => {
+                  await removeMeter(
+                    meterId,
+                  );
+
+                  invalidateLandlordCache(
+                    landlordCacheKeys.propertyHistoryPrefix(
+                      property.id,
+                    ),
+                  );
+
+                  invalidateLandlordPortfolioCache();
+                })();
               },
           },
         ],
@@ -526,6 +692,9 @@ export function PropertyDetailsScreen() {
         {
           propertyId:
             property.id,
+
+          propertyName:
+            property.name,
         },
       );
     };
@@ -539,6 +708,14 @@ export function PropertyDetailsScreen() {
       ) {
         return;
       }
+
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyTenancy(
+          property.id,
+        ),
+      );
+
+      invalidateLandlordPortfolioCache();
 
       navigation.navigate(
         'TenantProfile',
@@ -568,10 +745,68 @@ export function PropertyDetailsScreen() {
             property.id,
           );
 
-        setInvoices(
-          await loadPropertyInvoices(
+        invalidateLandlordCache(
+          landlordCacheKeys.propertyInvoices(
             property.id,
           ),
+        );
+
+        invalidateLandlordCache(
+          landlordCacheKeys.propertyHistoryPrefix(
+            property.id,
+          ),
+        );
+
+        invalidateLandlordPortfolioCache();
+
+        const [
+          refreshedInvoices,
+          refreshedHistory,
+        ] =
+          await Promise.all([
+            loadLandlordCachedQuery(
+              landlordCacheKeys.propertyInvoices(
+                property.id,
+              ),
+              () =>
+                loadPropertyInvoices(
+                  property.id,
+                ),
+              {
+                ttlMs:
+                  landlordCacheTtl.propertyInvoices,
+
+                force:
+                  true,
+              },
+            ),
+
+            loadLandlordCachedQuery(
+              landlordCacheKeys.propertyHistory(
+                property.id,
+                30,
+              ),
+              () =>
+                loadPropertyHistory(
+                  property.id,
+                  30,
+                ),
+              {
+                ttlMs:
+                  landlordCacheTtl.propertyHistory,
+
+                force:
+                  true,
+              },
+            ),
+          ]);
+
+        setInvoices(
+          refreshedInvoices,
+        );
+
+        setHistory(
+          refreshedHistory,
         );
 
         Alert.alert(
@@ -590,6 +825,7 @@ export function PropertyDetailsScreen() {
       } catch (error) {
         Alert.alert(
           'Invoices',
+
           error instanceof Error
             ? error.message
             : 'Unable to create invoice.',
@@ -599,6 +835,34 @@ export function PropertyDetailsScreen() {
           false,
         );
       }
+    };
+
+  const invalidatePotentialPropertyMutation =
+    () => {
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyHistoryPrefix(
+          property.id,
+        ),
+      );
+
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyInvoices(
+          property.id,
+        ),
+      );
+
+      invalidateLandlordPortfolioCache();
+    };
+
+  const invalidatePotentialTenancyMutation =
+    () => {
+      invalidateLandlordCache(
+        landlordCacheKeys.propertyTenancy(
+          property.id,
+        ),
+      );
+
+      invalidatePotentialPropertyMutation();
     };
 
   return (
@@ -662,15 +926,17 @@ export function PropertyDetailsScreen() {
           >
             <PrimaryButton
               title="+ Add tenant"
-              onPress={() =>
+              onPress={() => {
+                invalidatePotentialTenancyMutation();
+
                 navigation.navigate(
                   'AddTenantMethod',
                   {
                     propertyId:
                       property.id,
                   },
-                )
-              }
+                );
+              }}
             />
           </View>
         </Card>
@@ -912,7 +1178,9 @@ export function PropertyDetailsScreen() {
               key={
                 meter.id
               }
-              onEdit={() =>
+              onEdit={() => {
+                invalidatePotentialPropertyMutation();
+
                 navigation.navigate(
                   'AddMeter',
                   {
@@ -922,8 +1190,8 @@ export function PropertyDetailsScreen() {
                     meterId:
                       meter.id,
                   },
-                )
-              }
+                );
+              }}
               onRemove={() =>
                 confirmRemoveMeter(
                   meter.id,
@@ -1063,15 +1331,17 @@ export function PropertyDetailsScreen() {
                   'METERED' ? (
                     <SecondaryButton
                       title="Reading"
-                      onPress={() =>
+                      onPress={() => {
+                        invalidatePotentialPropertyMutation();
+
                         navigation.navigate(
                           'MeterReading',
                           {
                             meterId:
                               meter.id,
                           },
-                        )
-                      }
+                        );
+                      }}
                     />
                   ) : null}
 
@@ -1079,15 +1349,17 @@ export function PropertyDetailsScreen() {
                   'VARIABLE' ? (
                     <SecondaryButton
                       title="Enter value"
-                      onPress={() =>
+                      onPress={() => {
+                        invalidatePotentialPropertyMutation();
+
                         navigation.navigate(
                           'MeterReading',
                           {
                             meterId:
                               meter.id,
                           },
-                        )
-                      }
+                        );
+                      }}
                     />
                   ) : null}
                 </View>
@@ -1099,15 +1371,17 @@ export function PropertyDetailsScreen() {
 
       <SecondaryButton
         title="+ Add meter / service"
-        onPress={() =>
+        onPress={() => {
+          invalidatePotentialPropertyMutation();
+
           navigation.navigate(
             'AddMeter',
             {
               propertyId:
                 property.id,
             },
-          )
-        }
+          );
+        }}
       />
 
       <SectionTitle
@@ -1269,15 +1543,17 @@ export function PropertyDetailsScreen() {
               key={
                 invoice.id
               }
-              onPress={() =>
+              onPress={() => {
+                invalidatePotentialPropertyMutation();
+
                 navigation.navigate(
                   'InvoiceDetails',
                   {
                     invoiceId:
                       invoice.id,
                   },
-                )
-              }
+                );
+              }}
             >
               <Card>
                 <View
@@ -1357,15 +1633,17 @@ export function PropertyDetailsScreen() {
           >
             <SecondaryButton
               title="Add payment"
-              onPress={() =>
+              onPress={() => {
+                invalidatePotentialPropertyMutation();
+
                 navigation.navigate(
                   'AddPayment',
                   {
                     propertyId:
                       property.id,
                   },
-                )
-              }
+                );
+              }}
             />
           </View>
 
@@ -1406,10 +1684,13 @@ const styles =
     rowBetween: {
       flexDirection:
         'row',
+
       justifyContent:
         'space-between',
+
       alignItems:
         'center',
+
       gap:
         spacing.md,
     },
@@ -1417,8 +1698,10 @@ const styles =
     emptyTitle: {
       color:
         colors.text,
+
       fontSize:
         15,
+
       fontWeight:
         '800',
     },
@@ -1431,10 +1714,13 @@ const styles =
     tenantTitleRow: {
       flexDirection:
         'row',
+
       alignItems:
         'center',
+
       flexWrap:
         'wrap',
+
       gap:
         8,
     },
@@ -1442,8 +1728,10 @@ const styles =
     tenantName: {
       color:
         colors.text,
+
       fontSize:
         17,
+
       fontWeight:
         '800',
     },
@@ -1451,8 +1739,10 @@ const styles =
     tenantContact: {
       color:
         colors.muted,
+
       fontSize:
         12,
+
       marginTop:
         4,
     },
@@ -1460,8 +1750,10 @@ const styles =
     chevron: {
       color:
         colors.muted,
+
       fontSize:
         28,
+
       fontWeight:
         '300',
     },
@@ -1469,8 +1761,10 @@ const styles =
     separator: {
       height:
         StyleSheet.hairlineWidth,
+
       backgroundColor:
         colors.border,
+
       marginVertical:
         spacing.md,
     },
@@ -1478,6 +1772,7 @@ const styles =
     rentalRow: {
       flexDirection:
         'row',
+
       gap:
         spacing.md,
     },
@@ -1490,10 +1785,13 @@ const styles =
     label: {
       color:
         colors.muted,
+
       fontSize:
         11,
+
       fontWeight:
         '700',
+
       textTransform:
         'uppercase',
     },
@@ -1501,10 +1799,13 @@ const styles =
     rentalValue: {
       color:
         colors.text,
+
       fontSize:
         14,
+
       fontWeight:
         '700',
+
       marginTop:
         4,
     },
@@ -1512,14 +1813,19 @@ const styles =
     contractInfo: {
       flexDirection:
         'row',
+
       alignItems:
         'center',
+
       justifyContent:
         'space-between',
+
       flexWrap:
         'wrap',
+
       gap:
         8,
+
       marginTop:
         spacing.md,
     },
@@ -1527,8 +1833,10 @@ const styles =
     value: {
       color:
         colors.text,
+
       fontSize:
         16,
+
       fontWeight:
         '700',
     },
@@ -1536,10 +1844,13 @@ const styles =
     muted: {
       color:
         colors.muted,
+
       fontSize:
         12,
+
       marginTop:
         4,
+
       lineHeight:
         18,
     },
@@ -1547,12 +1858,16 @@ const styles =
     lastReading: {
       flexDirection:
         'row',
+
       flexWrap:
         'wrap',
+
       alignItems:
         'center',
+
       gap:
         8,
+
       marginTop:
         10,
     },
@@ -1560,8 +1875,10 @@ const styles =
     lastReadingValue: {
       color:
         colors.text,
+
       fontSize:
         12,
+
       fontWeight:
         '700',
     },
@@ -1569,6 +1886,7 @@ const styles =
     historyRow: {
       flexDirection:
         'row',
+
       minHeight:
         78,
     },
@@ -1576,6 +1894,7 @@ const styles =
     historyLineColumn: {
       width:
         22,
+
       alignItems:
         'center',
     },
@@ -1583,12 +1902,16 @@ const styles =
     historyDot: {
       width:
         10,
+
       height:
         10,
+
       borderRadius:
         5,
+
       backgroundColor:
         colors.primary,
+
       marginTop:
         7,
     },
@@ -1596,10 +1919,13 @@ const styles =
     historyLine: {
       width:
         1,
+
       flex:
         1,
+
       backgroundColor:
         colors.border,
+
       marginTop:
         5,
     },
@@ -1607,6 +1933,7 @@ const styles =
     historyContent: {
       flex:
         1,
+
       paddingBottom:
         spacing.md,
     },
@@ -1614,10 +1941,13 @@ const styles =
     historyHeader: {
       flexDirection:
         'row',
+
       alignItems:
         'center',
+
       justifyContent:
         'space-between',
+
       gap:
         spacing.sm,
     },
@@ -1625,10 +1955,13 @@ const styles =
     historyTitle: {
       flex:
         1,
+
       color:
         colors.text,
+
       fontSize:
         14,
+
       fontWeight:
         '700',
     },
@@ -1636,10 +1969,13 @@ const styles =
     historyDetails: {
       color:
         colors.muted,
+
       fontSize:
         12,
+
       lineHeight:
         18,
+
       marginTop:
         4,
     },
@@ -1647,8 +1983,10 @@ const styles =
     historyDate: {
       color:
         colors.muted,
+
       fontSize:
         11,
+
       marginTop:
         5,
     },
@@ -1656,6 +1994,7 @@ const styles =
     financeActions: {
       flexDirection:
         'row',
+
       gap:
         spacing.sm,
     },
@@ -1668,6 +2007,7 @@ const styles =
     invoiceRight: {
       alignItems:
         'flex-end',
+
       gap:
         8,
     },
@@ -1675,8 +2015,10 @@ const styles =
     invoiceAmount: {
       color:
         colors.text,
+
       fontSize:
         15,
+
       fontWeight:
         '800',
     },

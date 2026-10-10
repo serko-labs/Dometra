@@ -45,6 +45,10 @@ import {
 } from '../queries/tenantQueries';
 
 import {
+  MeterSubmissionStatus,
+} from '../services/meterSubmissionStatus';
+
+import {
   Meter,
 } from '../types';
 
@@ -52,10 +56,6 @@ import {
   colors,
   spacing,
 } from '../theme';
-
-
-type MeterSubmissionStatus =
-  MeterSubmissionStatuses[number];
 
 
 function formatDate(
@@ -164,13 +164,6 @@ function lastReadingDate(
 }
 
 
-/*
- * meterSubmissionStatus.ts does not currently export its old
- * helper function.
- *
- * Keep lookup logic here and support both camelCase and raw
- * Supabase snake_case identifiers.
- */
 function findMeterStatus(
   statuses:
     MeterSubmissionStatuses,
@@ -181,23 +174,12 @@ function findMeterStatus(
   | MeterSubmissionStatus
   | undefined {
   return statuses.find(
-    status => {
-      const candidate =
-        status as MeterSubmissionStatus & {
-          meterId?:
-            string;
-
-          meter_id?:
-            string;
-        };
-
-      return (
-        candidate.meterId ===
-          meterId ||
-        candidate.meter_id ===
-          meterId
-      );
-    },
+    (
+      status:
+        MeterSubmissionStatus,
+    ) =>
+      status.meterId ===
+      meterId,
   );
 }
 
@@ -421,9 +403,10 @@ export function ReadingsScreen() {
 
 
           /*
-           * Checkout status is independent from tenancy status.
+           * Checkout state does not live on tenancy.status.
            *
-           * Tenancy remains ACTIVE until landlord completion.
+           * The tenancy remains ACTIVE until the landlord
+           * completes checkout.
            */
           const checkoutPending =
             checkouts[
@@ -438,8 +421,8 @@ export function ReadingsScreen() {
                 findMeterStatus(
                   meterStatuses,
                   meter.id,
-                )?.submitted ===
-                true,
+                )?.state ===
+                'COMPLETE',
             ).length;
 
 
@@ -577,6 +560,10 @@ export function ReadingsScreen() {
                       meter.id,
                     );
 
+                  const submitted =
+                    status?.state ===
+                    'COMPLETE';
+
 
                   return (
                     <Card
@@ -621,7 +608,8 @@ export function ReadingsScreen() {
                         </View>
 
 
-                        {!checkoutPending ? (
+                        {!checkoutPending &&
+                        status ? (
                           <MeterSubmissionBadge
                             status={
                               status
@@ -633,7 +621,7 @@ export function ReadingsScreen() {
 
                       {!checkoutPending &&
                       status &&
-                      !status.submitted ? (
+                      !submitted ? (
                         <Text
                           style={
                             styles.dueText
@@ -714,7 +702,7 @@ export function ReadingsScreen() {
                         >
                           <SecondaryButton
                             title={
-                              status?.submitted
+                              submitted
                                 ? t(
                                     'updateReading',
                                   )
