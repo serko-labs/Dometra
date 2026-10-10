@@ -1,4 +1,7 @@
-import React from 'react';
+import React, {
+  useEffect,
+  useRef,
+} from 'react';
 
 import {
   ActivityIndicator,
@@ -19,12 +22,20 @@ import {
 } from '@react-navigation/bottom-tabs';
 
 import {
+  QueryClientProvider,
+} from '@tanstack/react-query';
+
+import {
   useTranslation,
 } from 'react-i18next';
 
 import {
   useApp,
 } from '../context/AppContext';
+
+import {
+  queryClient,
+} from '../lib/queryClient';
 
 import {
   colors,
@@ -424,13 +435,45 @@ function MainTabs() {
     : <TenantTabs />;
 }
 
-export function RootNavigator() {
+function RootNavigatorContent() {
   const {
     hydrated,
     session,
     authStatus,
   } =
     useApp();
+
+  /*
+   * Never allow cached data from one account to survive
+   * logout or switching to another account.
+   */
+  const previousUserId =
+    useRef<
+      string | null | undefined
+    >(undefined);
+
+  const userId =
+    session?.user?.id ??
+    null;
+
+  useEffect(
+    () => {
+      if (
+        previousUserId.current !==
+          undefined &&
+        previousUserId.current !==
+          userId
+      ) {
+        queryClient.clear();
+      }
+
+      previousUserId.current =
+        userId;
+    },
+    [
+      userId,
+    ],
+  );
 
   if (
     !hydrated ||
@@ -784,6 +827,18 @@ export function RootNavigator() {
         />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export function RootNavigator() {
+  return (
+    <QueryClientProvider
+      client={
+        queryClient
+      }
+    >
+      <RootNavigatorContent />
+    </QueryClientProvider>
   );
 }
 

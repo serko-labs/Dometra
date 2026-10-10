@@ -1,10 +1,6 @@
-import React, {
-  useCallback,
-  useState,
-} from 'react';
+import React from 'react';
 
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -12,9 +8,12 @@ import {
 } from 'react-native';
 
 import {
-  useFocusEffect,
   useNavigation,
 } from '@react-navigation/native';
+
+import {
+  useQuery,
+} from '@tanstack/react-query';
 
 import {
   useTranslation,
@@ -60,15 +59,37 @@ import {
 } from '../services/tenantRentalHistoryRepository';
 
 import {
+  queryKeys,
+} from '../lib/queryClient';
+
+import {
   colors,
   spacing,
 } from '../theme';
 
+interface TenantHomeData {
+  apartments:
+    TenantApartmentPortal[];
+
+  previousRentals:
+    TenantRentalHistoryItem[];
+
+  paymentClaims:
+    Record<
+      string,
+      TenantPaymentClaim
+    >;
+
+  checkouts:
+    Record<
+      string,
+      TenancyCheckout
+    >;
+}
+
 function errorMessage(
   error:
     unknown,
-  fallback:
-    string,
 ) {
   if (
     error instanceof
@@ -81,24 +102,19 @@ function errorMessage(
     error &&
     typeof error ===
       'object' &&
-    'message' in error &&
-    typeof (
-      error as {
-        message?:
-          unknown;
-      }
-    ).message ===
-      'string'
+    'message' in error
   ) {
-    return (
-      error as {
-        message:
-          string;
-      }
-    ).message;
+    return String(
+      (
+        error as {
+          message:
+            unknown;
+        }
+      ).message,
+    );
   }
 
-  return fallback;
+  return 'Unable to load your apartments.';
 }
 
 function formatDate(
@@ -140,6 +156,124 @@ function formatDate(
   );
 }
 
+async function loadTenantHomeData(): Promise<
+  TenantHomeData
+> {
+  /*
+   * ACTIVE APARTMENTS
+   *
+   * This is the only critical part of Tenant Home.
+   */
+  const apartments =
+    await loadTenantApartments();
+
+
+  /*
+   * PREVIOUS RENTALS
+   *
+   * Historical data should never make Tenant Home unusable.
+   */
+  let previousRentals:
+    TenantRentalHistoryItem[] =
+      [];
+
+  try {
+    previousRentals =
+      await loadTenantRentalHistory();
+  } catch (
+    error
+  ) {
+    console.warn(
+      '[Dometra Tenant Home] Unable to load previous rentals:',
+      error,
+    );
+  }
+
+
+  const tenancyIds =
+    apartments.map(
+      apartment =>
+        apartment.tenancyId,
+    );
+
+
+  if (
+    tenancyIds.length ===
+    0
+  ) {
+    return {
+      apartments,
+
+      previousRentals,
+
+      paymentClaims:
+        {},
+
+      checkouts:
+        {},
+    };
+  }
+
+
+  /*
+   * Payment / checkout metadata is useful but secondary.
+   *
+   * If this enrichment fails, still show apartments.
+   */
+  let paymentClaims:
+    Record<
+      string,
+      TenantPaymentClaim
+    > = {};
+
+  let checkouts:
+    Record<
+      string,
+      TenancyCheckout
+    > = {};
+
+  try {
+    const [
+      claims,
+      checkoutData,
+    ] =
+      await Promise.all([
+        loadPaymentClaims(
+          tenancyIds,
+          currentBillingPeriod(),
+        ),
+
+        loadCheckoutSummaries(
+          tenancyIds,
+        ),
+      ]);
+
+    paymentClaims =
+      claims;
+
+    checkouts =
+      checkoutData;
+  } catch (
+    error
+  ) {
+    console.warn(
+      '[Dometra Tenant Home] Unable to load tenancy status:',
+      error,
+    );
+  }
+
+
+  return {
+    apartments,
+
+    previousRentals,
+
+    paymentClaims,
+
+    checkouts,
+  };
+}
+
 export function TenantHomeScreen() {
   const navigation =
     useNavigation<any>();
@@ -149,239 +283,37 @@ export function TenantHomeScreen() {
   } =
     useTranslation();
 
-  const [
-    apartments,
-    setApartments,
-  ] =
-    useState<
-      TenantApartmentPortal[]
-    >([]);
+  const {
+    data,
+    error,
+    isPending,
+    refetch,
+  } =
+    useQuery({
+      queryKey:
+        queryKeys.tenantHome,
 
-  const [
-    previousRentals,
-    setPreviousRentals,
-  ] =
-    useState<
-      TenantRentalHistoryItem[]
-    >([]);
+      queryFn:
+        loadTenantHomeData,
+    });
 
-  const [
-    paymentClaims,
-    setPaymentClaims,
-  ] =
-    useState<
-      Record<
-        string,
-        TenantPaymentClaim
-      >
-    >({});
 
-  const [
-    checkouts,
-    setCheckouts,
-  ] =
-    useState<
-      Record<
-        string,
-        TenancyCheckout
-      >
-    >({});
+  const apartments =
+    data?.apartments ??
+    [];
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(
-      true,
-    );
+  const previousRentals =
+    data?.previousRentals ??
+    [];
 
-  const reload =
-    useCallback(
-      async () => {
-        setLoading(
-          true,
-        );
+  const paymentClaims =
+    data?.paymentClaims ??
+    {};
 
-        let apartmentData:
-          TenantApartmentPortal[] =
-          [];
+  const checkouts =
+    data?.checkouts ??
+    {};
 
-        /*
-         * ----------------------------------------------------
-         * ACTIVE TENANCIES
-         * ----------------------------------------------------
-         *
-         * This is the primary data for Tenant Home.
-         *
-         * If this fails, the user should see an error.
-         */
-        try {
-          apartmentData =
-            await loadTenantApartments();
-
-          setApartments(
-            apartmentData,
-          );
-        } catch (
-          error
-        ) {
-          console.error(
-            '[Dometra Tenant Home] Unable to load active apartments:',
-            error,
-          );
-
-          setApartments(
-            [],
-          );
-
-          Alert.alert(
-            t(
-              'tenantMyRent',
-              {
-                defaultValue:
-                  'My rent',
-              },
-            ),
-
-            errorMessage(
-              error,
-              'Unable to load your apartments.',
-            ),
-          );
-
-          setLoading(
-            false,
-          );
-
-          return;
-        }
-
-        /*
-         * ----------------------------------------------------
-         * PREVIOUS RENTALS
-         * ----------------------------------------------------
-         *
-         * Historical data must NEVER make active Tenant Home
-         * unusable.
-         */
-        try {
-          const history =
-            await loadTenantRentalHistory();
-
-          setPreviousRentals(
-            history,
-          );
-        } catch (
-          error
-        ) {
-          console.warn(
-            '[Dometra Tenant Home] Unable to load previous rentals:',
-            error,
-          );
-
-          setPreviousRentals(
-            [],
-          );
-        }
-
-        /*
-         * ----------------------------------------------------
-         * ACTIVE TENANCY ENRICHMENT
-         * ----------------------------------------------------
-         *
-         * If the user has no active tenancy after checkout,
-         * there is nothing to query here.
-         */
-        const tenancyIds =
-          apartmentData.map(
-            apartment =>
-              apartment.tenancyId,
-          );
-
-        if (
-          tenancyIds.length ===
-          0
-        ) {
-          setPaymentClaims(
-            {},
-          );
-
-          setCheckouts(
-            {},
-          );
-
-          setLoading(
-            false,
-          );
-
-          return;
-        }
-
-        try {
-          const [
-            claims,
-            checkoutData,
-          ] =
-            await Promise.all([
-              loadPaymentClaims(
-                tenancyIds,
-                currentBillingPeriod(),
-              ),
-
-              loadCheckoutSummaries(
-                tenancyIds,
-              ),
-            ]);
-
-          setPaymentClaims(
-            claims,
-          );
-
-          setCheckouts(
-            checkoutData,
-          );
-        } catch (
-          error
-        ) {
-          /*
-           * Payment/checkout status is secondary UI metadata.
-           * Do not hide the apartment if enrichment fails.
-           */
-          console.warn(
-            '[Dometra Tenant Home] Unable to load tenancy status:',
-            error,
-          );
-
-          setPaymentClaims(
-            {},
-          );
-
-          setCheckouts(
-            {},
-          );
-        } finally {
-          setLoading(
-            false,
-          );
-        }
-      },
-
-      [
-        t,
-      ],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void reload();
-      },
-
-      [
-        reload,
-      ],
-    ),
-  );
 
   const openApartment =
     (
@@ -398,6 +330,7 @@ export function TenantHomeScreen() {
           },
         );
     };
+
 
   return (
     <Screen>
@@ -421,7 +354,8 @@ export function TenantHomeScreen() {
         }
       />
 
-      {loading ? (
+
+      {isPending ? (
         <Card>
           <Text
             style={
@@ -433,7 +367,46 @@ export function TenantHomeScreen() {
         </Card>
       ) : null}
 
-      {!loading &&
+
+      {!isPending &&
+      error ? (
+        <Card>
+          <Text
+            style={
+              styles.emptyTitle
+            }
+          >
+            Unable to load apartments
+          </Text>
+
+          <Text
+            style={
+              styles.muted
+            }
+          >
+            {errorMessage(
+              error,
+            )}
+          </Text>
+
+          <View
+            style={
+              styles.buttonTop
+            }
+          >
+            <SecondaryButton
+              title="Try again"
+              onPress={() =>
+                void refetch()
+              }
+            />
+          </View>
+        </Card>
+      ) : null}
+
+
+      {!isPending &&
+      !error &&
       apartments.length ===
         0 ? (
         <Card>
@@ -454,6 +427,7 @@ export function TenantHomeScreen() {
           </Text>
         </Card>
       ) : null}
+
 
       {apartments.map(
         apartment => {
@@ -636,7 +610,8 @@ export function TenantHomeScreen() {
         },
       )}
 
-      {!loading &&
+
+      {!isPending &&
       previousRentals.length >
         0 ? (
         <>
